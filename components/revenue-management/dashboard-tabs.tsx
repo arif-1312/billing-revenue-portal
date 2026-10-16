@@ -4,10 +4,10 @@ import { cn } from "@/lib/utils";
 
 export const DASHBOARD_VIEWS = [
   { id: "overview", label: "Overview" },
+  { id: "forecast", label: "Forecast" },
   { id: "customers", label: "Customer Analysis" },
   { id: "companies", label: "Company-wise Billing" },
   { id: "aging", label: "Aging & Collections" },
-  { id: "forecast", label: "Forecast" },
 ] as const;
 
 export type DashboardView = (typeof DASHBOARD_VIEWS)[number]["id"];

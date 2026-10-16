@@ -19,7 +19,6 @@ import {
 import { ChartContainer, type ChartConfig } from "@/components/ui/chart";
 import type { AgingSummary } from "@/lib/revenue-metrics";
 import {
-  efficiencyOf,
   formatCount,
   formatInr,
   formatPercent,
@@ -37,7 +36,6 @@ import { ChartCard } from "./chart-card";
 import { DataTable } from "./data-table";
 import { GaugeCard } from "./gauge-card";
 import { KpiCard } from "./kpi-card";
-import { ScenarioSlider } from "./scenario-slider";
 import { StatusBadge } from "./status-badge";
 
 const chartConfig = {
@@ -45,8 +43,6 @@ const chartConfig = {
   payment: { label: "Collected", color: "#0E8A6A" },
   overdue: { label: "Overdue", color: "#C5363C" },
   pending: { label: "Pending", color: "#C47E09" },
-  illustrative: { label: "Illustrative collection", color: "#98A2B3" },
-  scenario: { label: "Scenario", color: "#C47E09" },
 } satisfies ChartConfig;
 
 const sliceColor: Record<string, string> = {
@@ -555,32 +551,17 @@ export function ForecastView({
   collected,
   efficiency,
   monthly,
-  growth,
-  improvement,
-  onGrowth,
-  onImprovement,
 }: {
   projected: number;
   billed: number;
   collected: number;
   efficiency: number;
   monthly: MonthPoint[];
-  growth: number;
-  improvement: number;
-  onGrowth: (value: number) => void;
-  onImprovement: (value: number) => void;
 }) {
-  const scenarioOn = growth !== 0 || improvement !== 0;
-  const adjustedEfficiency = Math.min(100, efficiency + improvement);
-  const adjustedRevenue = projected * (1 + growth / 100);
-  const adjustedCollection = adjustedRevenue * (adjustedEfficiency / 100);
   const series = monthly.map((point) => ({
     month: point.month,
     Projected: point.projected ?? point.billing,
     Actual: point.payment,
-    ...(scenarioOn
-      ? { Scenario: point.billing * (1 + growth / 100) * (adjustedEfficiency / 100) }
-      : {}),
   }));
 
   return (
@@ -588,52 +569,30 @@ export function ForecastView({
       <p className="rounded-md border border-[#d5e4f2] bg-[#f4f9fd] px-3 py-2 text-sm text-[#1c2430]">
         Projected is the invoiced amount for the month, including later months in the financial year. Actual is the amount collected, shown in the month it was received.
       </p>
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-        <article className="space-y-4 rounded-md border border-[#e4e8ee] bg-white p-3 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
-          <div>
-            <h3 className="text-sm font-semibold text-[#1c2430]">Illustrative scenario</h3>
-            <p className="mt-1 text-[11px] leading-4 text-[#667085]">Sliders change only the scenario figures on this tab. They reset when you leave Forecast.</p>
-          </div>
-          <ScenarioSlider label="Collection efficiency improvement" value={improvement} min={0} max={50} onChange={onImprovement} />
-          <ScenarioSlider label="Billing growth" value={growth} min={-20} max={50} onChange={onGrowth} />
-          <dl className="space-y-1 text-sm text-[#667085]">
-            <div className="flex justify-between gap-3"><dt>Projected revenue</dt><dd className="font-mono text-[#1c2430] tabular-nums">{formatInr(projected, true)}</dd></div>
-            <div className="flex justify-between gap-3"><dt>Actual collected</dt><dd className="font-mono text-[#1c2430] tabular-nums">{formatInr(collected, true)}</dd></div>
-            {scenarioOn ? (
-              <>
-                <div className="flex justify-between gap-3"><dt>Scenario revenue</dt><dd className="font-mono text-[#1c2430] tabular-nums">{formatInr(adjustedRevenue, true)}</dd></div>
-                <div className="flex justify-between gap-3"><dt>Scenario collection</dt><dd className="font-mono text-[#1c2430] tabular-nums">{formatInr(adjustedCollection, true)}</dd></div>
-              </>
-            ) : null}
-          </dl>
-        </article>
-        <div className="lg:col-span-2">
-          <ChartCard
-            title="Projected vs actual"
-            description={scenarioOn ? "The amber line is the slider scenario and is not a confirmed result." : "Projected is invoiced. Actual is collected."}
-            filename="forecast.csv"
-            rows={series}
-            empty={series.every((row) => row.Projected === 0 && row.Actual === 0)}
-          >
-            <ChartContainer config={chartConfig} className="aspect-auto h-72 w-full">
-              <ComposedChart data={series}>
-                <CartesianGrid vertical={false} stroke="#eef1f4" />
-                <XAxis dataKey="month" tickLine={false} axisLine={false} tick={axisTick} />
-                <YAxis tickFormatter={(value) => formatInr(Number(value), true)} tickLine={false} axisLine={false} tick={axisTick} width={72} />
-                <Tooltip formatter={(value) => formatInr(Number(value))} contentStyle={tooltipStyle} />
-                <Legend />
-                <Bar dataKey="Projected" fill="#1F6FB5" radius={[2, 2, 0, 0]} maxBarSize={18} isAnimationActive={false} />
-                <Bar dataKey="Actual" fill="#0E8A6A" radius={[2, 2, 0, 0]} maxBarSize={18} isAnimationActive={false} />
-                {scenarioOn ? <Line dataKey="Scenario" stroke="#C47E09" strokeDasharray="5 4" strokeWidth={2} dot={false} isAnimationActive={false} /> : null}
-              </ComposedChart>
-            </ChartContainer>
-          </ChartCard>
-        </div>
-      </div>
-      <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-        <SecondaryStat label="Total revenue projected" value={projected} hint="All invoiced amounts in the selected financial year. This is not the scenario revenue." />
+      <ChartCard
+        title="Projected vs actual"
+        description="Projected is invoiced. Actual is collected."
+        filename="forecast.csv"
+        rows={series}
+        empty={series.every((row) => row.Projected === 0 && row.Actual === 0)}
+      >
+        <ChartContainer config={chartConfig} className="aspect-auto h-72 w-full">
+          <BarChart data={series} barGap={2}>
+            <CartesianGrid vertical={false} stroke="#eef1f4" />
+            <XAxis dataKey="month" tickLine={false} axisLine={false} tick={axisTick} />
+            <YAxis tickFormatter={(value) => formatInr(Number(value), true)} tickLine={false} axisLine={false} tick={axisTick} width={72} />
+            <Tooltip formatter={(value) => formatInr(Number(value))} contentStyle={tooltipStyle} />
+            <Legend />
+            <Bar dataKey="Projected" fill="#1F6FB5" radius={[2, 2, 0, 0]} maxBarSize={18} isAnimationActive={false} />
+            <Bar dataKey="Actual" fill="#0E8A6A" radius={[2, 2, 0, 0]} maxBarSize={18} isAnimationActive={false} />
+          </BarChart>
+        </ChartContainer>
+      </ChartCard>
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
+        <SecondaryStat label="Total revenue projected" value={projected} hint="All invoiced amounts in the selected financial year." />
         <SecondaryStat label="Actual billed" value={billed} hint="Billed amount in the selected period." />
-        <GaugeCard label="Collection efficiency" value={efficiencyOf(collected, billed)} target={80} />
+        <SecondaryStat label="Actual collected" value={collected} hint="Amount collected in the selected period." />
+        <GaugeCard label="Collection efficiency" value={efficiency} target={80} />
       </div>
     </div>
   );

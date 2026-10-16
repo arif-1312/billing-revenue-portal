@@ -103,8 +103,6 @@ export function ManagementReport({
   const view: DashboardView = isDashboardView(requested) ? requested : "overview";
   const [status, setStatus] = useState("all");
   const [crossFilter, setCrossFilter] = useState<CrossFilter | null>(null);
-  const [growth, setGrowth] = useState(0);
-  const [improvement, setImprovement] = useState(0);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -115,10 +113,6 @@ export function ManagementReport({
   }, []);
 
   const setView = (next: DashboardView) => {
-    if (next !== "forecast") {
-      setGrowth(0);
-      setImprovement(0);
-    }
     const query = new URLSearchParams(params.toString());
     query.set("view", next);
     if (!query.get("tab")) query.set("tab", "revenue");
@@ -365,10 +359,6 @@ export function ManagementReport({
               collected={collected}
               efficiency={efficiency}
               monthly={monthly}
-              growth={growth}
-              improvement={improvement}
-              onGrowth={setGrowth}
-              onImprovement={setImprovement}
             />
           ) : null}
         </div>
