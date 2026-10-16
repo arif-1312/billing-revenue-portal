@@ -7,24 +7,78 @@ import { formatError } from "../utils";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { randomUUID } from "crypto";
+import { requirePermission } from "@/lib/rbac";
+
+const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
+const ALLOWED_UPLOADS = new Map([
+  [".png", new Set(["image/png"])],
+  [".jpg", new Set(["image/jpeg"])],
+  [".jpeg", new Set(["image/jpeg"])],
+  [".webp", new Set(["image/webp"])],
+  [".ico", new Set(["image/x-icon", "image/vnd.microsoft.icon"])],
+]);
+
+const publicConfigurationSelect = {
+  name: true,
+  logo: true,
+  favicon: true,
+} as const;
 
 /* ================= GET CONFIGURATION ================= */
 export async function getConfiguration() {
   try {
-    const config = await prisma.configuration.findFirst();
+    const config = await prisma.configuration.findFirst({
+      select: publicConfigurationSelect,
+    });
     return config ?? null;
-  } catch (error) {
-    console.error("Error fetching configuration:", error);
+  } catch {
+    console.error("Error fetching configuration");
+    return null;
+  }
+}
+
+export async function getConfigurationSettings() {
+  const access = await requirePermission("/admin/configuration", "view");
+  if (!access.ok) return null;
+
+  try {
+    return await prisma.configuration.findFirst({
+      select: {
+        id: true,
+        name: true,
+        logo: true,
+        favicon: true,
+        email: true,
+        password: true,
+      },
+    });
+  } catch {
+    console.error("Error fetching configuration settings");
     return null;
   }
 }
 
 /* ================= SAVE FILE ================= */
 async function saveUploadedFile(file: File) {
+  if (file.size <= 0 || file.size > MAX_UPLOAD_BYTES) {
+    throw new Error("Image must be 2 MB or smaller");
+  }
+
+  const extension = path.extname(file.name || "").toLowerCase();
+  const allowedTypes = ALLOWED_UPLOADS.get(extension);
+
+  if (!allowedTypes) {
+    throw new Error("Upload a PNG, JPEG, WEBP, or ICO image");
+  }
+
+  const mime = file.type.toLowerCase();
+  if (mime && !allowedTypes.has(mime)) {
+    throw new Error("Upload a PNG, JPEG, WEBP, or ICO image");
+  }
+
   const bytes = await file.arrayBuffer();
   const buffer = Buffer.from(bytes);
 
-  const extension = path.extname(file.name || "") || ".png";
   const fileName = `${randomUUID()}${extension}`;
 
   const uploadDir = path.join(process.cwd(), "public", "uploads");
@@ -39,6 +93,11 @@ async function saveUploadedFile(file: File) {
 /* ================= SAVE FROM FORM ================= */
 export async function saveConfigurationFromForm(formData: FormData) {
   try {
+    const access = await requirePermission("/admin/configuration", "edit");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     const existing = await prisma.configuration.findFirst();
 
     const logoInput = formData.get("logo");
@@ -69,7 +128,7 @@ export async function saveConfigurationFromForm(formData: FormData) {
 
     return await createOrUpdateConfiguration(payload);
   } catch (error) {
-    console.error(error);
+    console.error("Failed to save configuration");
 
     return {
       success: false,
@@ -81,6 +140,11 @@ export async function saveConfigurationFromForm(formData: FormData) {
 /* ================= CREATE / UPDATE ================= */
 export async function createOrUpdateConfiguration(data: Configuration) {
   try {
+    const access = await requirePermission("/admin/configuration", "edit");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     const configuration = configurationSchema.parse(data);
 
     const formattedData = {
@@ -115,7 +179,7 @@ export async function createOrUpdateConfiguration(data: Configuration) {
       message: "Configuration saved successfully",
     };
   } catch (error) {
-    console.error(error);
+    console.error("Failed to save configuration");
 
     return {
       success: false,

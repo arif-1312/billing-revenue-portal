@@ -4,6 +4,7 @@ import { prisma } from "../prisma";
 import { formatError } from "../utils";
 import { moduleSchema } from "../validators";
 import { Module } from "@/types";
+import { requirePermission } from "@/lib/rbac";
 
 type ActionResponse = {
   success: boolean;
@@ -45,6 +46,12 @@ function normalizeModulePayload(module: Module) {
 }
 
 export async function getModules(): Promise<Module[]> {
+  const access = await requirePermission("/admin/module", "view", [
+    { route: "/admin/roles", action: "create" },
+    { route: "/admin/roles", action: "edit" },
+  ]);
+  if (!access.ok) return [];
+
   const modules = await prisma.module.findMany({
     orderBy: { createdAt: "desc" },
   });
@@ -54,6 +61,11 @@ export async function getModules(): Promise<Module[]> {
 
 export async function createModule(data: any): Promise<ActionResponse> {
   try {
+    const access = await requirePermission("/admin/module", "create");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     const module = moduleSchema.parse(data);
     const payload = normalizeModulePayload(module);
 
@@ -75,6 +87,13 @@ export async function createModule(data: any): Promise<ActionResponse> {
 
 export async function getModuleById(id: string) {
   try {
+    const access = await requirePermission("/admin/module", "view", [
+      { route: "/admin/module", action: "edit" },
+    ]);
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     const module = await prisma.module.findUnique({
       where: { id },
     });
@@ -104,6 +123,11 @@ export async function updateModule(
   id: string,
 ): Promise<ActionResponse> {
   try {
+    const access = await requirePermission("/admin/module", "edit");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     const module = moduleSchema.parse(data);
     const payload = normalizeModulePayload(module);
 
@@ -126,6 +150,11 @@ export async function updateModule(
 
 export async function deleteModule(id: string): Promise<ActionResponse> {
   try {
+    const access = await requirePermission("/admin/module", "delete");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     const module = await prisma.module.findUnique({
       where: { id },
     });

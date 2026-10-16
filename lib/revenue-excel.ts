@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 
 import { formatStoredDate } from "@/lib/date-utils";
+import { isAllowedMoneyAmount } from "@/lib/validators";
 
 const MAX_IMPORT_ROWS = 1000;
 const MIN_DATE_YEAR = 1990;
@@ -548,7 +549,14 @@ function usableDate(value: ParsedDate) {
 }
 
 function usableAmount(value: ParsedAmount) {
-  return typeof value === "number" ? roundMoney(value) : 0;
+  return typeof value === "number" && isAllowedMoneyAmount(value)
+    ? roundMoney(value)
+    : 0;
+}
+
+function moneyProblem(label: string, value: ParsedAmount) {
+  if (typeof value !== "number" || isAllowedMoneyAmount(value)) return null;
+  return `${label} must be between 0 and 9999999999.99`;
 }
 
 function readPurchaseOrderDraft(
@@ -565,7 +573,10 @@ function readPurchaseOrderDraft(
     customerName: revenueCellText(candidate.customerName),
     companyName: revenueCellText(candidate.companyName),
     vendorName: revenueCellText(candidate.vendorName),
-    poAmount: typeof poAmount === "number" ? roundMoney(poAmount) : null,
+    poAmount:
+      typeof poAmount === "number" && isAllowedMoneyAmount(poAmount)
+        ? roundMoney(poAmount)
+        : null,
     status: status && status !== "invalid" ? status : "LIVE",
     scope: revenueCellText(candidate.scope),
     billingPlanName: revenueCellText(candidate.billingPlanName),
@@ -631,6 +642,7 @@ export function assessRevenueImport(
 
   const rows: RevenueImportPreviewRow[] = [];
   const inserts: RevenueImportInsert[] = [];
+  const errors: RevenueImportRowError[] = [];
   const purchaseOrderDrafts = new Map<string, RevenuePurchaseOrderDraft>();
 
   for (const candidate of parsed.candidates) {
@@ -653,11 +665,19 @@ export function assessRevenueImport(
     const billingSubmittedDate = usableDate(
       parseExcelDate(candidate.billingSubmittedDate),
     );
-    const invoiceAmount = usableAmount(parseExcelAmount(candidate.invoiceAmount));
-    const collectedAmount = usableAmount(
-      parseExcelAmount(candidate.collectedAmount),
-    );
-    const tds = usableAmount(parseExcelAmount(candidate.tds));
+    const invoiceParsed = parseExcelAmount(candidate.invoiceAmount);
+    const collectedParsed = parseExcelAmount(candidate.collectedAmount);
+    const tdsParsed = parseExcelAmount(candidate.tds);
+    const poParsed = parseExcelAmount(candidate.poAmount);
+    const moneyMessages = [
+      moneyProblem("Invoice amount", invoiceParsed),
+      moneyProblem("Collected amount", collectedParsed),
+      moneyProblem("TDS", tdsParsed),
+      moneyProblem("PO amount", poParsed),
+    ].filter((message): message is string => Boolean(message));
+    const invoiceAmount = usableAmount(invoiceParsed);
+    const collectedAmount = usableAmount(collectedParsed);
+    const tds = usableAmount(tdsParsed);
 
     let purchaseOrderId = "";
     let billingCycleId = "";
@@ -691,6 +711,10 @@ export function assessRevenueImport(
     const resolvedSubmitted = billingSubmittedDate ?? resolvedInvoiceDate;
     const resolvedDue = paymentDueDate ?? resolvedInvoiceDate;
 
+    if (moneyMessages.length > 0) {
+      errors.push({ row, messages: moneyMessages });
+    }
+
     rows.push({
       excelRow: row,
       invoiceNumber,
@@ -713,6 +737,8 @@ export function assessRevenueImport(
       billingRemark,
     });
 
+    if (moneyMessages.length > 0) continue;
+
     inserts.push({
       excelRow: row,
       purchaseOrderId,
@@ -733,11 +759,17 @@ export function assessRevenueImport(
 
   return {
     columnErrors: [],
-    errors: [],
+    errors,
     rows,
     inserts,
     canCommit: inserts.length > 0,
   };
+}
+
+const FORMULA_PREFIX = /^[=+\-@\t\r]/;
+
+export function neutralizeSpreadsheetText(value: string) {
+  return FORMULA_PREFIX.test(value) ? `'${value}` : value;
 }
 
 function flattenExportRows(purchaseOrders: RevenueExportPurchaseOrder[]) {
@@ -811,7 +843,10 @@ export function buildRevenueWorkbook(purchaseOrders: RevenueExportPurchaseOrder[
   const headers = REVENUE_EXCEL_COLUMNS.map((column) => column.header);
   const records = flattenExportRows(purchaseOrders);
   const body = records.map((record) =>
-    headers.map((header) => record[header as keyof typeof record] ?? ""),
+    headers.map((header) => {
+      const value = record[header as keyof typeof record] ?? "";
+      return typeof value === "string" ? neutralizeSpreadsheetText(value) : value;
+    }),
   );
   const sheet = XLSX.utils.aoa_to_sheet([headers, ...body]);
   sheet["!cols"] = headers.map((header) => ({

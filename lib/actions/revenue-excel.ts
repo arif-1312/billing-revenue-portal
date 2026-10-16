@@ -5,7 +5,7 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { persistRevenueImport } from "@/lib/revenue-import-save";
-import { canAccess } from "@/lib/rbac";
+import { requirePermission } from "@/lib/rbac";
 import {
   assessRevenueImport,
   buildRevenueImportContext,
@@ -152,9 +152,9 @@ export async function exportRevenueWorkbook(
   purchaseOrderIds: string[],
 ): Promise<RevenueExportResult> {
   try {
-    const canView = await canAccess(REVENUE_ROUTE, "view");
-    if (!canView) {
-      return { success: false, message: "You do not have permission to export revenue." };
+    const access = await requirePermission(REVENUE_ROUTE, "view");
+    if (!access.ok) {
+      return { success: false, message: access.message };
     }
 
     const orderedIds: string[] = [];
@@ -255,9 +255,9 @@ export async function previewRevenueImport(
   formData: FormData,
 ): Promise<RevenueImportResult> {
   try {
-    const canCreate = await canAccess(REVENUE_ROUTE, "create");
-    if (!canCreate) {
-      return emptyImportResult("You do not have permission to import revenue.");
+    const access = await requirePermission(REVENUE_ROUTE, "create");
+    if (!access.ok) {
+      return emptyImportResult(access.message);
     }
 
     const upload = await readUpload(formData);
@@ -278,9 +278,9 @@ export async function commitRevenueImport(
   formData: FormData,
 ): Promise<RevenueImportResult> {
   try {
-    const canCreate = await canAccess(REVENUE_ROUTE, "create");
-    if (!canCreate) {
-      return emptyImportResult("You do not have permission to import revenue.");
+    const access = await requirePermission(REVENUE_ROUTE, "create");
+    if (!access.ok) {
+      return emptyImportResult(access.message);
     }
 
     const upload = await readUpload(formData);

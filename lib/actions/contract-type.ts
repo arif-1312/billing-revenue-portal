@@ -4,6 +4,13 @@ import { Role } from "@/types";
 import { prisma } from "../prisma";
 import { contractTypeSchema } from "../validators";
 import { formatError } from "../utils";
+import { requirePermission, type PermissionRule } from "@/lib/rbac";
+
+const revenueReaders: PermissionRule[] = [
+  { route: "/admin/revenue", action: "view" },
+  { route: "/admin/revenue", action: "create" },
+  { route: "/admin/revenue", action: "edit" },
+];
 
 function normalizeContractTypePayload(contractType: {
   name?: string;
@@ -24,6 +31,9 @@ function normalizeContractTypePayload(contractType: {
 }
 
 export async function getContractTypes() {
+  const access = await requirePermission("/admin/contract-type", "view", revenueReaders);
+  if (!access.ok) return [];
+
   return await prisma.contractType.findMany({
     orderBy: {
       createdAt: 'desc'
@@ -34,6 +44,11 @@ export async function getContractTypes() {
 export async function createContractType(data: Role) {
 
   try {
+    const access = await requirePermission("/admin/contract-type", "create");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     const contractType = contractTypeSchema.parse(data)
     const payload = normalizeContractTypePayload(contractType)
 
@@ -55,6 +70,12 @@ export async function createContractType(data: Role) {
 }
 export async function getContractTypeById(id: string) {
   try {
+    const access = await requirePermission("/admin/contract-type", "view", [
+      { route: "/admin/contract-type", action: "edit" },
+    ]);
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
 
     let contractType = await prisma.contractType.findFirst({
       where: { id }
@@ -83,6 +104,10 @@ export async function getContractTypeById(id: string) {
 
 export async function updateContractType(data: Role, id: string) {
   try {
+    const access = await requirePermission("/admin/contract-type", "edit");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
 
     const contractType = contractTypeSchema.parse(data)
     const payload = normalizeContractTypePayload(contractType)
@@ -107,6 +132,11 @@ export async function updateContractType(data: Role, id: string) {
 
 export async function deleteContractType(id: any) {
   try {
+    const access = await requirePermission("/admin/contract-type", "delete");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     await prisma.contractType.delete({
       where: { id }
     })

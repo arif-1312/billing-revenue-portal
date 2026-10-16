@@ -20,10 +20,42 @@ export const purchaseOrderTypeEnum = z.preprocess((val) => {
   return normalized === "" ? undefined : normalized;
 }, z.nativeEnum(PurchaseOrderType).optional());
 
+export const MONEY_MAX = 9999999999.99
+const moneyMessage = "Amount must be between 0 and 9999999999.99"
+
+export function isAllowedMoneyAmount(value: number) {
+  return Number.isFinite(value) && value >= 0 && value <= MONEY_MAX
+}
+
+const finiteMoney = z
+  .number()
+  .min(0, moneyMessage)
+  .max(MONEY_MAX, moneyMessage)
+  .refine((value) => Number.isFinite(value), { message: moneyMessage })
+
+function moneyInput(value: unknown) {
+  if (value === "" || value === null || value === undefined) return undefined
+  if (typeof value === "number") return value
+  if (typeof value === "string") {
+    const trimmed = value.trim()
+    if (!trimmed) return undefined
+    return Number(trimmed)
+  }
+  return Number(value)
+}
+
+export const optionalMoneySchema = z.preprocess(moneyInput, finiteMoney.optional())
+
+export const moneyWithDefaultSchema = z.preprocess(
+  (value) =>
+    value === "" || value === undefined || value === null ? 0 : Number(value),
+  finiteMoney,
+)
+
 /* ---------------- AUTH ---------------- */
 export const loginFormSchema = z.object({
-  username: z.string().optional(),
-  password: z.string().optional(),
+  username: z.string().trim().min(1, "Username is required"),
+  password: z.string().min(1, "Password is required"),
 });
 
 /* ---------------- ROLE ---------------- */
@@ -101,10 +133,7 @@ export const billingCycleSchema = z.object({
       z.object({
         id: z.string().optional(),
         receivedDate: z.union([z.date(), z.string()]).nullable().optional(),
-        amount: z.preprocess(
-          (value) => (value === "" || value === undefined || value === null ? 0 : Number(value)),
-          z.number().optional(),
-        ),
+        amount: moneyWithDefaultSchema,
       }),
     )
     .optional()
@@ -114,21 +143,15 @@ export const billingCycleSchema = z.object({
 
   billingRemark: z.string().optional(),
 
-  collectedAmount: z.preprocess(
-    (val) => (val !== undefined ? Number(val) : undefined),
-    z.number().optional(),
-  ),
+  collectedAmount: optionalMoneySchema,
 
-  invoiceAmount: z.preprocess(
-    (val) => (val !== undefined ? Number(val) : undefined),
-    z.number().optional(),
-  ),
+  invoiceAmount: optionalMoneySchema,
 
   invoiceDate: z.union([z.date(), z.string()]).nullable().optional(),
 
   invoiceNumber: z.string().optional(),
 
-  tds: z.coerce.number().optional(),
+  tds: optionalMoneySchema,
 
   createdAt: z.date().nullable().optional(),
   updatedAt: z.date().nullable().optional(),
@@ -147,10 +170,7 @@ export const purchaseOrderSchema = z.object({
 
   customerPONumber: optionalTrimmedString,
 
-  poAmount: z.preprocess((val) => {
-    if (val === "" || val === null || val === undefined) return undefined;
-    return Number(val);
-  }, z.number().optional()),
+  poAmount: optionalMoneySchema,
 
   serviceTypeId: optionalTrimmedString,
 
@@ -376,15 +396,15 @@ export const projectMonthlyPLSchema = z.object({
 
   year: z.coerce.number().optional(),
 
-  billedAmount: z.coerce.number().optional(),
+  billedAmount: optionalMoneySchema,
 
-  fms: z.coerce.number().optional(),
+  fms: optionalMoneySchema,
 
-  spare: z.coerce.number().optional(),
+  spare: optionalMoneySchema,
 
-  billableAmount: z.coerce.number().optional(),
+  billableAmount: optionalMoneySchema,
 
-  resourceUsed: z.coerce.number().optional(),
+  resourceUsed: optionalMoneySchema,
 
   otherCost: z.any().optional(),
 
@@ -405,7 +425,7 @@ export const projectSchema = z.object({
 
   endDate: z.union([z.date(), z.string()]).nullable().optional(),
 
-  poValue: z.coerce.number().optional(),
+  poValue: optionalMoneySchema,
 
   resourceCount: z.coerce.number().optional(),
 
@@ -413,7 +433,7 @@ export const projectSchema = z.object({
 
   orderType: z.enum(Object.values(OrderType)).optional(),
 
-  projectedProfit: z.coerce.number().optional(),
+  projectedProfit: optionalMoneySchema,
 
   status: z.enum(Object.values(Status)).optional(),
 

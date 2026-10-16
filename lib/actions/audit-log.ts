@@ -6,6 +6,7 @@ import {
   type ActivityLogRow,
 } from "../audit-format"
 import { prisma } from "../prisma"
+import { requirePermission } from "@/lib/rbac"
 
 export const AUDIT_PAGE_SIZE = 20
 
@@ -36,6 +37,20 @@ type AuditLogQuery = {
 }
 
 export async function getAuditLogs(query: AuditLogQuery) {
+  const access = await requirePermission("/admin/activity-log", "view")
+  if (!access.ok) {
+    return {
+      rows: [],
+      total: 0,
+      page: 1,
+      pageSize: AUDIT_PAGE_SIZE,
+      q: "",
+      model: "",
+      action: "",
+      models: AUDIT_MODELS,
+    }
+  }
+
   const q = query.q?.trim().slice(0, 100) || ""
   const model = query.model?.trim().slice(0, 64) || ""
   const action = isAuditAction(query.action) ? query.action : ""

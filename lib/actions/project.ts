@@ -9,6 +9,32 @@ import {
   getFinancialYearRange,
   toBusinessDateValue,
 } from "../date-utils";
+import { requirePermission, type PermissionRule } from "@/lib/rbac";
+
+const dashboardView: PermissionRule[] = [
+  { route: "/admin/dashboard", action: "view" },
+];
+
+const plEdit: PermissionRule[] = [
+  { route: "/admin/pl", action: "edit" },
+];
+
+function emptyProjectFilter() {
+  return {
+    totalPOValue: 0,
+    totalBilledValue: 0,
+    totalCostValue: 0,
+    totalFMSValue: 0,
+    totalBillableAmount: 0,
+    totalSpareValue: 0,
+    totalOtherCostValue: 0,
+    totalMiscCostValue: 0,
+    totalResourceCount: 0,
+    totalProfit: "0",
+    totalProjectedProfit: "0",
+    data: [],
+  };
+}
 
 function normalizeProjectPayload(project: Project, amount: {
   totalRevenue: number;
@@ -99,6 +125,9 @@ const monthNames = [
 ];
 
 export async function getProjects() {
+  const access = await requirePermission("/admin/pl", "view", dashboardView);
+  if (!access.ok) return [];
+
   return await prisma.project.findMany({
     orderBy: {
       createdAt: "desc",
@@ -112,6 +141,11 @@ export async function getProjects() {
 
 export async function createProject(data: Project) {
   try {
+    const access = await requirePermission("/admin/pl", "create");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     const project = projectSchema.parse(data);
 
     let amount = getTotalAmount(data.billingCycle);
@@ -137,6 +171,11 @@ export async function createProject(data: Project) {
 
 export async function getprojectById(id: string) {
   try {
+    const access = await requirePermission("/admin/pl", "view", plEdit);
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     let project = await prisma.project.findFirst({
       where: { id },
       include: {
@@ -169,6 +208,11 @@ export async function getprojectById(id: string) {
 
 export async function updateProject(data: Project, id: string) {
   try {
+    const access = await requirePermission("/admin/pl", "edit");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     const project = projectSchema.parse(data);
 
     let amount = getTotalAmount(data.billingCycle);
@@ -195,6 +239,11 @@ export async function updateProject(data: Project, id: string) {
 
 export async function deleteProject(id: any) {
   try {
+    const access = await requirePermission("/admin/pl", "delete");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     await prisma.project.delete({
       where: { id },
     });
@@ -213,6 +262,11 @@ export async function deleteProject(id: any) {
 
 export async function getBillingCyclesByPOID(id: string) {
   try {
+    const access = await requirePermission("/admin/pl", "view", plEdit);
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     let billingCycles = await prisma.projectMonthlyPL.findMany({
       where: {
         projectId: id,
@@ -365,6 +419,11 @@ function calculateCost(rec: any): number {
 // ================= MAIN =================
 
 export async function getPLData(year: number, filters?: any): Promise<PLData> {
+  const access = await requirePermission("/admin/pl", "view", dashboardView);
+  if (!access.ok) {
+    return { billingCycle: [], monthly: [], projects: [] };
+  }
+
   const { start, end } = getFinancialYearRange(year);
 
   const records = await prisma.projectMonthlyPL.findMany({
@@ -546,6 +605,9 @@ export async function getPLStatusDetails(
   year: number,
   month: number, // FY index (0 = Apr, 11 = Mar)
 ) {
+  const access = await requirePermission("/admin/pl", "view", dashboardView);
+  if (!access.ok) return [];
+
   // ✅ Convert FY → DB (calendar)
   const dbMonth = month <= 8 ? month + 3 : month - 9;
   const dbYear = month <= 8 ? year : year + 1;
@@ -597,6 +659,11 @@ function safeNumber(value: any) {
 }
 
 export async function fetchPLPageData(projectId: string) {
+  const access = await requirePermission("/admin/pl", "view");
+  if (!access.ok) {
+    return { success: false, message: access.message };
+  }
+
   const projectRes = await getprojectById(projectId);
   const billingRes = await getBillingCyclesByPOID(projectId);
 
@@ -708,6 +775,9 @@ export async function fetchPLPageData(projectId: string) {
 }
 
 export async function filterProjectData(filters: any) {
+  const access = await requirePermission("/admin/pl", "view", dashboardView);
+  if (!access.ok) return emptyProjectFilter();
+
   const where = buildFilters(filters);
   const monthlyPLWhere = buildMonthlyPLFilters(filters);
   const hasFinancialPeriodFilter =
@@ -837,6 +907,9 @@ export async function getBillingDetailsByMonth(
   params: MonthlyDetailsParams,
   filters: any,
 ) {
+  const access = await requirePermission("/admin/pl", "view", dashboardView);
+  if (!access.ok) return [];
+
   const { month, year, company, project } = params;
 
   // ✅ FY → DB conversion
@@ -910,6 +983,9 @@ export async function getCostDetailsByMonth(
   params: MonthlyDetailsParams,
   filters: any,
 ) {
+  const access = await requirePermission("/admin/pl", "view", dashboardView);
+  if (!access.ok) return [];
+
   const { month, year, company, project } = params;
 
   // ✅ FY → DB conversion

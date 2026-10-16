@@ -5,6 +5,14 @@ import { Customer } from "@/types";
 import { prisma } from "../prisma";
 import { customerSchema } from "../validators";
 import { formatError } from "../utils";
+import { requirePermission, type PermissionRule } from "@/lib/rbac";
+
+const customerReaders: PermissionRule[] = [
+  { route: "/admin/revenue", action: "view" },
+  { route: "/admin/revenue", action: "create" },
+  { route: "/admin/revenue", action: "edit" },
+  { route: "/admin/dashboard", action: "view" },
+];
 
 function normalizeCustomerPayload(customer: Customer) {
   const customerCode = customer.customerCode?.trim();
@@ -46,6 +54,9 @@ function normalizeCustomerPayload(customer: Customer) {
 }
 
 export async function getCustomers() {
+  const access = await requirePermission("/admin/customer", "view", customerReaders);
+  if (!access.ok) return [];
+
   return await prisma.customer.findMany({
     orderBy: {
       createdAt: 'desc'
@@ -56,6 +67,11 @@ export async function getCustomers() {
 export async function createCustomer(data: Customer) {
 
   try {
+    const access = await requirePermission("/admin/customer", "create");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     const customer = customerSchema.parse(data)
     const payload = normalizeCustomerPayload(customer)
 
@@ -80,6 +96,12 @@ export async function createCustomer(data: Customer) {
 }
 export async function getCustomerById(id: string) {
   try {
+    const access = await requirePermission("/admin/customer", "view", [
+      { route: "/admin/customer", action: "edit" },
+    ]);
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
 
     let customer = await prisma.customer.findFirst({
       where: { id }
@@ -108,6 +130,10 @@ export async function getCustomerById(id: string) {
 
 export async function updateCustomer(data: Customer, id: string) {
   try {
+    const access = await requirePermission("/admin/customer", "edit");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
 
     const customer = customerSchema.parse(data)
     const payload = normalizeCustomerPayload(customer)
@@ -136,6 +162,11 @@ export async function updateCustomer(data: Customer, id: string) {
 
 export async function deleteCustomer(id: string) {
   try {
+    const access = await requirePermission("/admin/customer", "delete");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     const customer = await prisma.customer.findUnique({
       where: { id },
       select: {

@@ -6,6 +6,11 @@ import {
   getFinancialYearRangeToDate,
 } from "@/lib/date-utils";
 import { prisma } from "@/lib/prisma";
+import { requirePermission, type PermissionRule } from "@/lib/rbac";
+
+const revenueReaders: PermissionRule[] = [
+  { route: "/admin/dashboard", action: "view" },
+];
 
 function getInvoiceDate(cycle: {
   invoiceDate?: Date | null;
@@ -42,6 +47,11 @@ function getEffectiveCollectedAmount(cycle: {
 export async function getRevenueSummary(
   year = getCurrentFinancialYear(),
 ) {
+  const access = await requirePermission("/admin/revenue", "view", revenueReaders);
+  if (!access.ok) {
+    return { billed: 0, collected: 0, overdue: 0, outstanding: 0, efficiency: 0 };
+  }
+
   const { start, end } = getFinancialYearRangeToDate(year);
 
   const cycles = await prisma.billingCycle.findMany({
@@ -105,6 +115,9 @@ export async function getRevenueSummary(
 export async function getRevenueByCompany(
   year = getCurrentFinancialYear(),
 ) {
+  const access = await requirePermission("/admin/revenue", "view", revenueReaders);
+  if (!access.ok) return [];
+
   const { start, end } = getFinancialYearRangeToDate(year);
 
   const cycles = await prisma.billingCycle.findMany({
@@ -181,6 +194,9 @@ export async function getRevenueByCompany(
 export async function getRevenueByCustomer(
   year = getCurrentFinancialYear(),
 ) {
+  const access = await requirePermission("/admin/revenue", "view", revenueReaders);
+  if (!access.ok) return [];
+
   const { start, end } = getFinancialYearRangeToDate(year);
 
   const data = await prisma.billingCycle.findMany({
@@ -245,6 +261,9 @@ export async function getRevenueByCustomer(
 
 // ================= UPCOMING PAYMENTS =================
 export async function getUpcomingPayments() {
+  const access = await requirePermission("/admin/revenue", "view", revenueReaders);
+  if (!access.ok) return [];
+
   const today = new Date();
   return prisma.billingCycle.findMany({
     where: { paymentDueDate: { gt: today } },

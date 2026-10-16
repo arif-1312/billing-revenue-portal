@@ -17,6 +17,31 @@ import {
   type DashboardFilters,
 } from "@/lib/revenue-metrics";
 import { prisma } from "@/lib/prisma";
+import { requirePermission } from "@/lib/rbac";
+
+function emptyDashboardSummary(): RevenueDashboardSummary {
+  return {
+    totalRevenueProjected: 0,
+    totalRevenueTillNow: 0,
+    dueForBillingTillNow: 0,
+    collectedAmountTillNow: 0,
+    pendingCollectionTillNow: 0,
+    overdueAmountTillNow: 0,
+    partialInvoiceCount: 0,
+    collectionEfficiency: 0,
+    aging: emptyAging(),
+  };
+}
+
+const emptyDashboardStats: DashboardStats = {
+  billCount: 0,
+  billingThisMonth: 0,
+  totalBilledAmount: 0,
+  totalCollectedAmount: 0,
+  totalOverdueAmount: 0,
+  collectionEfficiency: 0,
+  currentMonth: "",
+};
 
 export interface DashboardStats {
   billCount: number;
@@ -582,6 +607,9 @@ function getCustomerDisplayName(customer?: CustomerRecord | null) {
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
+  const access = await requirePermission("/admin/dashboard", "view");
+  if (!access.ok) return emptyDashboardStats;
+
   const currentFY = getCurrentFinancialYear();
 
   const { start, end } = getFinancialYearRange(currentFY);
@@ -651,6 +679,9 @@ export async function getMonthlyBillingData(
   year: number,
   filters?: BillingStatusFilters,
 ) {
+  const access = await requirePermission("/admin/dashboard", "view");
+  if (!access.ok) return [];
+
   const { start, end } = getFinancialYearRange(year);
 
   const currentDate = new Date();
@@ -762,6 +793,9 @@ export async function getRevenueDashboardSummary(
   year?: number,
   filters?: BillingStatusFilters,
 ): Promise<RevenueDashboardSummary> {
+  const access = await requirePermission("/admin/dashboard", "view");
+  if (!access.ok) return emptyDashboardSummary();
+
   const purchaseOrderFilter = getPurchaseOrderFilter(filters);
 
   const cycles = await prisma.billingCycle.findMany({
@@ -914,6 +948,9 @@ export async function getDueForBillingAmount(
   year?: number,
   filters?: BillingStatusFilters,
 ) {
+  const access = await requirePermission("/admin/dashboard", "view");
+  if (!access.ok) return 0;
+
   const purchaseOrderFilter = getPurchaseOrderFilter(filters);
 
   const cycles = await prisma.billingCycle.findMany({
@@ -1001,6 +1038,9 @@ export async function getBillingStatusDetails(
   year?: number,
   filters?: BillingStatusFilters,
 ) {
+  const access = await requirePermission("/admin/dashboard", "view");
+  if (!access.ok) return { records: [], lines: [] };
+
   const cycles = await prisma.billingCycle.findMany({
     include: {
       payments: true,
@@ -1151,6 +1191,9 @@ export async function getRevenueDetailsByMonth(
   params: RevenueMonthDetailsParams,
   filters?: BillingStatusFilters,
 ): Promise<RevenueMonthDetail[]> {
+  const access = await requirePermission("/admin/dashboard", "view");
+  if (!access.ok) return [];
+
   const { start, end } = getFinancialMonthRange(params.year, params.month);
   const purchaseOrderFilter = getPurchaseOrderFilter(filters);
 
@@ -1255,6 +1298,17 @@ export async function getRevenueDetailsByMonth(
 }
 
 export async function getRevenueDashboard(query: RevenueDashboardQuery) {
+  const access = await requirePermission("/admin/dashboard", "view");
+  if (!access.ok) {
+    return {
+      summary: emptyDashboardSummary(),
+      comparison: null,
+      records: [],
+      lines: [],
+      monthly: [],
+    };
+  }
+
   const filters: BillingStatusFilters = {
     company: query.company,
     customer: query.customer,

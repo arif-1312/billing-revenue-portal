@@ -13,6 +13,21 @@ import { formatError } from "../utils";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { auth, signIn, signOut } from "@/auth";
 import bcrypt from "bcrypt";
+import { requirePermission } from "@/lib/rbac";
+import { recordSecurityEvent } from "@/lib/security-event";
+
+const userPublicSelect = {
+  id: true,
+  username: true,
+  firstName: true,
+  lastName: true,
+  email: true,
+  status: true,
+  remark: true,
+  roleId: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
 
 type AuthenticatedSession = {
   user?: {
@@ -59,20 +74,16 @@ async function getAuthenticatedUserIdentity() {
   const userId = session?.user?.id;
   const email = session?.user?.email;
 
-  if (userId) {
-    return { userId, email };
-  }
-
-  if (!email) {
+  if (!userId && !email) {
     return null;
   }
 
-  const user = await prisma.user.findUnique({
-    where: { email },
-    select: { id: true, email: true },
+  const user = await prisma.user.findFirst({
+    where: userId ? { id: userId } : { email: email as string },
+    select: { id: true, email: true, status: true },
   });
 
-  if (!user) {
+  if (!user || user.status !== "ACTIVE") {
     return null;
   }
 
@@ -83,17 +94,28 @@ async function getAuthenticatedUserIdentity() {
 }
 
 export async function getUsers() {
+  const access = await requirePermission("/admin/users", "view");
+  if (!access.ok) return [];
+
   return await prisma.user.findMany({
     orderBy: {
       createdAt: 'desc'
     },
-    include: { role: true }
+    select: {
+      ...userPublicSelect,
+      role: true,
+    },
   })
 }
 
 export async function createUser(data: User) {
 
   try {
+    const access = await requirePermission("/admin/users", "create");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     const user = createUserSchema.parse(data)
     const password = user.password?.trim();
 
@@ -125,9 +147,16 @@ export async function createUser(data: User) {
 }
 export async function getUserById(id: string) {
   try {
+    const access = await requirePermission("/admin/users", "view", [
+      { route: "/admin/users", action: "edit" },
+    ]);
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
 
     const user = await prisma.user.findFirst({
-      where: { id }
+      where: { id },
+      select: userPublicSelect,
     })
 
     if (user) {
@@ -154,6 +183,10 @@ export async function getUserById(id: string) {
 
 export async function updateUser(data: User, id: string) {
   try {
+    const access = await requirePermission("/admin/users", "edit");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
 
     const user = userSchema.parse(data)
     const payload = normalizeUserPayload(user)
@@ -178,6 +211,11 @@ export async function updateUser(data: User, id: string) {
 
 export async function deleteUser(id: string) {
   try {
+    const access = await requirePermission("/admin/users", "delete");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     await prisma.user.delete({
       where: { id }
     })
@@ -233,6 +271,13 @@ export async function loginFormUser(prevState: unknown, formData: FormData) {
 // logout user
 export async function logoutUser() {
   try {
+    const identity = await getAuthenticatedUserIdentity().catch(() => null);
+    await recordSecurityEvent({
+      event: "LOGOUT",
+      username: identity?.email ?? null,
+      userId: identity?.userId ?? null,
+      result: "success",
+    });
     await signOut()
     return {
       success: true,
@@ -256,7 +301,18 @@ export async function getCurrentUser() {
     const identity = await getAuthenticatedUserIdentity();
 
     if (identity?.userId) {
-      return await getUserById(identity.userId)
+      const user = await prisma.user.findUnique({
+        where: { id: identity.userId },
+        select: userPublicSelect,
+      });
+
+      if (!user) return null;
+
+      return {
+        success: true,
+        data: user,
+        message: "User fetched successfully",
+      };
     }
 
     return null;
@@ -277,7 +333,16 @@ export async function getCurrentUserProfile() {
 
     return await prisma.user.findUnique({
       where: { id: userId as string },
-      include: { role: true },
+      select: {
+        ...userPublicSelect,
+        role: {
+          select: {
+            id: true,
+            name: true,
+            status: true,
+          },
+        },
+      },
     });
   } catch (err) {
     console.error("Failed to get current user profile:", err);
@@ -308,13 +373,14 @@ export async function changeCurrentUserPassword(payload: {
       select: {
         id: true,
         password: true,
+        status: true,
       },
     });
 
-    if (!user?.password) {
+    if (!user?.password || user.status !== "ACTIVE") {
       return {
         success: false,
-        message: "User password record not found",
+        message: "You must be logged in to change your password",
       };
     }
 

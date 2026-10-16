@@ -7,6 +7,13 @@ import { Vendor } from "@/types";
 import { prisma } from "../prisma";
 import { formatError } from "../utils";
 import { vendorSchema } from "../validators";
+import { requirePermission, type PermissionRule } from "@/lib/rbac";
+
+const vendorReaders: PermissionRule[] = [
+  { route: "/admin/revenue", action: "view" },
+  { route: "/admin/revenue", action: "create" },
+  { route: "/admin/revenue", action: "edit" },
+];
 
 type VendorPayload = ReturnType<typeof normalizeVendorPayload>;
 
@@ -330,6 +337,9 @@ function revalidateVendorPaths(id?: string) {
 }
 
 export async function getVendors() {
+  const access = await requirePermission("/admin/vendor", "view", vendorReaders);
+  if (!access.ok) return [];
+
   const vendorDelegate = getVendorDelegate();
 
   if (vendorDelegate) {
@@ -354,6 +364,11 @@ export async function getVendors() {
 
 export async function createVendor(data: Vendor) {
   try {
+    const access = await requirePermission("/admin/vendor", "create");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     const vendor = vendorSchema.parse(data);
     const payload = normalizeVendorPayload(vendor);
     const vendorDelegate = getVendorDelegate();
@@ -382,6 +397,13 @@ export async function createVendor(data: Vendor) {
 
 export async function getVendorById(id: string) {
   try {
+    const access = await requirePermission("/admin/vendor", "view", [
+      { route: "/admin/vendor", action: "edit" },
+    ]);
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     const vendorDelegate = getVendorDelegate();
     const vendor = vendorDelegate
       ? await vendorDelegate.findFirst({
@@ -411,6 +433,11 @@ export async function getVendorById(id: string) {
 
 export async function updateVendor(data: Vendor, id: string) {
   try {
+    const access = await requirePermission("/admin/vendor", "edit");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     const vendor = vendorSchema.parse(data);
     const payload = normalizeVendorPayload(vendor);
     const vendorDelegate = getVendorDelegate();
@@ -458,6 +485,11 @@ export async function updateVendor(data: Vendor, id: string) {
 
 export async function deleteVendor(id: string) {
   try {
+    const access = await requirePermission("/admin/vendor", "delete");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     const vendorDelegate = getVendorDelegate();
 
     if (vendorDelegate) {

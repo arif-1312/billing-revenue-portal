@@ -7,6 +7,7 @@ import { toBusinessDateValue } from "../date-utils";
 import { PurchaseOrder } from "@/types";
 import { PaymentReceived, Prisma } from "@prisma/client";
 import { generatePurchaseOrderBillingCycles } from "../billing-cycle-utils";
+import { requirePermission } from "@/lib/rbac";
 
 // ================= DATE HELPER =================
 const toLocalDate = (date?: string | Date | null): Date | undefined => {
@@ -134,6 +135,11 @@ const createBillingCycles = async (
 // ================= GET ALL =================
 export async function getPurchaseOrders() {
   try {
+    const access = await requirePermission("/admin/revenue", "view");
+    if (!access.ok) {
+      return { success: false, data: [], message: access.message };
+    }
+
     const data = await prisma.purchaseOrder.findMany({
       orderBy: { createdAt: "desc" },
       include: {
@@ -163,6 +169,11 @@ export async function getPurchaseOrders() {
 // ================= CREATE =================
 export async function createPurchaseOrder(data: PurchaseOrder) {
   try {
+    const access = await requirePermission("/admin/revenue", "create");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     const validated = purchaseOrderSchema.parse(data);
     const billingPlanId = emptyToUndefined(validated.billingPlanId);
     const billingPlan =
@@ -254,6 +265,13 @@ export async function createPurchaseOrder(data: PurchaseOrder) {
 // ================= GET BY ID =================
 export async function getPurchaseOrderById(id: string) {
   try {
+    const access = await requirePermission("/admin/revenue", "view", [
+      { route: "/admin/revenue", action: "edit" },
+    ]);
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     const data = await prisma.purchaseOrder.findUnique({
       where: { id },
       include: {
@@ -288,6 +306,11 @@ export async function updatePurchaseOrder(
   id: string
 ) {
   try {
+    const access = await requirePermission("/admin/revenue", "edit");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     const validated = purchaseOrderSchema.parse(data);
     const billingPlanId = emptyToUndefined(validated.billingPlanId);
 
@@ -337,6 +360,11 @@ export async function updatePurchaseOrder(
 // ================= DELETE =================
 export async function deletePurchaseOrder(id: string) {
   try {
+    const access = await requirePermission("/admin/revenue", "delete");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     await prisma.$transaction([
       prisma.billingCycle.deleteMany({
         where: { purchaseOrderId: id },
@@ -358,6 +386,13 @@ export async function deletePurchaseOrder(id: string) {
 // ================= GET BILLING CYCLES =================
 export async function getBillingCyclesByPOID(id: string) {
   try {
+    const access = await requirePermission("/admin/revenue", "view", [
+      { route: "/admin/revenue", action: "edit" },
+    ]);
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     const data = await prisma.billingCycle.findMany({
       where: { purchaseOrderId: id },
       orderBy: { billingSubmittedDate: "asc" },

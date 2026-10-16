@@ -2,7 +2,9 @@ import NextAuth from "next-auth"
 import { PrismaAdapter } from "@auth/prisma-adapter"
 import { prisma } from "./lib/prisma"
 import CredentialsProvider from "next-auth/providers/credentials"
-import bycrpt from "bcrypt"
+import { authorizeCredentials } from "./lib/credentials"
+
+const TWELVE_HOURS = 12 * 60 * 60
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
     secret: process.env.AUTH_SECRET,
@@ -12,7 +14,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
     session: {
         strategy: "jwt" as const,
-        maxAge: 30 * 24 * 60 * 60
+        maxAge: TWELVE_HOURS,
     },
     adapter: PrismaAdapter(prisma) as any,
     providers: [
@@ -22,62 +24,28 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                 password: { label: "Password", type: "password" },
             },
             async authorize(credentials) {
-                if (credentials == null) return null;
-
-                // find user in database
-                const user = await prisma.user.findFirst({
-                    where: { username: credentials.username as string },
-                    include: { role: true }
-                })
-
-                // check if user exist and if the password matches
-                if (user && user.password) {
-                    const isMatched = await bycrpt.compare(credentials.password as string, user.password)
-
-                    // if password  is correct , return user
-                    if (isMatched) {
-                        return {
-                            id: user.id,
-                            username: user.username ?? "",
-                            firstName: user.firstName ?? "",
-                            lastName: user.lastName ?? "",
-                            email: user.email ?? "",
-                            role: user.role.name ?? "USER",
-                        };
-                    }
-                }
-
-                // if user does not exist or password does not matched return null
-                return null
+                return authorizeCredentials(credentials)
             }
         })
     ],
     callbacks: {
-        async session({ session, user, trigger, token }: any) {
-            // set the user id from the token
-            session.user.id = token.sub
-            session.user.role = token.role
-            session.user.name = token.firstName
-            session.user.email = token.email
-
-            // if there is an update , set the user name
-            if (trigger === "update") {
-                session.user.name = user.name
-            }
+        async session({ session, token }: any) {
+            session.user.id = token.id || token.sub
+            session.user.role = token.role || ""
+            session.user.firstName = token.firstName || ""
+            session.user.username = token.username || ""
+            session.user.name = token.firstName || session.user.name
+            session.user.email = token.email || session.user.email
 
             return session
         },
-        async jwt({ token, user, trigger, session }: any) {
+        async jwt({ token, user }: any) {
             if (user) {
-                token.id = user.id;
-                token.roleId = user.roleId;
-                token.firstName = user.firstName;
-                token.email = user.email;
-
-                await prisma.user.update({
-                    where: { id: user.id },
-                    data: { firstName: token.name }
-                })
+                token.id = user.id
+                token.role = user.role
+                token.firstName = user.firstName
+                token.email = user.email
+                token.username = user.username
             }
 
             return token

@@ -4,6 +4,7 @@ import { Role } from "@/types";
 import { prisma } from "../prisma";
 import { roleSchema } from "../validators";
 import { formatError } from "../utils";
+import { requirePermission } from "@/lib/rbac";
 
 function normalizeRolePayload(role: Role) {
   const name = role.name?.trim();
@@ -20,6 +21,12 @@ function normalizeRolePayload(role: Role) {
 }
 
 export async function getRoles() {
+  const access = await requirePermission("/admin/roles", "view", [
+    { route: "/admin/users", action: "create" },
+    { route: "/admin/users", action: "edit" },
+  ]);
+  if (!access.ok) return [];
+
   return await prisma.role.findMany({
     orderBy: {
       createdAt: 'desc'
@@ -33,6 +40,11 @@ export async function getRoles() {
 export async function createRole(data: any) {
 
   try {
+    const access = await requirePermission("/admin/roles", "create");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     const role = roleSchema.parse(data)
     const payload = normalizeRolePayload(role)
 
@@ -65,6 +77,12 @@ export async function createRole(data: any) {
 }
 export async function getRoleById(id: string) {
   try {
+    const access = await requirePermission("/admin/roles", "view", [
+      { route: "/admin/roles", action: "edit" },
+    ]);
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
 
     let role = await prisma.role.findFirst({
       where: { id },
@@ -97,6 +115,10 @@ export async function getRoleById(id: string) {
 
 export async function updateRole(data: any, id: string) {
   try {
+    const access = await requirePermission("/admin/roles", "edit");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
 
     const role = roleSchema.parse(data)
     const payload = normalizeRolePayload(role)
@@ -132,6 +154,11 @@ export async function updateRole(data: any, id: string) {
 
 export async function deleteRole(id: any) {
   try {
+    const access = await requirePermission("/admin/roles", "delete");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     await prisma.role.delete({
       where: { id }
     })

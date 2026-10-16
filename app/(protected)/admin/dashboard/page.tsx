@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { redirect } from "next/navigation";
 
 import { getProjects } from "@/lib/actions/project";
 import { getCompanys } from "@/lib/actions/company";
@@ -8,6 +9,7 @@ import { canonicalCompanyName } from "@/lib/company-names";
 import { PLDashboardComponent } from "@/components/pl/pl-dashboard-component";
 import { RevenueDashboard } from "@/components/revenue-dashboard/revenue-dashboard";
 import { getFiscalYear } from "@/lib/fiscal-year";
+import { canAccess } from "@/lib/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +17,12 @@ export default async function DashboardPage({
   searchParams,
 }: PageProps<"/admin/dashboard">) {
   const resolvedSearchParams = (await searchParams) ?? {};
+  const canView = await canAccess("/admin/dashboard", "view");
+
+  if (!canView) {
+    redirect("/404");
+  }
+
   const activeTab = Array.isArray(resolvedSearchParams.tab)
     ? resolvedSearchParams.tab[0]
     : resolvedSearchParams.tab;

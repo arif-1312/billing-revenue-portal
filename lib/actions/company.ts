@@ -4,6 +4,17 @@ import { Company, } from "@/types";
 import { prisma } from "../prisma";
 import { companySchema } from "../validators";
 import { formatError, incrementCode } from "../utils";
+import { requirePermission, type PermissionRule } from "@/lib/rbac";
+
+const companyReaders: PermissionRule[] = [
+  { route: "/admin/revenue", action: "view" },
+  { route: "/admin/revenue", action: "create" },
+  { route: "/admin/revenue", action: "edit" },
+  { route: "/admin/pl", action: "view" },
+  { route: "/admin/pl", action: "create" },
+  { route: "/admin/pl", action: "edit" },
+  { route: "/admin/dashboard", action: "view" },
+];
 
 function normalizeCompanyPayload(company: Company) {
   const name = company.name?.trim();
@@ -31,6 +42,9 @@ function normalizeCompanyPayload(company: Company) {
 }
 
 export async function getCompanys() {
+  const access = await requirePermission("/admin/company", "view", companyReaders);
+  if (!access.ok) return [];
+
   return await prisma.company.findMany({
     orderBy: {
       createdAt: 'desc'
@@ -41,9 +55,14 @@ export async function getCompanys() {
 export async function createCompany(data: Company) {
 
   try {
-    const totalCompanies = await getCompanys()
+    const access = await requirePermission("/admin/company", "create");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
 
-    const companyCode = "COMP-" + incrementCode(String(totalCompanies.length)) 
+    const totalCompanies = await prisma.company.count()
+
+    const companyCode = "COMP-" + incrementCode(String(totalCompanies)) 
 
     const company = companySchema.parse(data)
     const payload = normalizeCompanyPayload(company)
@@ -69,6 +88,12 @@ export async function createCompany(data: Company) {
 }
 export async function getcompanyById(id: string) {
   try {
+    const access = await requirePermission("/admin/company", "view", [
+      { route: "/admin/company", action: "edit" },
+    ]);
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
 
     let company = await prisma.company.findFirst({
       where: { id }
@@ -97,6 +122,10 @@ export async function getcompanyById(id: string) {
 
 export async function updateCompany(data: Company, id: string) {
   try {
+    const access = await requirePermission("/admin/company", "edit");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
 
     const company = companySchema.parse(data)
     const payload = normalizeCompanyPayload(company)
@@ -121,6 +150,11 @@ export async function updateCompany(data: Company, id: string) {
 
 export async function deleteCompany(id: any) {
   try {
+    const access = await requirePermission("/admin/company", "delete");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     await prisma.company.delete({
       where: { id }
     })

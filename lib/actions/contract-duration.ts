@@ -4,6 +4,13 @@ import { ContractDuration } from "@/types";
 import { prisma } from "../prisma";
 import { contractDurationSchema } from "../validators";
 import { formatError } from "../utils";
+import { requirePermission, type PermissionRule } from "@/lib/rbac";
+
+const revenueReaders: PermissionRule[] = [
+  { route: "/admin/revenue", action: "view" },
+  { route: "/admin/revenue", action: "create" },
+  { route: "/admin/revenue", action: "edit" },
+];
 
 function normalizeContractDurationPayload(contractDuration: ContractDuration) {
   const name = contractDuration.name?.trim();
@@ -21,6 +28,9 @@ function normalizeContractDurationPayload(contractDuration: ContractDuration) {
 }
 
 export async function getContractDurations() {
+  const access = await requirePermission("/admin/contract-duration", "view", revenueReaders);
+  if (!access.ok) return [];
+
   return await prisma.contractDuration.findMany({
     orderBy: {
       createdAt: 'desc'
@@ -31,6 +41,11 @@ export async function getContractDurations() {
 export async function createContractDuration(data: ContractDuration) {
 
   try {
+    const access = await requirePermission("/admin/contract-duration", "create");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     const contractDuration = contractDurationSchema.parse(data)
     const payload = normalizeContractDurationPayload(contractDuration)
 
@@ -52,6 +67,12 @@ export async function createContractDuration(data: ContractDuration) {
 }
 export async function getContractDurationById(id: string) {
   try {
+    const access = await requirePermission("/admin/contract-duration", "view", [
+      { route: "/admin/contract-duration", action: "edit" },
+    ]);
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
 
     let contractDuration = await prisma.contractDuration.findFirst({
       where: { id }
@@ -80,6 +101,10 @@ export async function getContractDurationById(id: string) {
 
 export async function updateContractDuration(data: ContractDuration, id: string) {
   try {
+    const access = await requirePermission("/admin/contract-duration", "edit");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
 
   const contractDuration = contractDurationSchema.parse(data)
   const payload = normalizeContractDurationPayload(contractDuration)
@@ -104,6 +129,11 @@ export async function updateContractDuration(data: ContractDuration, id: string)
 
 export async function deleteContractDuration(id: any) {
   try {
+    const access = await requirePermission("/admin/contract-duration", "delete");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     await prisma.contractDuration.delete({
       where: { id }
     })

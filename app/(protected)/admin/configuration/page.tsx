@@ -1,10 +1,18 @@
 export const dynamic = "force-dynamic";
 
 import ConfigurationForm from "./configuration-form";
-import { getConfiguration } from "@/lib/actions/configuration";
+import { getConfigurationSettings } from "@/lib/actions/configuration";
+import { canAccess } from "@/lib/rbac";
+import { redirect } from "next/navigation";
 
 const ConfigurationPage = async () => {
-    const configuration = await getConfiguration();
+    const canView = await canAccess("/admin/configuration", "view");
+
+    if (!canView) {
+        redirect("/404");
+    }
+
+    const configuration = await getConfigurationSettings();
 
     return (
         <ConfigurationForm

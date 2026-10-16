@@ -4,6 +4,13 @@ import { Role } from "@/types";
 import { prisma } from "../prisma";
 import { serviceTypeSchema } from "../validators";
 import { formatError } from "../utils";
+import { requirePermission, type PermissionRule } from "@/lib/rbac";
+
+const revenueReaders: PermissionRule[] = [
+  { route: "/admin/revenue", action: "view" },
+  { route: "/admin/revenue", action: "create" },
+  { route: "/admin/revenue", action: "edit" },
+];
 
 function normalizeServiceTypePayload(serviceType: {
   name?: string;
@@ -24,6 +31,9 @@ function normalizeServiceTypePayload(serviceType: {
 }
 
 export async function getServiceTypes() {
+  const access = await requirePermission("/admin/service-type", "view", revenueReaders);
+  if (!access.ok) return [];
+
   return await prisma.serviceType.findMany({
     orderBy: {
       createdAt: 'desc'
@@ -34,6 +44,11 @@ export async function getServiceTypes() {
 export async function createServiceType(data: Role) {
 
   try {
+    const access = await requirePermission("/admin/service-type", "create");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     const serviceType = serviceTypeSchema.parse(data)
     const payload = normalizeServiceTypePayload(serviceType)
 
@@ -55,6 +70,12 @@ export async function createServiceType(data: Role) {
 }
 export async function getServiceTypeById(id: string) {
   try {
+    const access = await requirePermission("/admin/service-type", "view", [
+      { route: "/admin/service-type", action: "edit" },
+    ]);
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
 
     let serviceType = await prisma.serviceType.findFirst({
       where: { id }
@@ -83,6 +104,10 @@ export async function getServiceTypeById(id: string) {
 
 export async function updateServiceType(data: Role, id: string) {
   try {
+    const access = await requirePermission("/admin/service-type", "edit");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
 
     const serviceType = serviceTypeSchema.parse(data)
     const payload = normalizeServiceTypePayload(serviceType)
@@ -107,6 +132,11 @@ export async function updateServiceType(data: Role, id: string) {
 
 export async function deleteServiceType(id: any) {
   try {
+    const access = await requirePermission("/admin/service-type", "delete");
+    if (!access.ok) {
+      return { success: false, message: access.message };
+    }
+
     await prisma.serviceType.delete({
       where: { id }
     })

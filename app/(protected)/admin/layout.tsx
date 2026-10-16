@@ -1,4 +1,4 @@
-import { auth } from "@/auth";
+import { auth, signOut } from "@/auth";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SiteHeader } from "@/components/site-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
@@ -30,6 +30,11 @@ export default async function AdminLayout({
   }
 
   const userRoles = await getUserPermissions();
+
+  if (!userRoles) {
+    await signOut({ redirectTo: "/login" });
+    redirect("/login");
+  }
 
   const allowedRoutes = await Promise.all(
     (userRoles?.role?.roleModules || []).map(async (roleModule: RoleModule) => {
