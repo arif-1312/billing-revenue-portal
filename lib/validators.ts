@@ -95,7 +95,10 @@ export const userSchema = z.object({
 });
 
 export const createUserSchema = userSchema.extend({
-  password: z.string().optional(),
+  password: z
+    .string()
+    .min(12, "Password must be at least 12 characters")
+    .optional(),
 });
 
 export const changePasswordSchema = z
@@ -104,7 +107,7 @@ export const changePasswordSchema = z
     newPassword: z
       .string()
       .trim()
-      .min(6, "New password must be at least 6 characters"),
+      .min(12, "New password must be at least 12 characters"),
     confirmPassword: z.string().trim().min(1, "Confirm password is required"),
   })
   .refine((data) => data.newPassword === data.confirmPassword, {

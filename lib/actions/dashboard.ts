@@ -13,6 +13,7 @@ import {
 import {
   agingBucketForDaysPastDue,
   emptyAging,
+  filterTokens,
   type AgingSummary,
   type DashboardFilters,
 } from "@/lib/revenue-metrics";
@@ -77,6 +78,7 @@ interface BillingStatusFilters {
   endDate?: Date | string;
   month?: string;
   quarter?: string;
+  years?: number[];
   timeZone?: "Asia/Kolkata";
 }
 
@@ -282,8 +284,10 @@ function getSummaryAsOfDate(
     const lastDay = new Date(Date.UTC(calendarYear, month, 0)).getUTCDate();
     let asOfYmd = `${calendarYear}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 
-    if (typeof year === "number") {
-      const fyEnd = `${year + 1}-03-31`;
+    const selectedYears = selectedFinancialYears(year, filters);
+    if (selectedYears.length > 0) {
+      const latest = Math.max(...selectedYears);
+      const fyEnd = `${latest + 1}-03-31`;
       if (fyEnd < asOfYmd) asOfYmd = fyEnd;
     }
 
@@ -301,8 +305,10 @@ function getSummaryAsOfDate(
   );
   let asOfDate = normalizeEndOfDate(currentMonthEnd);
 
-  if (typeof year === "number") {
-    asOfDate = getEarlierDate(asOfDate, getFinancialYearRange(year).end);
+  const selectedYears = selectedFinancialYears(year, filters);
+  if (selectedYears.length > 0) {
+    const latest = Math.max(...selectedYears);
+    asOfDate = getEarlierDate(asOfDate, getFinancialYearRange(latest).end);
   }
 
   if (filters?.endDate instanceof Date) {
@@ -478,41 +484,41 @@ function collectedByReceiptDate(
     .reduce((total, receipt) => total + receipt.amount, 0);
 }
 
+function idFilter(value?: string) {
+  const ids = filterTokens(value);
+  if (ids.length === 0) return undefined;
+  if (ids.length === 1) return ids[0];
+  return { in: ids };
+}
+
 function matchesCompanyFilter(
   cycle: CompanyFilterCycle,
   filters?: BillingStatusFilters,
 ) {
-  if (!filters?.company || filters.company === "all") {
-    return true;
-  }
-
-  return String(cycle.purchaseOrder?.company?.id) === filters.company;
+  const companies = filterTokens(filters?.company);
+  if (companies.length === 0) return true;
+  return companies.includes(String(cycle.purchaseOrder?.company?.id));
 }
 
 function matchesCustomerFilter(
   cycle: CompanyFilterCycle,
   filters?: BillingStatusFilters,
 ) {
-  if (!filters?.customer || filters.customer === "all") {
-    return true;
-  }
-
-  return String(cycle.purchaseOrder?.customer?.id) === filters.customer;
+  const customers = filterTokens(filters?.customer);
+  if (customers.length === 0) return true;
+  return customers.includes(String(cycle.purchaseOrder?.customer?.id));
 }
 
 function getPurchaseOrderFilter(filters?: BillingStatusFilters) {
   const purchaseOrderFilter: {
-    companyId?: string;
-    customerId?: string;
+    companyId?: string | { in: string[] };
+    customerId?: string | { in: string[] };
   } = {};
+  const companyId = idFilter(filters?.company);
+  const customerId = idFilter(filters?.customer);
 
-  if (filters?.company && filters.company !== "all") {
-    purchaseOrderFilter.companyId = filters.company;
-  }
-
-  if (filters?.customer && filters.customer !== "all") {
-    purchaseOrderFilter.customerId = filters.customer;
-  }
+  if (companyId) purchaseOrderFilter.companyId = companyId;
+  if (customerId) purchaseOrderFilter.customerId = customerId;
 
   return Object.keys(purchaseOrderFilter).length > 0
     ? purchaseOrderFilter
@@ -526,21 +532,22 @@ const FINANCIAL_QUARTER_MONTHS: number[][] = [
   [9, 10, 11],
 ];
 
+function selectedNumbers(value?: string) {
+  return filterTokens(value)
+    .map(Number)
+    .filter((item) => Number.isInteger(item));
+}
+
 function matchesFilterMonth(date: Date, filters?: BillingStatusFilters) {
   const financialMonth = fiscalMonthInZone(date, filters);
+  const months = selectedNumbers(filters?.month);
+  const quarters = selectedNumbers(filters?.quarter);
 
-  if (filters?.month && filters.month !== "all") {
-    if (financialMonth !== Number(filters.month)) {
-      return false;
-    }
-  }
+  if (months.length > 0 && !months.includes(financialMonth)) return false;
 
-  if (filters?.quarter && filters.quarter !== "all") {
-    const quarterMonths = FINANCIAL_QUARTER_MONTHS[Number(filters.quarter) - 1];
-
-    if (!quarterMonths?.includes(financialMonth)) {
-      return false;
-    }
+  if (quarters.length > 0) {
+    const quarterMonths = quarters.flatMap((quarter) => FINANCIAL_QUARTER_MONTHS[quarter - 1] ?? []);
+    if (!quarterMonths.includes(financialMonth)) return false;
   }
 
   return true;
@@ -578,6 +585,22 @@ function isWithinFilterDateRange(date: Date, filters?: BillingStatusFilters) {
   }
 
   return true;
+}
+
+function selectedFinancialYears(year: number | undefined, filters?: BillingStatusFilters) {
+  if (filters?.years?.length) return filters.years;
+  if (typeof year === "number" && Number.isInteger(year)) return [year];
+  return [];
+}
+
+function matchesSelectedFinancialYears(
+  date: Date,
+  year: number | undefined,
+  filters?: BillingStatusFilters,
+) {
+  const years = selectedFinancialYears(year, filters);
+  if (years.length === 0) return true;
+  return years.some((item) => inFinancialYear(date, item, filters));
 }
 
 function inFinancialYear(date: Date, year: number, filters?: BillingStatusFilters) {
@@ -842,7 +865,7 @@ export async function getRevenueDashboardSummary(
         : normalizeDate(invoiceDate);
       let matchesFinancialYearSelection = true;
 
-      if (typeof year === "number" && !inFinancialYear(invoiceDate, year, filters)) {
+      if (!matchesSelectedFinancialYears(invoiceDate, year, filters)) {
         matchesFinancialYearSelection = false;
       }
 
@@ -904,7 +927,7 @@ export async function getRevenueDashboardSummary(
       ? dueForBillingDate
       : normalizeDate(dueForBillingDate);
 
-    if (typeof year === "number" && !inFinancialYear(dueForBillingDate, year, filters)) {
+    if (!matchesSelectedFinancialYears(dueForBillingDate, year, filters)) {
       continue;
     }
 
@@ -997,15 +1020,8 @@ export async function getDueForBillingAmount(
 
     const normalizedBillingDate = normalizeDate(dueForBillingDate);
 
-    if (typeof year === "number") {
-      const fyRange = getFinancialYearRange(year);
-
-      if (
-        normalizedBillingDate < fyRange.start ||
-        normalizedBillingDate > fyRange.end
-      ) {
-        continue;
-      }
+    if (!matchesSelectedFinancialYears(dueForBillingDate, year, filters)) {
+      continue;
     }
 
     if (!matchesCompanyFilter(cycle, filters)) {
@@ -1070,7 +1086,7 @@ export async function getBillingStatusDetails(
       ? invoiceDate
       : normalizeDate(invoiceDate);
 
-    if (typeof year === "number" && !inFinancialYear(invoiceDate, year, filters)) {
+    if (!matchesSelectedFinancialYears(invoiceDate, year, filters)) {
       continue;
     }
 
@@ -1309,6 +1325,9 @@ export async function getRevenueDashboard(query: RevenueDashboardQuery) {
     };
   }
 
+  const selectedYears = filterTokens(query.year)
+    .map(Number)
+    .filter((value) => Number.isInteger(value));
   const filters: BillingStatusFilters = {
     company: query.company,
     customer: query.customer,
@@ -1316,9 +1335,10 @@ export async function getRevenueDashboard(query: RevenueDashboardQuery) {
     endDate: query.endDate,
     month: query.month,
     quarter: query.quarter,
+    years: selectedYears.length > 0 ? selectedYears : undefined,
     timeZone: "Asia/Kolkata",
   };
-  const year = query.year && query.year !== "all" ? Number(query.year) : undefined;
+  const year = selectedYears.length === 1 ? selectedYears[0] : undefined;
   const currentFilters: DashboardFilters = {
     company: query.company || "all",
     customer: query.customer || "all",
@@ -1341,14 +1361,22 @@ export async function getRevenueDashboard(query: RevenueDashboardQuery) {
       }
     : null;
   const comparisonYear = earlier ? Number(earlier.year) : undefined;
-  const [summary, billingDetails, monthly, comparisonSummary] = await Promise.all([
+  const monthlyYears = selectedYears.length > 0 ? selectedYears : [query.monthlyYear];
+  const [summary, billingDetails, monthlySeries, comparisonSummary] = await Promise.all([
     getRevenueDashboardSummary(year, filters),
     getBillingStatusDetails(year, filters),
-    getMonthlyBillingData(query.monthlyYear, filters),
+    Promise.all(monthlyYears.map((item) => getMonthlyBillingData(item, filters))),
     comparisonFilters
       ? getRevenueDashboardSummary(comparisonYear, comparisonFilters)
       : Promise.resolve(null),
   ]);
+  const monthly = monthlySeries[0]?.map((point, index) => ({
+    month: point.month,
+    billing: monthlySeries.reduce((total, series) => total + (series[index]?.billing ?? 0), 0),
+    payment: monthlySeries.reduce((total, series) => total + (series[index]?.payment ?? 0), 0),
+    overdue: monthlySeries.reduce((total, series) => total + (series[index]?.overdue ?? 0), 0),
+    projected: monthlySeries.reduce((total, series) => total + (series[index]?.projected ?? 0), 0),
+  })) ?? [];
 
   const comparison: RevenuePeriodComparison | null =
     earlier && comparisonSummary
@@ -1360,12 +1388,6 @@ export async function getRevenueDashboard(query: RevenueDashboardQuery) {
     comparison,
     records: billingDetails.records,
     lines: billingDetails.lines,
-    monthly: monthly.map((point) => ({
-      month: point.month,
-      billing: point.billing,
-      payment: point.payment,
-      overdue: point.overdue,
-      projected: point.projected,
-    })),
+    monthly,
   };
 }

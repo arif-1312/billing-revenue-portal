@@ -8,6 +8,28 @@ export type DashboardFilters = {
   year: string;
 };
 
+/** Empty means every value. Multiple choices are stored as comma-separated tokens. */
+export function filterTokens(value: string | null | undefined) {
+  if (!value || value === "all") return [];
+  return value
+    .split(",")
+    .map((token) => token.trim())
+    .filter((token) => token && token !== "all");
+}
+
+export function toggleFilterToken(current: string, token: string) {
+  const selected = filterTokens(current);
+  const next = selected.includes(token)
+    ? selected.filter((item) => item !== token)
+    : [...selected, token];
+
+  if (next.length === 0) return "all";
+  if (next.every((item) => /^\d+$/.test(item))) {
+    next.sort((left, right) => Number(left) - Number(right));
+  }
+  return next.join(",");
+}
+
 export type RevenueRecord = {
   id?: string | number | null;
   period?: string | null;
@@ -118,6 +140,13 @@ export function formatPercent(value: number) {
   return `${toNumber(value).toFixed(2)}%`;
 }
 
+/** Stored collected amounts are exclusive of GST. */
+export const GST_RATE = 0.18;
+
+export function amountWithGst(amount: number) {
+  return Math.round((toNumber(amount) * (1 + GST_RATE) + Number.EPSILON) * 100) / 100;
+}
+
 export function percentDelta(current: number, previous: number) {
   if (!previous) return null;
   return ((current - previous) / Math.abs(previous)) * 100;
@@ -206,8 +235,9 @@ export function applyRecordFilters(
   status: string,
   crossFilter: CrossFilter | null,
 ) {
+  const statuses = filterTokens(status);
   return records.filter((record) => {
-    if (status !== "all" && (record.status || "Unknown") !== status) return false;
+    if (statuses.length > 0 && !statuses.includes(record.status || "Unknown")) return false;
     if (!crossFilter || crossFilter.kind === "month") return true;
     if (crossFilter.kind === "customer") {
       return (record.customerName || "Unknown") === crossFilter.value;

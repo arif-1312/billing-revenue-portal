@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   agingBucketForDaysPastDue,
+  amountWithGst,
   collectionSlices,
   percentDelta,
   ratePointDelta,
@@ -24,6 +25,13 @@ describe("management comparisons", () => {
     expect(trendTone(-4, "lower-is-better")).toBe("good");
     expect(trendTone(null, "higher-is-better")).toBe("neutral");
     expect(trendTone(0, "lower-is-better")).toBe("neutral");
+  });
+});
+
+describe("collected with gst", () => {
+  it("adds 18 percent to the collected amount", () => {
+    expect(amountWithGst(1000)).toBe(1180);
+    expect(amountWithGst(0)).toBe(0);
   });
 });
 

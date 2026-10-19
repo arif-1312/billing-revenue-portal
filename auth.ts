@@ -3,8 +3,10 @@ import { PrismaAdapter } from "@auth/prisma-adapter"
 import { prisma } from "./lib/prisma"
 import CredentialsProvider from "next-auth/providers/credentials"
 import { authorizeCredentials } from "./lib/credentials"
+import { readSessionDecision } from "./lib/session-revocation"
 
 const TWELVE_HOURS = 12 * 60 * 60
+const secureCookies = process.env.NODE_ENV === "production"
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
     secret: process.env.AUTH_SECRET,
@@ -15,6 +17,19 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     session: {
         strategy: "jwt" as const,
         maxAge: TWELVE_HOURS,
+    },
+    cookies: {
+        sessionToken: {
+            name: secureCookies
+                ? "__Secure-authjs.session-token"
+                : "authjs.session-token",
+            options: {
+                httpOnly: true,
+                sameSite: "lax",
+                path: "/",
+                secure: secureCookies,
+            },
+        },
     },
     adapter: PrismaAdapter(prisma) as any,
     providers: [
@@ -30,6 +45,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     ],
     callbacks: {
         async session({ session, token }: any) {
+            if (token.invalid) {
+                session.user = undefined
+                return session
+            }
+
             session.user.id = token.id || token.sub
             session.user.role = token.role || ""
             session.user.firstName = token.firstName || ""
@@ -46,6 +66,30 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                 token.firstName = user.firstName
                 token.email = user.email
                 token.username = user.username
+                token.credentialVersion = user.credentialVersion
+                token.invalid = false
+                return token
+            }
+
+            const issuedAt = Number(token.iat)
+            const userId = token.id || token.sub
+            if (!userId || !Number.isFinite(issuedAt)) {
+                token.invalid = true
+                return token
+            }
+
+            try {
+                const decision = await readSessionDecision({
+                    userId: String(userId),
+                    issuedAt: new Date(issuedAt * 1000),
+                    tokenFingerprint:
+                        typeof token.credentialVersion === "string"
+                            ? token.credentialVersion
+                            : undefined,
+                })
+                token.invalid = decision !== "valid"
+            } catch {
+                token.invalid = true
             }
 
             return token

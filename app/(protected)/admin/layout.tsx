@@ -4,6 +4,7 @@ import { SiteHeader } from "@/components/site-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { getConfiguration } from "@/lib/actions/configuration";
 import { getAllowedRoute, getUserPermissions } from "@/lib/rbac";
+import { isSignedInSession } from "@/lib/session-decision";
 import { redirect } from "next/navigation";
 
 type SessionUser = {
@@ -25,7 +26,10 @@ export default async function AdminLayout({
 }) {
   const session = await auth() as SessionUser;
 
-  if (!session?.user?.email) {
+  if (!isSignedInSession(session)) {
+    if (session) {
+      await signOut({ redirectTo: "/login" });
+    }
     redirect("/login");
   }
 

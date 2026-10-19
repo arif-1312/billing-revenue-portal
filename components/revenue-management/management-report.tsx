@@ -13,11 +13,11 @@ import type { BillingInvoiceLine, RevenueDashboardSummary, RevenuePeriodComparis
 import {
   applyRecordFilters,
   collectionSlices,
-  efficiencyOf,
+  filterTokens,
   formatInr,
   formatPercent,
   percentDelta,
-  ratePointDelta,
+  toggleFilterToken,
   sumRecords,
   toNumber,
   trendTone,
@@ -30,15 +30,32 @@ import {
 } from "@/lib/revenue-metrics";
 
 import { DashboardTabs, isDashboardView, type DashboardView } from "./dashboard-tabs";
+import { FyLabelProvider } from "./fy-badge";
 import { FilterChips } from "./filter-chips";
 import { AgingView, ForecastView, OverviewView, PartyView } from "./report-views";
 import { SlicerBar } from "./slicer-bar";
 
 const months = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
+const quarterMonthIndexes: Record<string, number[]> = {
+  "1": [0, 1, 2],
+  "2": [3, 4, 5],
+  "3": [6, 7, 8],
+  "4": [9, 10, 11],
+};
+
+function focusMonthLabels(month: string, quarter: string) {
+  const selectedMonths = filterTokens(month).map(Number).filter((value) => value >= 0 && value <= 11);
+  const quarterMonths = filterTokens(quarter).flatMap((value) => quarterMonthIndexes[value] ?? []);
+  let indexes = selectedMonths.length > 0 ? selectedMonths : months.map((_, index) => index);
+  if (quarterMonths.length > 0) indexes = indexes.filter((index) => quarterMonths.includes(index));
+  return indexes.map((index) => months[index]).filter((label) => label);
+}
 
 function financialYearLabel(year: string) {
-  if (year === "all") return "All years";
-  const start = Number(year);
+  const years = filterTokens(year);
+  if (years.length === 0) return "All years";
+  if (years.length > 1) return `${years.length} financial years`;
+  const start = Number(years[0]);
   if (!Number.isInteger(start)) return "Financial year";
   return `FY ${start}–${String(start + 1).slice(-2)}`;
 }
@@ -120,19 +137,19 @@ export function ManagementReport({
   };
 
   const filtered = applyRecordFilters(records, status, crossFilter);
+  const selectedStatuses = filterTokens(status);
   const visibleLines = lines.filter((line) => {
-    if (status !== "all" && line.status !== status) return false;
+    if (selectedStatuses.length > 0 && !selectedStatuses.includes(line.status)) return false;
     if (!crossFilter || crossFilter.kind === "month") return true;
     if (crossFilter.kind === "customer") return line.customerName === crossFilter.value;
     if (crossFilter.kind === "company") return line.companyName === crossFilter.value;
     return line.status === crossFilter.value;
   });
   const totals = sumRecords(filtered);
-  const usingRows = status !== "all" || (crossFilter != null && crossFilter.kind !== "month");
+  const usingRows = selectedStatuses.length > 0 || (crossFilter != null && crossFilter.kind !== "month");
   const billed = usingRows ? totals.billed : summary?.totalRevenueTillNow ?? 0;
   const collected = usingRows ? totals.collected : summary?.collectedAmountTillNow ?? 0;
   const outstanding = usingRows ? totals.due : summary?.pendingCollectionTillNow ?? 0;
-  const efficiency = usingRows ? efficiencyOf(collected, billed) : summary?.collectionEfficiency ?? 0;
   const undated = usingRows ? totals.undated : summary?.aging.missingDueDateAmount ?? 0;
   const supported = usingRows
     ? !(outstanding > 0 && totals.pastDue === 0 && totals.undated >= outstanding - 0.5)
@@ -169,17 +186,6 @@ export function ManagementReport({
     overdue: overdueComparable && previous
       ? moneyDelta(overdue ?? 0, previous.summary.overdueAmountTillNow, comparisonLabel, "lower-is-better")
       : { text: "Comparison unavailable", tone: "neutral" as const },
-    efficiency: previous
-      ? (() => {
-          const delta = ratePointDelta(efficiency, previous.summary.collectionEfficiency, previous.summary.totalRevenueTillNow);
-          if (delta == null) return { text: "Prior period had no billing", tone: "neutral" as const };
-          const arrow = delta > 0 ? "▲" : delta < 0 ? "▼" : "–";
-          return {
-            text: `${arrow} ${Math.abs(delta).toFixed(2)} pp vs ${previous.label}`,
-            tone: trendTone(delta, "higher-is-better"),
-          };
-        })()
-      : { text: "Comparison unavailable", tone: "neutral" as const },
     records: { text: "Comparison unavailable", tone: "neutral" as const },
   };
   const overdueNote = overdue == null
@@ -194,40 +200,54 @@ export function ManagementReport({
   const selectMonth = (month: string) => {
     const index = months.indexOf(month);
     if (index < 0) return;
-    onChange("month", filters.month === String(index) ? "all" : String(index));
+    onChange("month", toggleFilterToken(filters.month, String(index)));
   };
 
+  const selectedYears = filterTokens(filters.year);
   const chips = [
-    filters.year !== currentYear
-      ? { id: "year", label: fyLabel, onRemove: () => onChange("year", currentYear) }
-      : null,
-    filters.quarter !== "all"
-      ? { id: "quarter", label: `Q${filters.quarter}`, onRemove: () => onChange("quarter", "all") }
-      : null,
-    filters.month !== "all"
-      ? { id: "month", label: months[Number(filters.month)] ?? "Month", onRemove: () => onChange("month", "all") }
-      : null,
-    filters.company !== "all"
-      ? {
-          id: "company",
-          label: companies.find((company) => company.id === filters.company)?.name ?? "Company",
-          onRemove: () => onChange("company", "all"),
-        }
-      : null,
-    filters.customer !== "all"
-      ? {
-          id: "customer",
-          label: customers.find((customer) => customer.id === filters.customer)?.name ?? "Customer",
-          onRemove: () => onChange("customer", "all"),
-        }
-      : null,
+    ...(selectedYears.length === 0
+      ? [{ id: "year", label: "All years", onRemove: () => onChange("year", currentYear) }]
+      : selectedYears
+          .filter((year) => selectedYears.length > 1 || year !== currentYear)
+          .map((year) => ({
+            id: `year-${year}`,
+            label: `FY ${year}–${String(Number(year) + 1).slice(-2)}`,
+            onRemove: () => {
+              const next = toggleFilterToken(filters.year, year);
+              onChange("year", next === "all" ? currentYear : next);
+            },
+          }))),
+    ...filterTokens(filters.quarter).map((quarter) => ({
+      id: `quarter-${quarter}`,
+      label: `Q${quarter}`,
+      onRemove: () => onChange("quarter", toggleFilterToken(filters.quarter, quarter)),
+    })),
+    ...filterTokens(filters.month).map((month) => ({
+      id: `month-${month}`,
+      label: months[Number(month)] ?? "Month",
+      onRemove: () => onChange("month", toggleFilterToken(filters.month, month)),
+    })),
+    ...filterTokens(filters.company).map((companyId) => ({
+      id: `company-${companyId}`,
+      label: companies.find((company) => company.id === companyId)?.name ?? "Company",
+      onRemove: () => onChange("company", toggleFilterToken(filters.company, companyId)),
+    })),
+    ...filterTokens(filters.customer).map((customerId) => ({
+      id: `customer-${customerId}`,
+      label: customers.find((customer) => customer.id === customerId)?.name ?? "Customer",
+      onRemove: () => onChange("customer", toggleFilterToken(filters.customer, customerId)),
+    })),
     filters.startDate
       ? { id: "from", label: `From ${format(filters.startDate, "dd MMM yyyy")}`, onRemove: () => onChange("startDate", undefined) }
       : null,
     filters.endDate
       ? { id: "to", label: `To ${format(filters.endDate, "dd MMM yyyy")}`, onRemove: () => onChange("endDate", undefined) }
       : null,
-    status !== "all" ? { id: "status", label: status, onRemove: () => setStatus("all") } : null,
+    ...selectedStatuses.map((item) => ({
+      id: `status-${item}`,
+      label: item,
+      onRemove: () => setStatus(toggleFilterToken(status, item)),
+    })),
     crossFilter
       ? {
           id: "cross",
@@ -292,6 +312,7 @@ export function ManagementReport({
         {error ? (
           <p className="rounded-md border border-[#f3c7c9] bg-[#fdf2f2] px-3 py-2 text-sm text-[#C5363C]">{error}</p>
         ) : null}
+        <FyLabelProvider label={fyLabel}>
         <div role="tabpanel" id={`panel-${view}`} aria-labelledby={`tab-${view}`}>
           {!summary ? (
             <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
@@ -306,7 +327,6 @@ export function ManagementReport({
               collected={collected}
               outstanding={outstanding}
               overdue={overdue}
-              efficiency={efficiency}
               records={filtered.length}
               partial={partial}
               projected={summary.totalRevenueProjected}
@@ -319,6 +339,7 @@ export function ManagementReport({
               invoiceLines={visibleLines}
               loading={loading}
               error={error}
+              focusMonths={focusMonthLabels(filters.month, filters.quarter)}
               onMonth={selectMonth}
               onCrossFilter={setCrossFilter}
             />
@@ -357,11 +378,11 @@ export function ManagementReport({
               projected={summary.totalRevenueProjected}
               billed={billed}
               collected={collected}
-              efficiency={efficiency}
               monthly={monthly}
             />
           ) : null}
         </div>
+        </FyLabelProvider>
       </div>
     </TooltipProvider>
   );

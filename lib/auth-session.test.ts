@@ -25,6 +25,8 @@ describe("session configuration", () => {
 
     expect(source).toContain("maxAge: TWELVE_HOURS");
     expect(source).toContain("token.role = user.role");
+    expect(source).toContain("httpOnly: true");
+    expect(source).toContain("sameSite: \"lax\"");
     expect(source).not.toContain("prisma.user.update");
     expect(source).not.toContain("firstName: token.name");
   });

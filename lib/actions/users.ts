@@ -12,7 +12,8 @@ import {
 import { formatError } from "../utils";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { auth, signIn, signOut } from "@/auth";
-import bcrypt from "bcrypt";
+import bcrypt from "bcrypt"
+import { hashPassword } from "@/lib/password";
 import { requirePermission } from "@/lib/rbac";
 import { recordSecurityEvent } from "@/lib/security-event";
 
@@ -124,7 +125,7 @@ export async function createUser(data: User) {
     }
     const payload = normalizeUserPayload(user);
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await hashPassword(password);
 
     await prisma.user.create({
       data: {
@@ -408,9 +409,8 @@ export async function changeCurrentUserPassword(payload: {
       };
     }
 
-    const hashedPassword = await bcrypt.hash(
+    const hashedPassword = await hashPassword(
       validated.newPassword,
-      10,
     );
 
     await prisma.user.update({

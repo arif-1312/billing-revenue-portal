@@ -6,6 +6,8 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { persistRevenueImport } from "@/lib/revenue-import-save";
 import { requirePermission } from "@/lib/rbac";
+import { auth } from "@/auth";
+import { consumeRateLimit } from "@/lib/action-rate-limit";
 import {
   assessRevenueImport,
   buildRevenueImportContext,
@@ -58,6 +60,12 @@ function emptyImportResult(
     canCommit: false,
     ...partial,
   };
+}
+
+async function withinActionLimit(scope: string) {
+  const session = await auth();
+  const actor = session?.user?.id || session?.user?.email || "anonymous";
+  return consumeRateLimit(`${scope}:${actor}`, 30, 60_000);
 }
 
 function displayName(
@@ -155,6 +163,9 @@ export async function exportRevenueWorkbook(
     const access = await requirePermission(REVENUE_ROUTE, "view");
     if (!access.ok) {
       return { success: false, message: access.message };
+    }
+    if (!(await withinActionLimit("revenue-export"))) {
+      return { success: false, message: "Too many requests. Try again shortly." };
     }
 
     const orderedIds: string[] = [];
@@ -259,6 +270,9 @@ export async function previewRevenueImport(
     if (!access.ok) {
       return emptyImportResult(access.message);
     }
+    if (!(await withinActionLimit("revenue-import"))) {
+      return emptyImportResult("Too many requests. Try again shortly.");
+    }
 
     const upload = await readUpload(formData);
     if ("error" in upload && upload.error) {
@@ -281,6 +295,9 @@ export async function commitRevenueImport(
     const access = await requirePermission(REVENUE_ROUTE, "create");
     if (!access.ok) {
       return emptyImportResult(access.message);
+    }
+    if (!(await withinActionLimit("revenue-import"))) {
+      return emptyImportResult("Too many requests. Try again shortly.");
     }
 
     const upload = await readUpload(formData);

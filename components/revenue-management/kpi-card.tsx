@@ -4,6 +4,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { formatCount, formatInr, type TrendTone } from "@/lib/revenue-metrics";
 import { cn } from "@/lib/utils";
 
+import { FyBadge } from "./fy-badge";
+
 const toneClass: Record<TrendTone, string> = {
   good: "text-[#0E8A6A]",
   bad: "text-[#C5363C]",
@@ -46,7 +48,10 @@ export function KpiCard({
       }}
     >
       <div className="flex items-start justify-between gap-2">
-        <h2 className="text-[11px] font-medium leading-4 text-[#667085]">{label}</h2>
+        <div className="flex min-w-0 flex-wrap items-center gap-1">
+          <h2 className="text-[11px] font-medium leading-4 text-[#667085]">{label}</h2>
+          <FyBadge />
+        </div>
         <Tooltip>
           <TooltipTrigger asChild>
             <button

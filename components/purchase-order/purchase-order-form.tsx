@@ -411,11 +411,13 @@ const POForm = ({
     () => isOTSContractType(selectedContractType?.name),
     [selectedContractType?.name],
   );
+  const isManualPurchaseOrderType = React.useMemo(
+    () => supportsManualPurchaseOrderBillingCycles(watchPurchaseOrderType),
+    [watchPurchaseOrderType],
+  );
   const canManageManualBillingCycles = React.useMemo(
-    () =>
-      isOTSSelected ||
-      supportsManualPurchaseOrderBillingCycles(watchPurchaseOrderType),
-    [isOTSSelected, watchPurchaseOrderType],
+    () => isOTSSelected || isManualPurchaseOrderType,
+    [isManualPurchaseOrderType, isOTSSelected],
   );
   const canEditInvoiceAmount = React.useMemo(
     () =>
@@ -613,7 +615,7 @@ const POForm = ({
 
   // ---------------- AUTO BILLING CYCLES ----------------
   useEffect(() => {
-    if (canManageManualBillingCycles) return;
+    if (isManualPurchaseOrderType) return;
     if (!watchBillingPlan || watchPOAmount == null || !startFrom || !endDate) {
       return;
     }
@@ -711,7 +713,7 @@ const POForm = ({
     watchContractId,
     watchPOAmount,
     watchPurchaseOrderType,
-    canManageManualBillingCycles,
+    isManualPurchaseOrderType,
     isInitialUpdateGenerationState,
   ]);
 
@@ -1414,9 +1416,15 @@ const POForm = ({
                   ) : null}
                 </div>
 
-                {canManageManualBillingCycles ? (
+                {isOTSSelected ? (
                   <p className="text-sm text-slate-500">
-                    For OTS, Mail, and Agreement purchase orders, you can add
+                    OTS billing cycles are created from the billing plan and
+                    the purchase order dates. You can add another cycle and
+                    edit each invoice amount.
+                  </p>
+                ) : canManageManualBillingCycles ? (
+                  <p className="text-sm text-slate-500">
+                    For Mail and Agreement purchase orders, you can add
                     multiple billing cycles and enter each invoice amount
                     manually.
                   </p>

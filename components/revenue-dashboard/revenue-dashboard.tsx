@@ -15,7 +15,7 @@ import {
   type DashboardPreset,
 } from "@/lib/dashboard-presets";
 import { FIRST_FISCAL_YEAR } from "@/lib/fiscal-year";
-import type { DashboardFilters } from "@/lib/revenue-metrics";
+import { filterTokens, type DashboardFilters } from "@/lib/revenue-metrics";
 
 type CompanyOption = { id: string; name: string };
 type CustomerOption = { id: string; name: string };
@@ -57,6 +57,7 @@ export function RevenueDashboard({
   };
 
   const effective = effectivePeriodFilters(filters);
+  const selectedYears = filterTokens(effective.year).map(Number).filter((value) => Number.isInteger(value));
   const payload = {
     company: effective.company,
     customer: effective.customer,
@@ -65,7 +66,7 @@ export function RevenueDashboard({
     year: effective.year,
     startDate: effective.startDate ? formatFilterDate(effective.startDate) : undefined,
     endDate: effective.endDate ? formatFilterDate(effective.endDate) : undefined,
-    monthlyYear: effective.year === "all" ? defaultYear : Number(effective.year),
+    monthlyYear: selectedYears.length > 0 ? Math.max(...selectedYears) : defaultYear,
   };
   const report = useQuery({
     queryKey: ["revenue-dashboard", payload],

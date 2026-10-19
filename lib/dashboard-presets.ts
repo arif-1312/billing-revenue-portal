@@ -5,7 +5,7 @@ import {
   getFiscalYear,
   quarterContainsMonth,
 } from "@/lib/fiscal-year";
-import type { DashboardFilters } from "@/lib/revenue-metrics";
+import { filterTokens, type DashboardFilters } from "@/lib/revenue-metrics";
 
 export type DashboardPreset = "month" | "quarter" | "fy" | "last-fy";
 export type PeriodMode = "dates" | "month" | "quarter" | "year";
@@ -164,12 +164,15 @@ export function previousPeriod(filters: DashboardFilters): PreviousPeriod | null
     };
   }
 
-  if (filters.year === "all") return null;
-  const year = Number(filters.year);
+  const years = filterTokens(filters.year);
+  if (years.length !== 1) return null;
+  const year = Number(years[0]);
   if (!Number.isInteger(year)) return null;
 
   if (mode === "month") {
-    const month = Number(filters.month);
+    const months = filterTokens(filters.month);
+    if (months.length !== 1) return null;
+    const month = Number(months[0]);
     if (!Number.isInteger(month) || month < 0 || month > 11) return null;
     if (month === 0) {
       if (year - 1 < FIRST_FISCAL_YEAR) return null;
@@ -179,7 +182,9 @@ export function previousPeriod(filters: DashboardFilters): PreviousPeriod | null
   }
 
   if (mode === "quarter") {
-    const quarter = Number(filters.quarter);
+    const quarters = filterTokens(filters.quarter);
+    if (quarters.length !== 1) return null;
+    const quarter = Number(quarters[0]);
     if (!Number.isInteger(quarter) || quarter < 1 || quarter > 4) return null;
     if (quarter === 1) {
       if (year - 1 < FIRST_FISCAL_YEAR) return null;
@@ -215,10 +220,6 @@ export function applyFilterChange<K extends keyof DashboardFilters>(
   value: DashboardFilters[K],
 ): DashboardFilters {
   const next: DashboardFilters = { ...filters, [key]: value };
-
-  if (key === "company") {
-    next.customer = "all";
-  }
 
   if (key === "month" || key === "quarter") {
     next.startDate = undefined;

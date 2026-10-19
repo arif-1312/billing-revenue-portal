@@ -7,6 +7,7 @@ import {
   recordLoginFailure,
 } from "@/lib/login-throttle"
 import { recordSecurityEvent } from "@/lib/security-event"
+import { passwordFingerprint } from "@/lib/password"
 
 type Credentials = {
   username?: unknown
@@ -66,5 +67,6 @@ export async function authorizeCredentials(credentials: Credentials) {
     lastName: user.lastName ?? "",
     email: user.email ?? "",
     role: user.role?.name ?? "USER",
+    credentialVersion: passwordFingerprint(user.password),
   }
 }

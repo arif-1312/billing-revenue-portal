@@ -23,3 +23,16 @@ export const securityHeaders = [
     value: contentSecurityPolicyReportOnly,
   },
 ]
+
+export function securityHeadersFor(nodeEnv = process.env.NODE_ENV) {
+  const headers = [...securityHeaders]
+
+  if (nodeEnv === "production") {
+    headers.push({
+      key: "Strict-Transport-Security",
+      value: "max-age=31536000; includeSubDomains",
+    })
+  }
+
+  return headers
+}

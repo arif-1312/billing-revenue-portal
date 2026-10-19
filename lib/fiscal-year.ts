@@ -24,10 +24,24 @@ export function calendarParts(financialYear: number, monthIndex: number) {
   return { calendarMonth, calendarYear };
 }
 
-export function quarterContainsMonth(quarter: string, month: string) {
-  if (quarter === "all" || month === "all") return true;
+function periodTokens(value: string) {
+  if (!value || value === "all") return [];
+  return value
+    .split(",")
+    .map((token) => token.trim())
+    .filter((token) => token && token !== "all");
+}
 
-  return QUARTER_MONTHS[Number(quarter) - 1]?.includes(Number(month)) ?? false;
+export function quarterContainsMonth(quarter: string, month: string) {
+  const quarters = periodTokens(quarter);
+  const months = periodTokens(month);
+  if (quarters.length === 0 || months.length === 0) return true;
+
+  return months.every((monthToken) =>
+    quarters.some((quarterToken) =>
+      QUARTER_MONTHS[Number(quarterToken) - 1]?.includes(Number(monthToken)) ?? false,
+    ),
+  );
 }
 
 export function endOfMonth(date: Date) {

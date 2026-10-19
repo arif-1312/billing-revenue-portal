@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
@@ -19,9 +21,9 @@ import {
 import { ChartContainer, type ChartConfig } from "@/components/ui/chart";
 import type { AgingSummary } from "@/lib/revenue-metrics";
 import {
+  amountWithGst,
   formatCount,
   formatInr,
-  formatPercent,
   groupByParty,
   toNumber,
   topParties,
@@ -33,14 +35,15 @@ import {
 } from "@/lib/revenue-metrics";
 
 import { ChartCard } from "./chart-card";
+import { FyBadge } from "./fy-badge";
 import { DataTable } from "./data-table";
-import { GaugeCard } from "./gauge-card";
 import { KpiCard } from "./kpi-card";
 import { StatusBadge } from "./status-badge";
 
 const chartConfig = {
-  billing: { label: "Billed", color: "#1F6FB5" },
-  payment: { label: "Collected", color: "#0E8A6A" },
+  billing: { label: "Billed amount without GST", color: "#1F6FB5" },
+  mrr: { label: "MRR", color: "#8E97C9" },
+  payment: { label: "Collected amount without GST", color: "#0E8A6A" },
   overdue: { label: "Overdue", color: "#C5363C" },
   pending: { label: "Pending", color: "#C47E09" },
 } satisfies ChartConfig;
@@ -81,7 +84,6 @@ export function OverviewView({
   collected,
   outstanding,
   overdue,
-  efficiency,
   records,
   partial,
   projected,
@@ -94,6 +96,7 @@ export function OverviewView({
   invoiceLines,
   loading,
   error,
+  focusMonths,
   onMonth,
   onCrossFilter,
 }: {
@@ -101,13 +104,12 @@ export function OverviewView({
   collected: number;
   outstanding: number;
   overdue: number | null;
-  efficiency: number;
   records: number;
   partial: number;
   projected: number;
   dueForBilling: number;
   overdueNote: string | null;
-  deltas: Record<"billed" | "collected" | "outstanding" | "overdue" | "efficiency" | "records", Delta>;
+  deltas: Record<"billed" | "collected" | "outstanding" | "overdue" | "records", Delta>;
   slices: Array<{ name: string; value: number }>;
   monthly: MonthPoint[];
   recordRows: RevenueRecord[];
@@ -126,41 +128,66 @@ export function OverviewView({
   }>;
   loading: boolean;
   error: string | null;
+  focusMonths: string[];
   onMonth: (month: string) => void;
   onCrossFilter: (filter: CrossFilter) => void;
 }) {
+  const mrrFillId = `mrr-fill-${useId().replace(/:/g, "")}`;
+  const billedByMonth = new Map<string, number>();
+  for (const line of invoiceLines) {
+    billedByMonth.set(line.month, (billedByMonth.get(line.month) ?? 0) + line.billed);
+  }
+  const mrrMonths = focusMonths.length > 0 ? monthly.filter((point) => focusMonths.includes(point.month)) : monthly;
+  const mrrRows = mrrMonths.map((point) => ({
+    month: point.month,
+    MRR: billedByMonth.get(point.month) ?? 0,
+  }));
   const monthRows = monthly.map((point) => ({
     month: point.month,
-    Billed: point.billing,
-    Collected: point.payment,
+    "Billed amount without GST": point.billing,
+    "Collected amount without GST": point.payment,
   }));
   const companies = topParties(groupByParty(recordRows, "companyName"), "billed", 8);
   const customers = topParties(groupByParty(recordRows, "customerName"), "due", 8);
-  const companyRows = companies.map((row) => ({ Company: displayPartyName(row.name), Billed: row.billed }));
+  const companyRows = companies.map((row) => ({
+    Company: displayPartyName(row.name),
+    "Billed amount without GST": row.billed,
+    "Collected amount without GST": row.collected,
+  }));
   const customerRows = customers.map((row) => ({
     Customer: displayPartyName(row.name),
     Outstanding: row.due,
     Overdue: row.pastDue,
+    "Collected amount without GST": row.collected,
   }));
 
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
         <KpiCard
-          label="Total billed"
+          label="Billed amount without GST"
           value={billed}
-          support="Invoiced in the selected period"
-          hint="Billed amount for invoices in the selected period, using the portal's till-now total."
+          support="Invoice amount before 18% GST"
+          hint="Billed invoice amount before GST for the selected period."
           accent="#1F6FB5"
           deltaText={deltas.billed.text}
           deltaTone={deltas.billed.tone}
         />
         <KpiCard
-          label="Collected"
+          label="Collected amount without GST"
           value={collected}
-          support="Received against those invoices"
-          hint="Amount collected against the billed invoices in this period."
+          support="Used for the period comparison"
+          hint="Amount collected before GST. The change versus the previous period is calculated from this amount."
           accent="#0E8A6A"
+          deltaText={deltas.collected.text}
+          deltaTone={deltas.collected.tone}
+        />
+        <KpiCard
+          label="Collected amount with GST"
+          value={amountWithGst(collected)}
+          support="Collected amount plus 18% GST"
+          hint="Collected amount with 18% GST added. Shown on this card only. The period comparison uses collected amount without GST."
+          accent="#6D28D9"
           deltaText={deltas.collected.text}
           deltaTone={deltas.collected.tone}
         />
@@ -172,16 +199,6 @@ export function OverviewView({
           accent="#C47E09"
           deltaText={deltas.outstanding.text}
           deltaTone={deltas.outstanding.tone}
-        />
-        <KpiCard
-          label="Collection efficiency"
-          value={efficiency}
-          mode="percent"
-          support="Collected divided by billed"
-          hint="Collected amount divided by billed amount. A prior period with no billing is not compared."
-          accent="#1F6FB5"
-          deltaText={deltas.efficiency.text}
-          deltaTone={deltas.efficiency.tone}
         />
         <KpiCard
           label="Overdue"
@@ -232,14 +249,14 @@ export function OverviewView({
             "PO number": line.poNumber,
             Scope: line.scope,
             "Service type": line.serviceType,
-            Billed: line.billed,
-            Collected: line.collected,
+            "Billed amount without GST": line.billed,
+            "Collected amount without GST": line.collected,
             Outstanding: line.outstanding,
             Status: line.status,
           }))}
           loading={loading}
           error={error}
-          empty={monthRows.every((row) => row.Billed === 0 && row.Collected === 0)}
+          empty={monthRows.every((row) => row["Billed amount without GST"] === 0 && row["Collected amount without GST"] === 0)}
         >
           <ChartContainer config={chartConfig} className="aspect-auto h-60 w-full">
             <BarChart data={monthRows} barGap={2}>
@@ -248,8 +265,8 @@ export function OverviewView({
               <YAxis tickFormatter={(value) => formatInr(Number(value), true)} tickLine={false} axisLine={false} tick={axisTick} width={72} />
               <Tooltip formatter={(value) => formatInr(Number(value))} contentStyle={tooltipStyle} />
               <Legend />
-              <Bar dataKey="Billed" fill="var(--color-billing)" radius={[2, 2, 0, 0]} maxBarSize={22} cursor="pointer" isAnimationActive={false} onClick={(item) => onMonth(String(item.month))} />
-              <Bar dataKey="Collected" fill="var(--color-payment)" radius={[2, 2, 0, 0]} maxBarSize={22} isAnimationActive={false} />
+              <Bar dataKey="Billed amount without GST" fill="var(--color-billing)" radius={[2, 2, 0, 0]} maxBarSize={22} cursor="pointer" isAnimationActive={false} onClick={(item) => onMonth(String(item.month))} />
+              <Bar dataKey="Collected amount without GST" fill="var(--color-payment)" radius={[2, 2, 0, 0]} maxBarSize={22} isAnimationActive={false} />
             </BarChart>
           </ChartContainer>
         </ChartCard>
@@ -315,27 +332,54 @@ export function OverviewView({
         />
       </div>
 
-      <ChartCard
-        title="Revenue and collection trend"
-        description="Use the lines to see whether billing and collections are rising or falling. A gap is a timing difference, not a second outstanding balance."
-        filename="revenue-collection-trend.csv"
-        rows={monthRows}
-        loading={loading}
-        error={error}
-        empty={monthRows.every((row) => row.Billed === 0 && row.Collected === 0)}
-      >
-        <ChartContainer config={chartConfig} className="aspect-auto h-60 w-full">
-          <ComposedChart data={monthRows}>
-            <CartesianGrid vertical={false} stroke="#eef1f4" />
-            <XAxis dataKey="month" tickLine={false} axisLine={false} tick={axisTick} />
-            <YAxis tickFormatter={(value) => formatInr(Number(value), true)} tickLine={false} axisLine={false} tick={axisTick} width={72} />
-            <Tooltip formatter={(value) => formatInr(Number(value))} contentStyle={tooltipStyle} />
-            <Legend />
-            <Line dataKey="Billed" stroke="var(--color-billing)" strokeWidth={2} dot={false} type="linear" isAnimationActive={false} />
-            <Line dataKey="Collected" stroke="var(--color-payment)" strokeWidth={2} dot={false} type="linear" isAnimationActive={false} />
-          </ComposedChart>
-        </ChartContainer>
-      </ChartCard>
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+        <ChartCard
+          title="Revenue and collection trend"
+          description="Use the lines to see whether billing and collections are rising or falling. A gap is a timing difference, not a second outstanding balance."
+          filename="revenue-collection-trend.csv"
+          rows={monthRows}
+          loading={loading}
+          error={error}
+          empty={monthRows.every((row) => row["Billed amount without GST"] === 0 && row["Collected amount without GST"] === 0)}
+        >
+          <ChartContainer config={chartConfig} className="aspect-auto h-60 w-full">
+            <ComposedChart data={monthRows}>
+              <CartesianGrid vertical={false} stroke="#eef1f4" />
+              <XAxis dataKey="month" tickLine={false} axisLine={false} tick={axisTick} />
+              <YAxis tickFormatter={(value) => formatInr(Number(value), true)} tickLine={false} axisLine={false} tick={axisTick} width={72} />
+              <Tooltip formatter={(value) => formatInr(Number(value))} contentStyle={tooltipStyle} />
+              <Legend />
+              <Line dataKey="Billed amount without GST" stroke="var(--color-billing)" strokeWidth={2} dot={false} type="linear" isAnimationActive={false} />
+              <Line dataKey="Collected amount without GST" stroke="var(--color-payment)" strokeWidth={2} dot={false} type="linear" isAnimationActive={false} />
+            </ComposedChart>
+          </ChartContainer>
+        </ChartCard>
+        <ChartCard
+          title="MRR"
+          description="Invoiced amount for the months, companies, customers, and billing statuses in the current filters."
+          filename="mrr.csv"
+          rows={mrrRows.map((row) => ({ Month: row.month, MRR: row.MRR }))}
+          loading={loading}
+          error={error}
+          empty={mrrRows.every((row) => row.MRR === 0)}
+        >
+          <ChartContainer config={chartConfig} className="aspect-auto h-60 w-full">
+            <AreaChart data={mrrRows}>
+              <defs>
+                <linearGradient id={mrrFillId} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#C5CAE8" stopOpacity={0.55} />
+                  <stop offset="100%" stopColor="#C5CAE8" stopOpacity={0.04} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid vertical={false} stroke="#eef1f4" />
+              <XAxis dataKey="month" tickLine={false} axisLine={false} tick={axisTick} minTickGap={16} />
+              <YAxis tickFormatter={(value) => formatInr(Number(value), true)} tickLine={false} axisLine={false} tick={axisTick} width={72} />
+              <Tooltip formatter={(value) => formatInr(Number(value))} contentStyle={tooltipStyle} />
+              <Area dataKey="MRR" name="MRR" type="monotone" stroke="#8E97C9" strokeWidth={2} fill={`url(#${mrrFillId})`} dot={false} isAnimationActive={false} />
+            </AreaChart>
+          </ChartContainer>
+        </ChartCard>
+      </div>
     </div>
   );
 }
@@ -371,8 +415,8 @@ export function PartyView({
     <div className="space-y-3">
       <p className="text-sm text-[#667085]">
         {purpose === "customer"
-          ? "Customer revenue, outstanding balances, overdue exposure, and collection performance."
-          : "Company billed, collected, outstanding, and overdue amounts."}
+          ? "Customer revenue, collected amount without GST, outstanding balances, and overdue exposure."
+          : "Company billed amount, collected amount without GST, outstanding, and overdue amounts."}
       </p>
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
         <RankChart
@@ -381,6 +425,7 @@ export function PartyView({
           rows={ranked.map((row) => ({
             Name: displayPartyName(row.name),
             Amount: purpose === "customer" ? row.due : row.billed,
+            "Collected amount without GST": row.collected,
           }))}
           data={ranked}
           dataKey={purpose === "customer" ? "due" : "billed"}
@@ -394,8 +439,8 @@ export function PartyView({
           filename={purpose === "customer" ? "customer-collection.csv" : "company-collection.csv"}
           rows={ranked.map((row) => ({
             Name: displayPartyName(row.name),
-            Billed: row.billed,
-            Collected: row.collected,
+            "Billed amount without GST": row.billed,
+            "Collected amount without GST": row.collected,
             Outstanding: row.due,
             Overdue: row.pastDue,
           }))}
@@ -410,8 +455,8 @@ export function PartyView({
               <YAxis type="category" dataKey="name" width={120} tickLine={false} axisLine={false} tick={axisTick} tickFormatter={shorten} />
               <Tooltip formatter={(value) => formatInr(Number(value))} contentStyle={tooltipStyle} />
               <Legend />
-              {purpose === "company" ? <Bar dataKey="billed" name="Billed" fill="#1F6FB5" maxBarSize={12} isAnimationActive={false} /> : null}
-              <Bar dataKey="collected" name="Collected" fill="#0E8A6A" maxBarSize={12} isAnimationActive={false} />
+              {purpose === "company" ? <Bar dataKey="billed" name="Billed amount without GST" fill="#1F6FB5" maxBarSize={12} isAnimationActive={false} /> : null}
+              <Bar dataKey="collected" name="Collected amount without GST" fill="#0E8A6A" maxBarSize={12} isAnimationActive={false} />
               <Bar dataKey="due" name="Outstanding" fill="#C47E09" maxBarSize={12} isAnimationActive={false} />
               <Bar dataKey="pastDue" name="Overdue" fill="#C5363C" maxBarSize={12} isAnimationActive={false} />
             </BarChart>
@@ -429,11 +474,10 @@ export function PartyView({
           }
           columns={[
             { id: "name", label: "Name" },
-            { id: "billed", label: "Billed", align: "right" },
-            { id: "collected", label: "Collected", align: "right" },
+            { id: "billed", label: "Billed amount without GST", align: "right" },
+            { id: "collected", label: "Collected amount without GST", align: "right" },
             { id: "due", label: "Outstanding", align: "right" },
             { id: "pastDue", label: "Overdue", align: "right" },
-            { id: "efficiency", label: "Efficiency", align: "right" },
             { id: "records", label: "Records", align: "right" },
             { id: "status", label: "Status" },
           ]}
@@ -443,7 +487,6 @@ export function PartyView({
             <Money key="collected" value={row.collected} />,
             <Money key="due" value={row.due} />,
             <Money key="past" value={row.pastDue} />,
-            <span key="eff" className="font-mono text-xs tabular-nums">{formatPercent(row.efficiency)}</span>,
             row.records,
             <StatusBadge key="status" value={row.efficiency} />,
           ])}
@@ -523,8 +566,8 @@ export function AgingView({
             { id: "customer", label: "Customer" },
             { id: "company", label: "Company" },
             { id: "po", label: "PO" },
-            { id: "billed", label: "Billed", align: "right" },
-            { id: "collected", label: "Collected", align: "right" },
+            { id: "billed", label: "Billed amount without GST", align: "right" },
+            { id: "collected", label: "Collected amount without GST", align: "right" },
             { id: "outstanding", label: "Outstanding", align: "right" },
             { id: "overdue", label: "Overdue", align: "right" },
             { id: "status", label: "Status" },
@@ -549,32 +592,30 @@ export function ForecastView({
   projected,
   billed,
   collected,
-  efficiency,
   monthly,
 }: {
   projected: number;
   billed: number;
   collected: number;
-  efficiency: number;
   monthly: MonthPoint[];
 }) {
   const series = monthly.map((point) => ({
     month: point.month,
     Projected: point.projected ?? point.billing,
-    Actual: point.payment,
+    "Collected amount without GST": point.payment,
   }));
 
   return (
     <div className="space-y-3">
       <p className="rounded-md border border-[#d5e4f2] bg-[#f4f9fd] px-3 py-2 text-sm text-[#1c2430]">
-        Projected is the invoiced amount for the month, including later months in the financial year. Actual is the amount collected, shown in the month it was received.
+        Projected is the invoiced amount for the month, including later months in the financial year. Collected amount without GST is the amount received, shown in the month it was received.
       </p>
       <ChartCard
         title="Projected vs actual"
-        description="Projected is invoiced. Actual is collected."
+        description="Projected is invoiced. Collected amount without GST is the amount received."
         filename="forecast.csv"
         rows={series}
-        empty={series.every((row) => row.Projected === 0 && row.Actual === 0)}
+        empty={series.every((row) => row.Projected === 0 && row["Collected amount without GST"] === 0)}
       >
         <ChartContainer config={chartConfig} className="aspect-auto h-72 w-full">
           <BarChart data={series} barGap={2}>
@@ -584,15 +625,14 @@ export function ForecastView({
             <Tooltip formatter={(value) => formatInr(Number(value))} contentStyle={tooltipStyle} />
             <Legend />
             <Bar dataKey="Projected" fill="#1F6FB5" radius={[2, 2, 0, 0]} maxBarSize={18} isAnimationActive={false} />
-            <Bar dataKey="Actual" fill="#0E8A6A" radius={[2, 2, 0, 0]} maxBarSize={18} isAnimationActive={false} />
+            <Bar dataKey="Collected amount without GST" fill="#0E8A6A" radius={[2, 2, 0, 0]} maxBarSize={18} isAnimationActive={false} />
           </BarChart>
         </ChartContainer>
       </ChartCard>
-      <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
         <SecondaryStat label="Total revenue projected" value={projected} hint="All invoiced amounts in the selected financial year." />
-        <SecondaryStat label="Actual billed" value={billed} hint="Billed amount in the selected period." />
-        <SecondaryStat label="Actual collected" value={collected} hint="Amount collected in the selected period." />
-        <GaugeCard label="Collection efficiency" value={efficiency} target={80} />
+        <SecondaryStat label="Billed amount without GST" value={billed} hint="Invoice amount before GST in the selected period." />
+        <SecondaryStat label="Collected amount without GST" value={collected} hint="Amount collected in the selected period. The period comparison uses this amount." />
       </div>
     </div>
   );
@@ -631,7 +671,7 @@ function RankChart({
           <XAxis type="number" tickFormatter={(value) => formatInr(Number(value), true)} tickLine={false} axisLine={false} tick={axisTick} />
           <YAxis type="category" dataKey="name" width={128} tickLine={false} axisLine={false} tick={axisTick} tickFormatter={shorten} />
           <Tooltip formatter={(value) => formatInr(Number(value))} contentStyle={tooltipStyle} />
-          <Bar dataKey={dataKey} name={dataKey === "billed" ? "Billed" : "Outstanding"} fill={color} radius={[0, 2, 2, 0]} maxBarSize={16} cursor="pointer" isAnimationActive={false} onClick={(item) => onPick(String(item.rawName ?? item.name))} />
+          <Bar dataKey={dataKey} name={dataKey === "billed" ? "Billed amount without GST" : "Outstanding"} fill={color} radius={[0, 2, 2, 0]} maxBarSize={16} cursor="pointer" isAnimationActive={false} onClick={(item) => onPick(String(item.rawName ?? item.name))} />
         </BarChart>
       </ChartContainer>
     </ChartCard>
@@ -642,7 +682,10 @@ function SecondaryStat({ label, value, hint }: { label: string; value: number; h
   return (
     <article className="flex items-center justify-between gap-3 rounded-md border border-[#e4e8ee] bg-white px-3 py-2" title={hint}>
       <div className="min-w-0">
-        <p className="text-[11px] font-medium text-[#667085]">{label}</p>
+        <div className="flex flex-wrap items-center gap-1">
+          <p className="text-[11px] font-medium text-[#667085]">{label}</p>
+          <FyBadge />
+        </div>
         <p className="truncate text-[11px] text-[#98a2b3]">{hint}</p>
       </div>
       <p className="shrink-0 font-mono text-sm font-semibold text-[#1c2430] tabular-nums" title={formatInr(value)}>

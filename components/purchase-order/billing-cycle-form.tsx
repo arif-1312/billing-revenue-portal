@@ -206,7 +206,7 @@ const BillingCycleForm = ({
 
         <div className="flex flex-wrap items-center gap-4 text-sm font-medium">
           <span>Invoice: Rs.{invoiceAmount.toLocaleString()}</span>
-          <span>Collected: Rs.{collectedAmount.toLocaleString()}</span>
+          <span>Collected amount without GST: Rs.{collectedAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           <span>Pending: Rs.{pendingAmount.toLocaleString()}</span>
           <span>TDS: Rs.{tdsAmount.toLocaleString()}</span>
           {canRemoveCycle && onRemoveCycle ? (

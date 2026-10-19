@@ -5,6 +5,7 @@ import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import Image from "next/image";
 import { getConfiguration } from "@/lib/actions/configuration";
+import { isSignedInSession } from "@/lib/session-decision";
 
 export const metadata: Metadata = {
   title: "Sign In",
@@ -16,7 +17,7 @@ async function SignInPage() {
   const companyName = configuration?.name || "SY ASSOCIATES";
   const logo = configuration?.logo || "/sy.png";
 
-  if (session) {
+  if (isSignedInSession(session)) {
     return redirect("/admin/home");
   }
 

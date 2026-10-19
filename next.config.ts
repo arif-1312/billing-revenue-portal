@@ -7,7 +7,7 @@
 // export default nextConfig;
 
 
-import { securityHeaders } from "./lib/security-headers";
+import { securityHeadersFor } from "./lib/security-headers";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -24,7 +24,7 @@ const nextConfig = {
     return [
       {
         source: "/:path*",
-        headers: securityHeaders,
+        headers: securityHeadersFor(),
       },
     ];
   },

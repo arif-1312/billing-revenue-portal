@@ -6,15 +6,9 @@ import { CalendarIcon, ChevronDown, SlidersHorizontal } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Sheet,
   SheetContent,
@@ -23,7 +17,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { matchingPreset, type PeriodMode } from "@/lib/dashboard-presets";
-import type { DashboardFilters } from "@/lib/revenue-metrics";
+import { filterTokens, toggleFilterToken, type DashboardFilters } from "@/lib/revenue-metrics";
 import { cn } from "@/lib/utils";
 
 const months = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
@@ -113,78 +107,61 @@ export function SlicerFields({
       {collapsed ? null : (
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
           <Field label="Financial Year">
-            <Select value={filters.year} onValueChange={(value) => onChange("year", value)}>
-              <SelectTrigger size="sm" className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All years</SelectItem>
-                {years.map((year) => (
-                  <SelectItem key={year} value={String(year)}>
-                    FY {year}–{String(year + 1).slice(-2)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <MultiSelect
+              allLabel="All years"
+              value={filters.year}
+              options={years.map((year) => ({
+                value: String(year),
+                label: `FY ${year}–${String(year + 1).slice(-2)}`,
+              }))}
+              onChange={(value) => onChange("year", value)}
+            />
           </Field>
           <Field label="Quarter">
-            <Select value={filters.quarter} onValueChange={(value) => onChange("quarter", value)}>
-              <SelectTrigger size="sm" className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All quarters</SelectItem>
-                {quarters.map((quarter) => (
-                  <SelectItem key={quarter.value} value={quarter.value}>{quarter.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <MultiSelect
+              allLabel="All quarters"
+              value={filters.quarter}
+              options={quarters}
+              onChange={(value) => onChange("quarter", value)}
+            />
           </Field>
           <Field label="Month">
-            <Select value={filters.month} onValueChange={(value) => onChange("month", value)}>
-              <SelectTrigger size="sm" className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All months</SelectItem>
-                {months.map((month, index) => (
-                  <SelectItem key={month} value={String(index)}>{month}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <MultiSelect
+              allLabel="All months"
+              value={filters.month}
+              options={months.map((month, index) => ({ value: String(index), label: month }))}
+              onChange={(value) => onChange("month", value)}
+            />
           </Field>
           <Field label="Company">
-            <Select value={filters.company} onValueChange={(value) => onChange("company", value)}>
-              <SelectTrigger size="sm" className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All companies</SelectItem>
-                {companies.map((company) => (
-                  <SelectItem key={company.id} value={company.id}>{company.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <MultiSelect
+              allLabel="All companies"
+              value={filters.company}
+              options={companies.map((company) => ({ value: company.id, label: company.name }))}
+              onChange={(value) => onChange("company", value)}
+            />
           </Field>
           <Field label="Customer">
-            <Select value={filters.customer} onValueChange={(value) => onChange("customer", value)}>
-              <SelectTrigger size="sm" className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All customers</SelectItem>
-                {customers.map((customer) => (
-                  <SelectItem key={customer.id} value={customer.id}>{customer.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <MultiSelect
+              allLabel="All customers"
+              value={filters.customer}
+              options={customers.map((customer) => ({ value: customer.id, label: customer.name }))}
+              onChange={(value) => onChange("customer", value)}
+            />
           </Field>
           <Field label="Billing Status">
-            <Select value={status} onValueChange={onStatus}>
-              <SelectTrigger size="sm" className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                {statuses.map((item) => (
-                  <SelectItem key={item} value={item}>{item}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <MultiSelect
+              allLabel="All statuses"
+              value={status}
+              options={statuses.map((item) => ({ value: item, label: item }))}
+              onChange={onStatus}
+            />
           </Field>
           <DateField label="From Date" value={filters.startDate} onChange={(date) => onChange("startDate", date)} />
           <DateField label="To Date" value={filters.endDate} onChange={(date) => onChange("endDate", date)} />
         </div>
       )}
-      <p className="text-[11px] text-[#667085]">{periodLabel} Billing status applies to totals, rankings, and tables.</p>
+      <p className="text-[11px] text-[#667085]">{periodLabel} Select more than one value in a filter to include all of them. Billing status applies to totals, rankings, and tables.</p>
     </div>
   );
 }
@@ -220,6 +197,72 @@ export function SlicerBar(props: React.ComponentProps<typeof SlicerFields>) {
         </Sheet>
       </div>
     </>
+  );
+}
+
+function MultiSelect({
+  allLabel,
+  value,
+  options,
+  onChange,
+}: {
+  allLabel: string;
+  value: string;
+  options: Array<{ value: string; label: string }>;
+  onChange: (value: string) => void;
+}) {
+  const selected = filterTokens(value);
+  const summary =
+    selected.length === 0
+      ? allLabel
+      : selected.length === 1
+        ? options.find((option) => option.value === selected[0])?.label ?? "1 selected"
+        : `${selected.length} selected`;
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="outline" size="sm" className="w-full justify-between px-2 font-normal">
+          <span className="truncate">{summary}</span>
+          <ChevronDown />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 p-1" align="start">
+        <div
+          role="button"
+          tabIndex={0}
+          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-[#f3f5f8]"
+          onClick={() => onChange("all")}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            onChange("all");
+          }}
+        >
+          <Checkbox checked={selected.length === 0} className="pointer-events-none" tabIndex={-1} />
+          <span className="truncate">{allLabel}</span>
+        </div>
+        <div className="max-h-64 overflow-y-auto">
+          {options.map((option) => (
+            <div
+              key={option.value}
+              role="button"
+              tabIndex={0}
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-[#f3f5f8]"
+              onClick={() => onChange(toggleFilterToken(value, option.value))}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" && event.key !== " ") return;
+                event.preventDefault();
+                onChange(toggleFilterToken(value, option.value));
+              }}
+            >
+              <Checkbox checked={selected.includes(option.value)} className="pointer-events-none" tabIndex={-1} />
+              <span className="truncate">{option.label}</span>
+            </div>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 

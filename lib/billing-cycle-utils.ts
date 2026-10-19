@@ -97,6 +97,8 @@ export function resolveBillingPlanInterval(
   }
 
   if (
+    normalizedPlanKey === "ots" ||
+    /\bots\b/.test(normalizedPlanName) ||
     matchesPlanVariant(normalizedPlanName, normalizedPlanKey, [
       "one-time",
       "one time",

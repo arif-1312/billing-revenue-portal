@@ -172,7 +172,7 @@ export default async function PurchaseOrderViewPage({ params }: Props) {
             tone: metricTone.teal,
           },
           {
-            label: "Collected",
+            label: "Collected amount without GST",
             value: totalCollected,
             icon: IndianRupee,
             tone: metricTone.emerald,
@@ -268,7 +268,7 @@ export default async function PurchaseOrderViewPage({ params }: Props) {
                     <th className="p-3 text-left font-semibold">Month</th>
                     <th className="p-3 text-left font-semibold">Invoice</th>
                     <th className="p-3 text-right font-semibold">Amount</th>
-                    <th className="p-3 text-right font-semibold">Collected</th>
+                    <th className="p-3 text-right font-semibold">Collected amount without GST</th>
                     <th className="p-3 text-right font-semibold">Pending</th>
                     <th className="p-3 text-left font-semibold">Invoice Date</th>
                     <th className="p-3 text-left font-semibold">Payment Received Date</th>

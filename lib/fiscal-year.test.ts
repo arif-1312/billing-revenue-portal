@@ -27,6 +27,8 @@ describe("fiscal year boundary", () => {
     expect(getFiscalYear(date)).toBe(2026);
     expect(fiscalMonthIndex(date)).toBe(0);
     expect(quarterContainsMonth("1", "0")).toBe(true);
+    expect(quarterContainsMonth("1,2", "0,5")).toBe(true);
+    expect(quarterContainsMonth("1", "0,5")).toBe(false);
     expect(calendarParts(2026, 0)).toEqual({ calendarMonth: 3, calendarYear: 2026 });
   });
 

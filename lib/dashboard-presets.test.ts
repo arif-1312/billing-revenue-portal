@@ -90,8 +90,15 @@ describe("dashboard presets", () => {
     });
   });
 
-  it("clears the customer when the company changes", () => {
-    expect(applyFilterChange(base, "company", "company-2").customer).toBe("all");
+  it("keeps the customer when another company is selected", () => {
+    expect(applyFilterChange(base, "company", "company-1,company-2").customer).toBe("co-1");
+  });
+
+  it("keeps a month that belongs to one of the selected quarters", () => {
+    expect(applyFilterChange({ ...base, month: "0", quarter: "1" }, "quarter", "1,2")).toMatchObject({
+      quarter: "1,2",
+      month: "0",
+    });
   });
 });
 
@@ -133,6 +140,11 @@ describe("previous period", () => {
 
   it("does not compare every year at once", () => {
     expect(previousPeriod({ ...open, year: "all" })).toBeNull();
+  });
+
+  it("does not compare several months or years as one period", () => {
+    expect(previousPeriod({ ...open, month: "0,1" })).toBeNull();
+    expect(previousPeriod({ ...open, year: "2025,2026" })).toBeNull();
   });
 
   it("does not invent a comparison from one date", () => {

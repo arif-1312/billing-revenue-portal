@@ -1,5 +1,5 @@
 import "@/lib/load-env"
-import bcrypt from "bcrypt"
+import { hashPassword } from "@/lib/password"
 import { prisma } from "@/lib/prisma"
 import { Status } from "@prisma/client"
 
@@ -66,7 +66,7 @@ async function main() {
         );
     }
 
-    const password = await bcrypt.hash(plainPassword, 10);
+    const password = await hashPassword(plainPassword);
 
     const adminRole = await prisma.role.upsert({
         where: { name: "Admin" },

@@ -193,7 +193,7 @@ export const getUsersColumns = ({
               {formatCurrency(totals.billed)}
             </p>
             <p className="text-xs text-slate-500">
-              Collected {formatCurrency(totals.collected)}
+              Collected amount without GST {formatCurrency(totals.collected)}
             </p>
           </div>
         );

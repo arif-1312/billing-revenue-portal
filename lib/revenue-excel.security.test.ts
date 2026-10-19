@@ -106,6 +106,7 @@ describe("revenue spreadsheet safety", () => {
     expect(rows[0]?.["Scope Of Work"]).toBe("'+cmd");
     expect(rows[0]?.["Billing Remark"]).toBe("'@note");
     expect(rows[0]?.["Invoice Amount"]).toBe(500);
+    expect(rows[0]?.["Collected Amount"]).toBe(100);
     expect(typeof rows[0]?.["Invoice Amount"]).toBe("number");
   });
 });
