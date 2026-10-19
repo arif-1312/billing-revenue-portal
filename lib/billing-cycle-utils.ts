@@ -466,6 +466,34 @@ export function generateProjectBillingCycles({
   }));
 }
 
+export function resolveCycleInvoiceAmount(
+  existingAmount: number | null | undefined,
+  generatedAmount: number,
+  lastGeneratedAmount?: number | null,
+) {
+  const existing = Number(existingAmount ?? 0);
+  const generated = Number(generatedAmount ?? 0);
+
+  if (lastGeneratedAmount == null) {
+    return {
+      amount: existing > 0 ? existing : generated,
+      trackedGeneratedAmount: generated,
+    };
+  }
+
+  if (existing !== lastGeneratedAmount) {
+    return {
+      amount: existing,
+      trackedGeneratedAmount: lastGeneratedAmount,
+    };
+  }
+
+  return {
+    amount: generated,
+    trackedGeneratedAmount: generated,
+  };
+}
+
 export function formatBillingCycleLabel(
   date?: Date | string | null,
   fallbackMonth?: number,

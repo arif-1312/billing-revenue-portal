@@ -81,6 +81,7 @@ import {
   MONTH_NAMES,
   generatePurchaseOrderBillingCycles,
   resolveBillingPlanInterval,
+  resolveCycleInvoiceAmount,
 } from "@/lib/billing-cycle-utils";
 
 type PurchaseOrderFormValues = z.infer<typeof purchaseOrderSchema>;
@@ -415,9 +416,24 @@ const POForm = ({
     () => supportsManualPurchaseOrderBillingCycles(watchPurchaseOrderType),
     [watchPurchaseOrderType],
   );
+  const selectedBillingPlan = React.useMemo(
+    () =>
+      billingPlan.find(
+        (value) => String(value.id) === String(watchBillingPlan ?? ""),
+      ) ?? null,
+    [billingPlan, watchBillingPlan],
+  );
+  const isFlexibleBillingPlan = React.useMemo(() => {
+    if (!selectedBillingPlan) return false;
+
+    return !resolveBillingPlanInterval(
+      Number(selectedBillingPlan.totalBillingCycles || 0),
+      selectedBillingPlan.name,
+    ).autoGenerate;
+  }, [selectedBillingPlan]);
   const canManageManualBillingCycles = React.useMemo(
-    () => isOTSSelected || isManualPurchaseOrderType,
-    [isManualPurchaseOrderType, isOTSSelected],
+    () => isOTSSelected || isManualPurchaseOrderType || isFlexibleBillingPlan,
+    [isFlexibleBillingPlan, isManualPurchaseOrderType, isOTSSelected],
   );
   const canEditInvoiceAmount = React.useMemo(
     () =>
@@ -450,6 +466,7 @@ const POForm = ({
 
   const [isPending, startTransition] = React.useTransition();
   const skipInitialAutoGenerationRef = React.useRef(update);
+  const lastGeneratedInvoiceAmountsRef = React.useRef(new Map<string, number>());
 
   const billingCycleYearOptions = React.useMemo(() => {
     const years = new Set<number>([
@@ -640,14 +657,6 @@ const POForm = ({
 
     if (!planInterval.autoGenerate) return;
 
-    if (skipInitialAutoGenerationRef.current) {
-      skipInitialAutoGenerationRef.current = false;
-
-      if (isInitialUpdateGenerationState) {
-        return;
-      }
-    }
-
     const generatedCycles = generatePurchaseOrderBillingCycles({
       startDate: start.toDate(),
       endDate: end.toDate(),
@@ -659,12 +668,41 @@ const POForm = ({
       watchPOAmount,
       generatedCycles.length,
     );
+    const trackGeneratedAmounts = () => {
+      const tracked = new Map<string, number>();
+
+      generatedCycles.forEach((cycleDates, index) => {
+        const targetDate =
+          cycleDates.invoiceDate ?? cycleDates.billingSubmittedDate;
+
+        if (!targetDate) return;
+
+        tracked.set(
+          `${targetDate.getFullYear()}-${targetDate.getMonth()}`,
+          Number(generatedInvoiceAmounts[index] ?? 0),
+        );
+      });
+
+      lastGeneratedInvoiceAmountsRef.current = tracked;
+    };
+
+    if (skipInitialAutoGenerationRef.current) {
+      skipInitialAutoGenerationRef.current = false;
+
+      if (isInitialUpdateGenerationState) {
+        trackGeneratedAmounts();
+        return;
+      }
+    }
+
     const existingCycles = form.getValues("billingCycles") ?? [];
+    const trackedInvoiceAmounts = new Map<string, number>();
 
     const cycles = generatedCycles.map((cycleDates, index) => {
       const targetDate = cycleDates.invoiceDate ?? cycleDates.billingSubmittedDate;
       const targetMonth = targetDate.getMonth();
       const targetYear = targetDate.getFullYear();
+      const cycleKey = `${targetYear}-${targetMonth}`;
       const existingCycle = existingCycles.find((cycle) => {
         const monthYear = getCycleMonthYear(cycle);
 
@@ -673,11 +711,21 @@ const POForm = ({
           monthYear?.year === targetYear
         );
       });
+      const resolvedInvoiceAmount = resolveCycleInvoiceAmount(
+        existingCycle?.invoiceAmount,
+        generatedInvoiceAmounts[index] ?? 0,
+        lastGeneratedInvoiceAmountsRef.current.get(cycleKey),
+      );
+
+      trackedInvoiceAmounts.set(
+        cycleKey,
+        resolvedInvoiceAmount.trackedGeneratedAmount,
+      );
 
       return {
         id: existingCycle?.id,
         invoiceNumber: existingCycle?.invoiceNumber ?? "",
-        invoiceAmount: Number(generatedInvoiceAmounts[index] ?? 0),
+        invoiceAmount: resolvedInvoiceAmount.amount,
         collectedAmount: Number(existingCycle?.collectedAmount ?? 0),
         invoiceDate:
           existingCycle?.invoiceDate ??
@@ -701,6 +749,7 @@ const POForm = ({
       };
     });
 
+    lastGeneratedInvoiceAmountsRef.current = trackedInvoiceAmounts;
     replace(cycles);
   }, [
     billingPlan,
@@ -1422,18 +1471,23 @@ const POForm = ({
                     the purchase order dates. You can add another cycle and
                     edit each invoice amount.
                   </p>
-                ) : canManageManualBillingCycles ? (
+                ) : isManualPurchaseOrderType ? (
                   <p className="text-sm text-slate-500">
                     For Mail and Agreement purchase orders, you can add
                     multiple billing cycles and enter each invoice amount
                     manually.
                   </p>
-                ) : watchPurchaseOrderType === PurchaseOrderType.NORMAL ? (
+                ) : isFlexibleBillingPlan ? (
                   <p className="text-sm text-slate-500">
-                    Normal purchase orders keep the invoice amount prefilled,
-                    and you can edit it directly in the billing cycle.
+                    This billing plan does not create a fixed schedule. Add
+                    each billing cycle and enter its invoice amount.
                   </p>
-                ) : null}
+                ) : (
+                  <p className="text-sm text-slate-500">
+                    Invoice amounts are prefilled from the purchase order. You
+                    can edit each invoice amount for any billing plan.
+                  </p>
+                )}
 
                 <Card className={formCardClassName}>
                   <CardContent className="pt-6">

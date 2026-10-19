@@ -315,14 +315,9 @@ const BillingCycleForm = ({
               </FormLabel>
               <FormControl>
                 <Input
-                  className={cn(
-                    themedInputClassName,
-                    !canEditInvoiceAmount &&
-                      "cursor-not-allowed bg-slate-50/90 text-slate-600",
-                  )}
+                  className={themedInputClassName}
                   type="number"
                   placeholder="Enter Invoice Amount"
-                  readOnly={!canEditInvoiceAmount}
                   {...field}
                   onChange={(event) =>
                     field.onChange(Number(event.target.value))

@@ -1,6 +1,39 @@
 import { describe, expect, it } from "vitest";
 
-import { generatePurchaseOrderBillingCycles } from "./billing-cycle-utils";
+import {
+  generatePurchaseOrderBillingCycles,
+  resolveCycleInvoiceAmount,
+} from "./billing-cycle-utils";
+
+describe("invoice amounts", () => {
+  it("keeps an amount already entered for a billing cycle", () => {
+    expect(resolveCycleInvoiceAmount(1500, 1000, 1000)).toEqual({
+      amount: 1500,
+      trackedGeneratedAmount: 1000,
+    });
+  });
+
+  it("updates an untouched prefilled amount when the schedule changes", () => {
+    expect(resolveCycleInvoiceAmount(1000, 2000, 1000)).toEqual({
+      amount: 2000,
+      trackedGeneratedAmount: 2000,
+    });
+  });
+
+  it("keeps a saved amount that differs from the generated split", () => {
+    expect(resolveCycleInvoiceAmount(1500, 1000, null)).toEqual({
+      amount: 1500,
+      trackedGeneratedAmount: 1000,
+    });
+  });
+
+  it("uses the generated amount when the cycle has no invoice amount yet", () => {
+    expect(resolveCycleInvoiceAmount(0, 1000, null)).toEqual({
+      amount: 1000,
+      trackedGeneratedAmount: 1000,
+    });
+  });
+});
 
 describe("OTS billing cycles", () => {
   it("creates one cycle for an OTS billing plan", () => {

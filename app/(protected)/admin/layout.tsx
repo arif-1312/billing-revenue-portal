@@ -1,4 +1,4 @@
-import { auth, signOut } from "@/auth";
+import { auth } from "@/auth";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SiteHeader } from "@/components/site-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
@@ -27,17 +27,13 @@ export default async function AdminLayout({
   const session = await auth() as SessionUser;
 
   if (!isSignedInSession(session)) {
-    if (session) {
-      await signOut({ redirectTo: "/login" });
-    }
-    redirect("/login");
+    redirect(session ? "/api/session/end" : "/login");
   }
 
   const userRoles = await getUserPermissions();
 
   if (!userRoles) {
-    await signOut({ redirectTo: "/login" });
-    redirect("/login");
+    redirect("/api/session/end");
   }
 
   const allowedRoutes = await Promise.all(
