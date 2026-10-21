@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Eye, EyeOff } from "lucide-react";
 
 type LoginActionState = {
   success: boolean;
@@ -27,6 +28,7 @@ export function LoginForm({
   const [error, setError] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     if (data?.success === false && data.message) {
@@ -35,7 +37,7 @@ export function LoginForm({
   }, [data]);
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    
+
     const user = username.trim();
     const pass = password.trim();
 
@@ -48,7 +50,7 @@ export function LoginForm({
     setError("");
   };
 
-  
+
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
@@ -83,20 +85,30 @@ export function LoginForm({
                   className="h-11 rounded-xl border-slate-200"
                 />
               </Field>
-
               <Field>
                 <FieldLabel htmlFor="password">Password</FieldLabel>
-                <Input
-                  id="password"
-                  name="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  autoComplete="current-password"
-                  className="h-11 rounded-xl border-slate-200"
-                />
+                <div className="relative w-full">
+                  <Input
+                    id="password"
+                    name="password"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="current-password"
+                    className="h-11 w-full rounded-xl border-slate-200 pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((shown) => !shown)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    // aria-pressed={showPassword}
+                    className="absolute inset-y-0 right-0 flex items-center 
+                     px-3 text-slate-500"
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
               </Field>
-
               <Field>
                 <Button
                   type="submit"
