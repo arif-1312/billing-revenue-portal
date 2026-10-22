@@ -201,7 +201,7 @@ export function AppSidebar({
       variant="sidebar"
       collapsible="icon"
       {...props}
-      className="fixed top-0 left-0 h-screen !border-r-0"
+      className="!border-r-0"
     >
       {/* HEADER */}
       <SidebarHeader className="bg-[linear-gradient(180deg,rgba(8,47,73,0.98),rgba(14,116,144,0.94),rgba(12,74,110,0.98))] px-3 py-3 text-white">
@@ -257,7 +257,7 @@ export function AppSidebar({
       </SidebarHeader>
 
       {/* CONTENT */}
-      <SidebarContent className="sidebar-scrollbar overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(125,211,252,0.12),_transparent_20%),linear-gradient(180deg,#082f49_0%,#0f172a_48%,#020617_100%)]">
+      <SidebarContent className="sidebar-scrollbar overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(125,211,252,0.12),_transparent_20%),linear-gradient(180deg,#082f49_0%,#0f172a_100%)]">
         <NavMain items={filteredNav} />
 
         <NavSecondary
@@ -267,7 +267,7 @@ export function AppSidebar({
       </SidebarContent>
 
       {/* FOOTER */}
-      <SidebarFooter className="bg-[linear-gradient(180deg,rgba(2,6,23,0.72),rgba(2,6,23,0.96))] px-3 py-3 text-white backdrop-blur-xl">
+      <SidebarFooter className="bg-[#0f172a] px-3 py-3 text-white">
         <NavSettings items={filteredSettings} />
         <NavUser user={user} />
       </SidebarFooter>

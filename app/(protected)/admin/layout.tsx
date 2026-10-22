@@ -83,9 +83,9 @@ export default async function AdminLayout({
           <SiteHeader />
         </div>
 
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="@container/main flex min-w-0 flex-1 flex-col gap-2">
-            <div className="flex flex-col gap-4 p-4 py-4 md:gap-6 md:py-6">
+        <div className="flex min-h-[calc(100svh-var(--header-height))] min-w-0 flex-1 flex-col">
+          <div className="@container/main flex min-h-0 min-w-0 flex-1 flex-col gap-2">
+            <div className="flex min-h-0 flex-1 flex-col gap-4 p-4 py-4 md:gap-6 md:py-6">
               {children}
             </div>
           </div>

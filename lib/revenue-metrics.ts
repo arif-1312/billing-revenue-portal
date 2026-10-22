@@ -176,7 +176,7 @@ export function emptyAging(): AgingSummary {
 }
 
 export function agingBucketForDaysPastDue(daysPastDue: number): AgingBucketId | null {
-  if (daysPastDue < 1) return null;
+  if (daysPastDue < 0) return null;
   if (daysPastDue <= 30) return "0-30";
   if (daysPastDue <= 60) return "31-60";
   if (daysPastDue <= 90) return "61-90";

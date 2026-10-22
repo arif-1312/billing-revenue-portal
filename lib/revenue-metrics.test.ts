@@ -36,12 +36,12 @@ describe("collected with gst", () => {
 });
 
 describe("aging buckets", () => {
-  it("keeps invoices that are not yet past due out of the overdue buckets", () => {
-    expect(agingBucketForDaysPastDue(0)).toBeNull();
+  it("keeps invoices that are not yet due out of the overdue buckets", () => {
     expect(agingBucketForDaysPastDue(-3)).toBeNull();
   });
 
-  it("places past-due days in the requested buckets", () => {
+  it("places the due date and later days in the requested buckets", () => {
+    expect(agingBucketForDaysPastDue(0)).toBe("0-30");
     expect(agingBucketForDaysPastDue(1)).toBe("0-30");
     expect(agingBucketForDaysPastDue(30)).toBe("0-30");
     expect(agingBucketForDaysPastDue(31)).toBe("31-60");

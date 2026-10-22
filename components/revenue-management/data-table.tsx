@@ -5,14 +5,16 @@ export function DataTable({
   rows,
   sort,
   onSort,
+  className,
 }: {
   columns: Array<{ id: string; label: string; align?: "left" | "right" }>;
   rows: Array<Array<React.ReactNode>>;
   sort?: { id: string; dir: "asc" | "desc" };
   onSort?: (id: string) => void;
+  className?: string;
 }) {
   return (
-    <div className="max-h-[28rem] max-w-full min-w-0 overflow-auto">
+    <div className={cn("max-h-[28rem] max-w-full min-w-0 overflow-auto", className)}>
       <table className="min-w-full border-separate border-spacing-0 text-left text-sm">
         <thead className="sticky top-0 z-10 bg-[#f7f8fa]">
           <tr>

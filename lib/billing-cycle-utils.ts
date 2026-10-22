@@ -68,6 +68,19 @@ function matchesPlanVariant(
   });
 }
 
+export function isOtsName(name?: string | null) {
+  const normalizedName = name?.trim().toLowerCase() ?? "";
+  const normalizedKey = normalizedName.replace(/[^a-z0-9]/g, "");
+
+  return (
+    normalizedKey === "ots" ||
+    /\bots\b/.test(normalizedName) ||
+    normalizedName.includes("one time") ||
+    normalizedName.includes("one-time") ||
+    normalizedKey.includes("onetime")
+  );
+}
+
 function getMidpointDate(startDate: Date, endDate: Date) {
   const start = startOfDay(startDate);
   const end = startOfDay(endDate);
@@ -96,15 +109,7 @@ export function resolveBillingPlanInterval(
     };
   }
 
-  if (
-    normalizedPlanKey === "ots" ||
-    /\bots\b/.test(normalizedPlanName) ||
-    matchesPlanVariant(normalizedPlanName, normalizedPlanKey, [
-      "one-time",
-      "one time",
-      "onetime",
-    ])
-  ) {
+  if (isOtsName(planName)) {
     return {
       autoGenerate: true,
       singleCycle: true,

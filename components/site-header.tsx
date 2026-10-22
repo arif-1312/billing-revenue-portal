@@ -28,7 +28,7 @@ export function SiteHeader() {
   const user = useSelector((state: RootState) => state.user.user as HeaderUser | undefined);
   const dispatch = useDispatch();
   const isMounted = React.useSyncExternalStore(
-    () => () => {},
+    () => () => { },
     () => true,
     () => false,
   );
@@ -47,7 +47,7 @@ export function SiteHeader() {
         <Separator orientation="vertical" className="h-4" />
 
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold tracking-[0.18em] text-sky-700">
+          <p className="text-sm font-extrabold tracking-[0.18em] text-sky-700">
             ADMIN PANEL
           </p>
           <p className="truncate text-sm text-slate-500">

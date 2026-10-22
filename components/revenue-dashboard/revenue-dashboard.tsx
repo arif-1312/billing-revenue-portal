@@ -72,7 +72,7 @@ export function RevenueDashboard({
     queryKey: ["revenue-dashboard", payload],
     queryFn: () => getRevenueDashboard(payload),
     placeholderData: keepPreviousData,
-    staleTime: 60_000,
+    staleTime: 0,
   });
 
   return (

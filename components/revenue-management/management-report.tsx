@@ -12,7 +12,6 @@ import { getFiscalYear } from "@/lib/fiscal-year";
 import type { BillingInvoiceLine, RevenueDashboardSummary, RevenuePeriodComparison } from "@/lib/actions/dashboard";
 import {
   applyRecordFilters,
-  collectionSlices,
   filterTokens,
   formatInr,
   formatPercent,
@@ -160,16 +159,17 @@ export function ManagementReport({
       ? totals.pastDue
       : summary?.overdueAmountTillNow ?? 0;
   const partial = usingRows
-    ? filtered.filter((record) => toNumber(record.collectedAmount) > 0 && toNumber(record.overdueAmount) > 0).length
+    ? filtered.filter((record) => toNumber(record.collectedAmount) > 0 && (toNumber(record.overdueAmount) > 0 || toNumber(record.pastDueAmount) > 0)).length
     : summary?.partialInvoiceCount ?? 0;
   const slices = overdue == null
     ? [
         { name: "Collected", value: collected },
         { name: "Outstanding", value: outstanding },
       ]
-    : collectionSlices(collected, outstanding, overdue) ?? [
-        { name: "Collected", value: collected },
-        { name: "Outstanding", value: outstanding },
+    : [
+        { name: "Collected", value: Math.max(collected, 0) },
+        { name: "Outstanding", value: Math.max(outstanding, 0) },
+        { name: "Overdue", value: Math.max(overdue, 0) },
       ];
   const previous = !usingRows ? comparison : null;
   const overdueComparable = Boolean(
@@ -259,11 +259,11 @@ export function ManagementReport({
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="-mx-4 -mt-4 min-w-0 space-y-3 bg-[#f3f5f8] px-4 py-4 md:-mt-6 md:py-5">
+      <div className="-mx-4 -mt-4 flex min-h-[calc(100svh-var(--header-height)-1.5rem)] min-w-0 flex-1 flex-col gap-3 bg-[#f3f5f8] px-4 py-4 md:-mt-6 md:py-5">
         <header className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-lg font-semibold tracking-tight text-[#1c2430]">Management Dashboard</h1>
+              <h1 className="text-lg font-semibold tracking-tight text-[#1c2430]">MANAGEMENT DASHBOARD</h1>
               <span className="rounded-md border border-[#d5e4f2] bg-[#e8f3fb] px-2 py-0.5 text-xs font-semibold text-[#1F6FB5]">
                 {fyLabel}
               </span>
@@ -313,7 +313,7 @@ export function ManagementReport({
           <p className="rounded-md border border-[#f3c7c9] bg-[#fdf2f2] px-3 py-2 text-sm text-[#C5363C]">{error}</p>
         ) : null}
         <FyLabelProvider label={fyLabel}>
-        <div role="tabpanel" id={`panel-${view}`} aria-labelledby={`tab-${view}`}>
+        <div role="tabpanel" id={`panel-${view}`} aria-labelledby={`tab-${view}`} className="flex min-h-0 flex-1 flex-col">
           {!summary ? (
             <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
               {Array.from({ length: 6 }).map((_, index) => (

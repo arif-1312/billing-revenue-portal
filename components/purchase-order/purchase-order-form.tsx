@@ -78,6 +78,7 @@ import { Card, CardContent } from "../ui/card";
 import { Skeleton } from "../ui/skeleton";
 import {
   formatBillingCycleLabel,
+  isOtsName,
   MONTH_NAMES,
   generatePurchaseOrderBillingCycles,
   resolveBillingPlanInterval,
@@ -305,18 +306,6 @@ const distributeInvoiceAmounts = (
   });
 };
 
-const isOTSContractType = (name?: string | null) => {
-  const normalizedName = name?.trim().toLowerCase() ?? "";
-
-  return (
-    normalizedName === "ots" ||
-    /\bots\b/.test(normalizedName) ||
-    normalizedName.includes("one time") ||
-    normalizedName.includes("one-time") ||
-    normalizedName.includes("onetime")
-  );
-};
-
 const POForm = ({
   billingPlan,
   serviceType,
@@ -368,6 +357,7 @@ const POForm = ({
     watchBillingPlan,
     watchPOAmount,
     watchContractId,
+    watchServiceTypeId,
     startFrom,
     endDate,
     watchPurchaseOrderType,
@@ -377,6 +367,7 @@ const POForm = ({
       "billingPlanId",
       "poAmount",
       "contractId",
+      "serviceTypeId",
       "startFrom",
       "endDate",
       "purchaseOrderType",
@@ -408,9 +399,18 @@ const POForm = ({
       ),
     [contractType, watchContractId],
   );
+  const selectedServiceType = React.useMemo(
+    () =>
+      serviceType.find(
+        (value) => String(value.id) === String(watchServiceTypeId ?? ""),
+      ),
+    [serviceType, watchServiceTypeId],
+  );
   const isOTSSelected = React.useMemo(
-    () => isOTSContractType(selectedContractType?.name),
-    [selectedContractType?.name],
+    () =>
+      isOtsName(selectedContractType?.name) ||
+      isOtsName(selectedServiceType?.name),
+    [selectedContractType?.name, selectedServiceType?.name],
   );
   const isManualPurchaseOrderType = React.useMemo(
     () => supportsManualPurchaseOrderBillingCycles(watchPurchaseOrderType),
@@ -431,6 +431,9 @@ const POForm = ({
       selectedBillingPlan.name,
     ).autoGenerate;
   }, [selectedBillingPlan]);
+  const schedulesBillingCycles = Boolean(
+    selectedBillingPlan && !isFlexibleBillingPlan,
+  );
   const canManageManualBillingCycles = React.useMemo(
     () => isOTSSelected || isManualPurchaseOrderType || isFlexibleBillingPlan,
     [isFlexibleBillingPlan, isManualPurchaseOrderType, isOTSSelected],
@@ -552,7 +555,7 @@ const POForm = ({
   );
 
   useEffect(() => {
-    if (!canManageManualBillingCycles) return;
+    if (!canManageManualBillingCycles || schedulesBillingCycles) return;
 
     const existingCycles = form.getValues("billingCycles") ?? [];
 
@@ -575,6 +578,7 @@ const POForm = ({
     replace,
     startFrom,
     watchPOAmount,
+    schedulesBillingCycles,
   ]);
 
   useEffect(() => {
@@ -588,7 +592,7 @@ const POForm = ({
   }, [endDate, form, startFrom]);
 
   useEffect(() => {
-    if (!canManageManualBillingCycles) return;
+    if (!canManageManualBillingCycles || schedulesBillingCycles) return;
 
     const existingCycles = form.getValues("billingCycles") ?? [];
 
@@ -612,6 +616,7 @@ const POForm = ({
     form,
     replace,
     startFrom,
+    schedulesBillingCycles,
   ]);
 
   // ---------------- SUBMIT ----------------
@@ -631,21 +636,178 @@ const POForm = ({
   };
 
   // ---------------- AUTO BILLING CYCLES ----------------
+  const syncGeneratedBillingCycles = React.useCallback(
+    (mode: "apply" | "track") => {
+      if (isManualPurchaseOrderType && !isOTSSelected) return 0;
+      if (!startFrom || !endDate) return 0;
+
+      const start = moment(startFrom);
+      const end = moment(endDate);
+
+      if (!start.isValid() || !end.isValid() || end.isBefore(start, "day")) {
+        return 0;
+      }
+
+      const plans = Array.isArray(billingPlan) ? billingPlan : [];
+      const selectedPlan = plans.find(
+        (value) => String(value.id) === String(watchBillingPlan ?? ""),
+      );
+
+      if (!selectedPlan) return 0;
+
+      const planInterval = resolveBillingPlanInterval(
+        Number(selectedPlan.totalBillingCycles || 0),
+        selectedPlan.name,
+      );
+      const generatedCycles = planInterval.autoGenerate
+        ? generatePurchaseOrderBillingCycles({
+            startDate: start.toDate(),
+            endDate: end.toDate(),
+            totalBillingCycles: Number(selectedPlan.totalBillingCycles || 0),
+            planName: selectedPlan.name,
+            type: selectedPlan.billingCycleType ?? "START",
+          })
+        : isOTSSelected
+          ? [
+              {
+                invoiceDate: start.clone().startOf("day").toDate(),
+                billingSubmittedDate: start.clone().startOf("day").toDate(),
+              },
+            ]
+          : [];
+
+      if (generatedCycles.length === 0) return 0;
+
+      const generatedInvoiceAmounts = distributeInvoiceAmounts(
+        watchPOAmount,
+        generatedCycles.length,
+      );
+      const existingCycles = form.getValues("billingCycles") ?? [];
+      const trackedInvoiceAmounts = new Map<string, number>();
+      const cycles = generatedCycles.flatMap((cycleDates, index) => {
+        const targetDate =
+          cycleDates.invoiceDate ?? cycleDates.billingSubmittedDate;
+
+        if (!targetDate) return [];
+
+        const targetMonth = targetDate.getMonth();
+        const targetYear = targetDate.getFullYear();
+        const cycleKey = `${targetYear}-${targetMonth}`;
+        const existingCycle = existingCycles.find((cycle) => {
+          const monthYear = getCycleMonthYear(cycle);
+
+          return (
+            monthYear?.month === targetMonth && monthYear?.year === targetYear
+          );
+        });
+        const resolvedInvoiceAmount = resolveCycleInvoiceAmount(
+          existingCycle?.invoiceAmount,
+          generatedInvoiceAmounts[index] ?? 0,
+          lastGeneratedInvoiceAmountsRef.current.get(cycleKey),
+        );
+
+        trackedInvoiceAmounts.set(
+          cycleKey,
+          resolvedInvoiceAmount.trackedGeneratedAmount,
+        );
+
+        return [
+          {
+            id: existingCycle?.id,
+            invoiceNumber: existingCycle?.invoiceNumber ?? "",
+            invoiceAmount: resolvedInvoiceAmount.amount,
+            collectedAmount: Number(existingCycle?.collectedAmount ?? 0),
+            invoiceDate:
+              existingCycle?.invoiceDate ??
+              existingCycle?.billingSubmittedDate ??
+              cycleDates.invoiceDate,
+            billingSubmittedDate:
+              existingCycle?.invoiceDate ??
+              existingCycle?.billingSubmittedDate ??
+              cycleDates.invoiceDate ??
+              cycleDates.billingSubmittedDate,
+            paymentReceived: existingCycle?.paymentReceived ?? PaymentReceived.NO,
+            paymentReceivedDate: existingCycle?.paymentReceivedDate ?? null,
+            payments: paymentDrafts(existingCycle),
+            paymentDueDate:
+              getDefaultPaymentDueDate(existingCycle) ??
+              cycleDates.invoiceDate ??
+              cycleDates.billingSubmittedDate ??
+              null,
+            billingRemark: existingCycle?.billingRemark ?? "",
+            tds: Number(existingCycle?.tds ?? 0),
+          },
+        ];
+      });
+
+      if (cycles.length === 0) return 0;
+
+      lastGeneratedInvoiceAmountsRef.current = trackedInvoiceAmounts;
+
+      if (mode === "apply") {
+        replace(cycles);
+      }
+
+      return cycles.length;
+    },
+    [
+      billingPlan,
+      endDate,
+      form,
+      isManualPurchaseOrderType,
+      isOTSSelected,
+      replace,
+      startFrom,
+      watchBillingPlan,
+      watchPOAmount,
+    ],
+  );
+
+  const generateBillingCycles = React.useCallback(() => {
+    if (!startFrom || !endDate) {
+      toast.error("Select a start date and an end date before generating billing cycles.");
+      return;
+    }
+
+    if (!watchBillingPlan) {
+      toast.error("Select a billing plan before generating billing cycles.");
+      return;
+    }
+
+    const count = syncGeneratedBillingCycles("apply");
+
+    if (!count) {
+      toast.error("No billing cycles could be generated for these dates.");
+      return;
+    }
+
+    toast.success(
+      count === 1
+        ? "Generated 1 billing cycle."
+        : `Generated ${count} billing cycles.`,
+    );
+  }, [startFrom, endDate, syncGeneratedBillingCycles, watchBillingPlan]);
+
   useEffect(() => {
-    if (isManualPurchaseOrderType) return;
+    if (isManualPurchaseOrderType && !isOTSSelected) return;
     if (!watchBillingPlan || watchPOAmount == null || !startFrom || !endDate) {
       return;
     }
 
-    const start = moment(startFrom);
-    const end = moment(endDate);
+    const existingCycles = form.getValues("billingCycles") ?? [];
 
-    if (!start.isValid() || !end.isValid() || end.isBefore(start, "day")) {
-      return;
+    if (skipInitialAutoGenerationRef.current) {
+      skipInitialAutoGenerationRef.current = false;
+
+      if (isInitialUpdateGenerationState && existingCycles.length > 0) {
+        syncGeneratedBillingCycles("track");
+        return;
+      }
     }
 
-    const selectedPlan = billingPlan.find(
-      (value) => value.id === watchBillingPlan,
+    const plans = Array.isArray(billingPlan) ? billingPlan : [];
+    const selectedPlan = plans.find(
+      (value) => String(value.id) === String(watchBillingPlan ?? ""),
     );
 
     if (!selectedPlan) return;
@@ -655,121 +817,34 @@ const POForm = ({
       selectedPlan.name,
     );
 
-    if (!planInterval.autoGenerate) return;
-
-    const generatedCycles = generatePurchaseOrderBillingCycles({
-      startDate: start.toDate(),
-      endDate: end.toDate(),
-      totalBillingCycles: Number(selectedPlan.totalBillingCycles || 0),
-      planName: selectedPlan.name,
-      type: selectedPlan.billingCycleType ?? "START",
-    });
-    const generatedInvoiceAmounts = distributeInvoiceAmounts(
-      watchPOAmount,
-      generatedCycles.length,
-    );
-    const trackGeneratedAmounts = () => {
-      const tracked = new Map<string, number>();
-
-      generatedCycles.forEach((cycleDates, index) => {
-        const targetDate =
-          cycleDates.invoiceDate ?? cycleDates.billingSubmittedDate;
-
-        if (!targetDate) return;
-
-        tracked.set(
-          `${targetDate.getFullYear()}-${targetDate.getMonth()}`,
-          Number(generatedInvoiceAmounts[index] ?? 0),
-        );
-      });
-
-      lastGeneratedInvoiceAmountsRef.current = tracked;
-    };
-
-    if (skipInitialAutoGenerationRef.current) {
-      skipInitialAutoGenerationRef.current = false;
-
-      if (isInitialUpdateGenerationState) {
-        trackGeneratedAmounts();
-        return;
-      }
+    if (
+      !planInterval.autoGenerate &&
+      !(isOTSSelected && existingCycles.length === 0)
+    ) {
+      return;
     }
 
-    const existingCycles = form.getValues("billingCycles") ?? [];
-    const trackedInvoiceAmounts = new Map<string, number>();
-
-    const cycles = generatedCycles.map((cycleDates, index) => {
-      const targetDate = cycleDates.invoiceDate ?? cycleDates.billingSubmittedDate;
-      const targetMonth = targetDate.getMonth();
-      const targetYear = targetDate.getFullYear();
-      const cycleKey = `${targetYear}-${targetMonth}`;
-      const existingCycle = existingCycles.find((cycle) => {
-        const monthYear = getCycleMonthYear(cycle);
-
-        return (
-          monthYear?.month === targetMonth &&
-          monthYear?.year === targetYear
-        );
-      });
-      const resolvedInvoiceAmount = resolveCycleInvoiceAmount(
-        existingCycle?.invoiceAmount,
-        generatedInvoiceAmounts[index] ?? 0,
-        lastGeneratedInvoiceAmountsRef.current.get(cycleKey),
-      );
-
-      trackedInvoiceAmounts.set(
-        cycleKey,
-        resolvedInvoiceAmount.trackedGeneratedAmount,
-      );
-
-      return {
-        id: existingCycle?.id,
-        invoiceNumber: existingCycle?.invoiceNumber ?? "",
-        invoiceAmount: resolvedInvoiceAmount.amount,
-        collectedAmount: Number(existingCycle?.collectedAmount ?? 0),
-        invoiceDate:
-          existingCycle?.invoiceDate ??
-          existingCycle?.billingSubmittedDate ??
-          cycleDates.invoiceDate,
-        billingSubmittedDate:
-          existingCycle?.invoiceDate ??
-          existingCycle?.billingSubmittedDate ??
-          cycleDates.invoiceDate ??
-          cycleDates.billingSubmittedDate,
-        paymentReceived: existingCycle?.paymentReceived ?? PaymentReceived.NO,
-        paymentReceivedDate: existingCycle?.paymentReceivedDate ?? null,
-        payments: paymentDrafts(existingCycle),
-        paymentDueDate:
-          getDefaultPaymentDueDate(existingCycle) ??
-          cycleDates.invoiceDate ??
-          cycleDates.billingSubmittedDate ??
-          null,
-        billingRemark: existingCycle?.billingRemark ?? "",
-        tds: Number(existingCycle?.tds ?? 0),
-      };
-    });
-
-    lastGeneratedInvoiceAmountsRef.current = trackedInvoiceAmounts;
-    replace(cycles);
+    syncGeneratedBillingCycles("apply");
   }, [
     billingPlan,
     endDate,
     form,
-    replace,
-    startFrom,
-    update,
-    watchBillingPlan,
-    watchContractId,
-    watchPOAmount,
-    watchPurchaseOrderType,
-    isManualPurchaseOrderType,
     isInitialUpdateGenerationState,
+    isManualPurchaseOrderType,
+    isOTSSelected,
+    startFrom,
+    syncGeneratedBillingCycles,
+    watchBillingPlan,
+    watchPOAmount,
   ]);
+
+  const didHydratePurchaseOrderRef = React.useRef(false);
 
   // ---------------- UPDATE MODE ----------------
   useEffect(() => {
-    if (!update || !data) return;
+    if (!update || !data || didHydratePurchaseOrderRef.current) return;
 
+    didHydratePurchaseOrderRef.current = true;
     skipInitialAutoGenerationRef.current = true;
 
     const formattedCycles = (data.billingCycles ?? []).map((bc) => {
@@ -1452,24 +1527,36 @@ const POForm = ({
                     ))}
                   </div>
 
-                  {canManageManualBillingCycles ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="border-sky-200 text-sky-700 hover:bg-sky-50 hover:text-sky-800"
-                      onClick={openAddBillingCycleDialog}
-                    >
-                      <Plus className="h-4 w-4" />
-                      Add Billing Cycle
-                    </Button>
-                  ) : null}
+                  <div className="flex flex-wrap gap-2">
+                    {isOTSSelected ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="border-sky-200 text-sky-700 hover:bg-sky-50 hover:text-sky-800"
+                        onClick={generateBillingCycles}
+                      >
+                        Generate billing cycle
+                      </Button>
+                    ) : null}
+                    {canManageManualBillingCycles ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="border-sky-200 text-sky-700 hover:bg-sky-50 hover:text-sky-800"
+                        onClick={openAddBillingCycleDialog}
+                      >
+                        <Plus className="h-4 w-4" />
+                        Add Billing Cycle
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
 
                 {isOTSSelected ? (
                   <p className="text-sm text-slate-500">
                     OTS billing cycles are created from the billing plan and
-                    the purchase order dates. You can add another cycle and
-                    edit each invoice amount.
+                    the purchase order dates. Use Generate billing cycle if
+                    they do not appear, then edit each invoice amount.
                   </p>
                 ) : isManualPurchaseOrderType ? (
                   <p className="text-sm text-slate-500">
@@ -1515,17 +1602,29 @@ const POForm = ({
                 <CardContent className="py-10 text-center text-slate-500">
                   <div className="space-y-4">
                     <p>No billing cycles generated yet.</p>
-                    {canManageManualBillingCycles ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="border-sky-200 text-sky-700 hover:bg-sky-50 hover:text-sky-800"
-                        onClick={openAddBillingCycleDialog}
-                      >
-                        <Plus className="h-4 w-4" />
-                        Add Billing Cycle
-                      </Button>
-                    ) : null}
+                    <div className="flex flex-wrap justify-center gap-2">
+                      {isOTSSelected ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="border-sky-200 text-sky-700 hover:bg-sky-50 hover:text-sky-800"
+                          onClick={generateBillingCycles}
+                        >
+                          Generate billing cycle
+                        </Button>
+                      ) : null}
+                      {canManageManualBillingCycles ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="border-sky-200 text-sky-700 hover:bg-sky-50 hover:text-sky-800"
+                          onClick={openAddBillingCycleDialog}
+                        >
+                          <Plus className="h-4 w-4" />
+                          Add Billing Cycle
+                        </Button>
+                      ) : null}
+                    </div>
                   </div>
                 </CardContent>
               </Card>

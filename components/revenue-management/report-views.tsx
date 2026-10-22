@@ -194,8 +194,8 @@ export function OverviewView({
         <KpiCard
           label="Outstanding"
           value={outstanding}
-          support="Uncollected on billed invoices"
-          hint="The portal's pending collection total. An invoice cannot reduce this below zero when collected amount exceeds billed amount."
+          support="Unpaid before the due date"
+          hint="Invoices with payment received status No, from the invoice date until the day before the payment due date."
           accent="#C47E09"
           deltaText={deltas.outstanding.text}
           deltaTone={deltas.outstanding.tone}
@@ -204,8 +204,8 @@ export function OverviewView({
           label="Overdue"
           value={overdue ?? 0}
           unavailable={overdue == null}
-          support={overdueNote ?? "Outstanding past the due date"}
-          hint="Outstanding on invoices whose due date is before today. Invoices without a due date are excluded."
+          support={overdueNote ?? "Due today or earlier, and still unpaid"}
+          hint="Invoices with payment received status No whose payment due date is today or earlier."
           accent="#C5363C"
           deltaText={deltas.overdue.text}
           deltaTone={deltas.overdue.tone}
@@ -412,13 +412,13 @@ export function PartyView({
   const rankedChart = namedRows(ranked);
 
   return (
-    <div className="space-y-3">
-      <p className="text-sm text-[#667085]">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <p className="shrink-0 text-sm text-[#667085]">
         {purpose === "customer"
           ? "Customer revenue, collected amount without GST, outstanding balances, and overdue exposure."
           : "Company billed amount, collected amount without GST, outstanding, and overdue amounts."}
       </p>
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+      <div className="grid shrink-0 grid-cols-1 items-start gap-3 xl:grid-cols-2">
         <RankChart
           title={purpose === "customer" ? "Highest outstanding" : "Highest billed revenue"}
           filename={purpose === "customer" ? "customer-outstanding.csv" : "company-revenue.csv"}
@@ -463,9 +463,10 @@ export function PartyView({
           </ChartContainer>
         </ChartCard>
       </div>
-      <article className="rounded-md border border-[#e4e8ee] bg-white p-3 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
-        <h3 className="mb-2 text-sm font-semibold text-[#1c2430]">{title}</h3>
+      <article className="flex min-h-80 flex-1 flex-col rounded-md border border-[#e4e8ee] bg-white p-3 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+        <h3 className="mb-2 shrink-0 text-sm font-semibold text-[#1c2430]">{title}</h3>
         <DataTable
+          className="max-h-none min-h-0 flex-1"
           sort={sort}
           onSort={(id) =>
             setSort((current) =>
@@ -491,7 +492,7 @@ export function PartyView({
             <StatusBadge key="status" value={row.efficiency} />,
           ])}
         />
-        <p className="mt-2 text-[11px] text-[#667085]">Overdue is the outstanding portion past its due date. Average days to pay stays hidden because payment dates are not on these rows.</p>
+        <p className="mt-2 shrink-0 text-[11px] text-[#667085]">Overdue is the outstanding portion past its due date. Average days to pay stays hidden because payment dates are not on these rows.</p>
       </article>
     </div>
   );
@@ -602,20 +603,20 @@ export function ForecastView({
   const series = monthly.map((point) => ({
     month: point.month,
     Projected: point.projected ?? point.billing,
-    "Collected amount without GST": point.payment,
+    "Billed amount without GST": point.billing,
   }));
 
   return (
     <div className="space-y-3">
       <p className="rounded-md border border-[#d5e4f2] bg-[#f4f9fd] px-3 py-2 text-sm text-[#1c2430]">
-        Projected is the invoiced amount for the month, including later months in the financial year. Collected amount without GST is the amount received, shown in the month it was received.
+        Projected is the amount that should be billed for the month, including later months in the financial year. Billed amount without GST is the invoice amount, shown in the month of the invoice. Later months stay at zero until they are billed.
       </p>
       <ChartCard
-        title="Projected vs actual"
-        description="Projected is invoiced. Collected amount without GST is the amount received."
+        title="Projected vs billed"
+        description="Projected is how much should be billed. Billed amount without GST is the invoice amount."
         filename="forecast.csv"
         rows={series}
-        empty={series.every((row) => row.Projected === 0 && row["Collected amount without GST"] === 0)}
+        empty={series.every((row) => row.Projected === 0 && row["Billed amount without GST"] === 0)}
       >
         <ChartContainer config={chartConfig} className="aspect-auto h-72 w-full">
           <BarChart data={series} barGap={2}>
@@ -624,13 +625,13 @@ export function ForecastView({
             <YAxis tickFormatter={(value) => formatInr(Number(value), true)} tickLine={false} axisLine={false} tick={axisTick} width={72} />
             <Tooltip formatter={(value) => formatInr(Number(value))} contentStyle={tooltipStyle} />
             <Legend />
-            <Bar dataKey="Projected" fill="#1F6FB5" radius={[2, 2, 0, 0]} maxBarSize={18} isAnimationActive={false} />
-            <Bar dataKey="Collected amount without GST" fill="#0E8A6A" radius={[2, 2, 0, 0]} maxBarSize={18} isAnimationActive={false} />
+            <Bar dataKey="Projected" fill="#9EC3E2" radius={[2, 2, 0, 0]} maxBarSize={18} isAnimationActive={false} />
+            <Bar dataKey="Billed amount without GST" fill="#1F6FB5" radius={[2, 2, 0, 0]} maxBarSize={18} isAnimationActive={false} />
           </BarChart>
         </ChartContainer>
       </ChartCard>
       <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-        <SecondaryStat label="Total revenue projected" value={projected} hint="All invoiced amounts in the selected financial year." />
+        <SecondaryStat label="Total revenue projected" value={projected} hint="Amount that should be billed in the selected financial year, including later months." />
         <SecondaryStat label="Billed amount without GST" value={billed} hint="Invoice amount before GST in the selected period." />
         <SecondaryStat label="Collected amount without GST" value={collected} hint="Amount collected in the selected period. The period comparison uses this amount." />
       </div>

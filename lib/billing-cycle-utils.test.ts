@@ -48,4 +48,17 @@ describe("OTS billing cycles", () => {
     expect(cycles).toHaveLength(1);
     expect(cycles[0]?.invoiceDate).toEqual(new Date(2026, 3, 1));
   });
+
+  it("creates one cycle for a one-time billing plan with no cycle count", () => {
+    const cycles = generatePurchaseOrderBillingCycles({
+      startDate: new Date(2026, 3, 15),
+      endDate: new Date(2026, 8, 30),
+      totalBillingCycles: 0,
+      planName: "One-Time",
+      type: "START",
+    });
+
+    expect(cycles).toHaveLength(1);
+    expect(cycles[0]?.invoiceDate).toEqual(new Date(2026, 3, 15));
+  });
 });

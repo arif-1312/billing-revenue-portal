@@ -17,6 +17,7 @@ import {
   type AgingSummary,
   type DashboardFilters,
 } from "@/lib/revenue-metrics";
+import { classifyInvoiceReceivable } from "@/lib/invoice-balances";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/rbac";
 
@@ -414,14 +415,6 @@ function getPaymentChartDate(
   );
 }
 
-function splitOutstanding(pending: number, dueDate?: Date | null) {
-  if (pending <= 0) return { pastDue: 0, undated: 0 };
-  if (!dueDate) return { pastDue: 0, undated: pending };
-  return calendarDaysBetween(new Date(), dueDate) >= 1
-    ? { pastDue: pending, undated: 0 }
-    : { pastDue: 0, undated: 0 };
-}
-
 type StoredPayment = {
   receivedDate?: Date | null;
   amount?: number | null;
@@ -673,15 +666,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       collectedThisMonth += collected;
     }
 
-    const pending = Math.max(billed - collected, 0);
-
-    if (cycle.paymentDueDate && pending > 0) {
-      const dueDate = normalizeDate(cycle.paymentDueDate);
-
-      if (dueDate < normalizeDate(new Date())) {
-        totalOverdueAmount += pending;
-      }
-    }
+    totalOverdueAmount += classifyInvoiceReceivable(cycle).overdue;
   }
 
   return {
@@ -713,9 +698,6 @@ export async function getMonthlyBillingData(
 
   const currentFYMonth = fiscalMonthInZone(currentDate, filters);
 
-  const today = filters?.timeZone === "Asia/Kolkata"
-    ? parseKolkataDate(formatKolkataDate(new Date()), true)
-    : normalizeDate(new Date());
   const purchaseOrderFilter = getPurchaseOrderFilter(filters);
 
   const cycles = await prisma.billingCycle.findMany({
@@ -741,8 +723,6 @@ export async function getMonthlyBillingData(
   for (const cycle of cycles) {
     const billed = Number(cycle.invoiceAmount || 0);
 
-    const collected = getEffectiveCollectedAmount(cycle);
-
     const invoiceDate = getInvoiceDate(cycle);
 
     if (invoiceDate) {
@@ -767,15 +747,7 @@ export async function getMonthlyBillingData(
       if (!isFutureMonth && matchesPeriod) {
         data[fyMonth].billing += billed;
 
-        const pending = Math.max(billed - collected, 0);
-
-        if (cycle.paymentDueDate && pending > 0) {
-          const dueDate = normalizeDate(cycle.paymentDueDate);
-
-          if (dueDate < today) {
-            data[fyMonth].overdue += pending;
-          }
-        }
+        data[fyMonth].overdue += classifyInvoiceReceivable(cycle, currentDate).overdue;
       }
     }
     for (const receipt of paymentReceipts(cycle)) {
@@ -846,6 +818,7 @@ export async function getRevenueDashboardSummary(
   });
 
   const asOfDate = getSummaryAsOfDate(year, filters);
+  const referenceToday = new Date();
 
   let totalRevenueProjected = 0;
   let totalRevenueTillNow = 0;
@@ -886,32 +859,28 @@ export async function getRevenueDashboardSummary(
           const collectedTillNow = collectedByReceiptDate(cycle, asOfDate);
 
           collectedAmountTillNow += collectedTillNow;
-          const pending = Math.max(billedAmount - collectedTillNow, 0);
-          pendingCollectionTillNow += pending;
+          const receivable = classifyInvoiceReceivable(cycle, referenceToday);
+          pendingCollectionTillNow += receivable.outstanding;
+          overdueAmountTillNow += receivable.overdue;
 
-          if (collectedTillNow > 0 && pending > 0) {
+          if (collectedTillNow > 0 && receivable.outstanding + receivable.overdue > 0) {
             partialInvoiceCount += 1;
           }
 
-          if (pending > 0) {
-            if (!cycle.paymentDueDate) {
-              aging.missingDueDateAmount += pending;
-              aging.missingDueDateCount += 1;
-            } else {
-              const daysPastDue = calendarDaysBetween(new Date(), cycle.paymentDueDate);
-              if (daysPastDue >= 1) {
-                overdueAmountTillNow += pending;
-                const bucketId = agingBucketForDaysPastDue(daysPastDue);
-                const bucket = aging.buckets.find((item) => item.id === bucketId);
-                if (bucket) {
-                  bucket.amount += pending;
-                  bucket.count += 1;
-                }
-              } else {
-                aging.notYetDueAmount += pending;
-                aging.notYetDueCount += 1;
-              }
+          if (receivable.undated > 0) {
+            aging.missingDueDateAmount += receivable.undated;
+            aging.missingDueDateCount += 1;
+          } else if (receivable.overdue > 0 && cycle.paymentDueDate) {
+            const daysPastDue = calendarDaysBetween(referenceToday, cycle.paymentDueDate);
+            const bucketId = agingBucketForDaysPastDue(daysPastDue);
+            const bucket = aging.buckets.find((item) => item.id === bucketId);
+            if (bucket) {
+              bucket.amount += receivable.overdue;
+              bucket.count += 1;
             }
+          } else if (receivable.notYetDue > 0) {
+            aging.notYetDueAmount += receivable.notYetDue;
+            aging.notYetDueCount += 1;
           }
         }
       }
@@ -1108,8 +1077,9 @@ export async function getBillingStatusDetails(
 
     const billed = Number(cycle.invoiceAmount || 0);
     const collected = getEffectiveCollectedAmount(cycle);
-    const pendingAmount = Math.max(billed - collected, 0);
-    const outstandingParts = splitOutstanding(pendingAmount, cycle.paymentDueDate);
+    const receivable = classifyInvoiceReceivable(cycle);
+    const pendingAmount = receivable.outstanding;
+    const overdueBalance = receivable.overdue;
     const financialYear = filters?.timeZone === "Asia/Kolkata"
       ? (kolkataCalendar(normalizedDate).month < 4
         ? kolkataCalendar(normalizedDate).year - 1
@@ -1142,7 +1112,7 @@ export async function getBillingStatusDetails(
       serviceType: cycle.purchaseOrder?.ServiceType?.name || "-",
       billed: roundMoney(billed),
       collected: roundMoney(collected),
-      outstanding: roundMoney(pendingAmount),
+      outstanding: roundMoney(pendingAmount + overdueBalance),
       status: cycle.purchaseOrder?.status || "-",
     });
     const existing = groupedRecords.get(groupKey);
@@ -1151,8 +1121,8 @@ export async function getBillingStatusDetails(
       existing.amount += billed;
       existing.collectedAmount += collected;
       existing.overdueAmount += pendingAmount;
-      existing.pastDueAmount += outstandingParts.pastDue;
-      existing.undatedOutstanding += outstandingParts.undated;
+      existing.pastDueAmount += receivable.overdue;
+      existing.undatedOutstanding += receivable.undated;
       continue;
     }
 
@@ -1171,8 +1141,8 @@ export async function getBillingStatusDetails(
       contractDuration,
       period,
       status: cycle.purchaseOrder?.status || "-",
-      pastDueAmount: outstandingParts.pastDue,
-      undatedOutstanding: outstandingParts.undated,
+      pastDueAmount: receivable.overdue,
+      undatedOutstanding: receivable.undated,
     });
   }
 
@@ -1280,7 +1250,7 @@ export async function getRevenueDetailsByMonth(
           ? receiptsInMonth.reduce((total, receipt) => total + receipt.amount, 0)
           : getEffectiveCollectedAmount(cycle);
 
-      const pendingAmount = billedAmount - getEffectiveCollectedAmount(cycle);
+      const pendingAmount = classifyInvoiceReceivable(cycle).outstanding;
 
       const seriesDate =
         params.series === "payment"
