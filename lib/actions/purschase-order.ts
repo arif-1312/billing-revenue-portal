@@ -8,6 +8,12 @@ import { PurchaseOrder } from "@/types";
 import { PaymentReceived, Prisma } from "@prisma/client";
 import { generatePurchaseOrderBillingCycles } from "../billing-cycle-utils";
 import { requirePermission } from "@/lib/rbac";
+import type { PurchaseOrderSnapshot } from "@/lib/notifications/model";
+import {
+  publishPurchaseOrderChange,
+  safeNotify,
+} from "@/lib/notifications/publish";
+import { loadPurchaseOrderSnapshots } from "@/lib/notifications/store";
 
 // ================= DATE HELPER =================
 const toLocalDate = (date?: string | Date | null): Date | undefined => {
@@ -256,6 +262,8 @@ export async function createPurchaseOrder(data: PurchaseOrder) {
       );
     }
 
+    await safeNotify(() => publishPurchaseOrderChange(null, created.id));
+
     return { success: true, message: "Purchase Order created successfully" };
   } catch (error) {
     return { success: false, message: formatError(error) };
@@ -313,6 +321,15 @@ export async function updatePurchaseOrder(
 
     const validated = purchaseOrderSchema.parse(data);
     const billingPlanId = emptyToUndefined(validated.billingPlanId);
+    let previous: PurchaseOrderSnapshot | null = null;
+    let previousLoaded = false;
+    try {
+      const snapshots = await loadPurchaseOrderSnapshots(prisma, [id]);
+      previous = snapshots[0] ?? null;
+      previousLoaded = true;
+    } catch {
+      previousLoaded = false;
+    }
 
     const purchaseOrderData: Prisma.PurchaseOrderUncheckedUpdateInput = {
       customerPONumber: emptyToUndefined(validated.customerPONumber) ?? null,
@@ -350,6 +367,10 @@ export async function updatePurchaseOrder(
         validated.billingCycles?.map((bc) => billingCycleCreateData(bc)) ?? [],
       );
     });
+
+    if (previousLoaded) {
+      await safeNotify(() => publishPurchaseOrderChange(previous, id));
+    }
 
     return { success: true, message: "Purchase Order updated successfully" };
   } catch (error) {

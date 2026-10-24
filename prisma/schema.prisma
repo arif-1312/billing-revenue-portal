@@ -71,6 +71,8 @@ model User {
   updatedAt DateTime @updatedAt
   roleId    String   @db.Uuid
   role      Role     @relation(fields: [roleId], references: [id])
+
+  notificationReceipts NotificationReceipt[]
 }
 
 model Module {
@@ -337,6 +339,85 @@ model Configuration {
   favicon  String?
   email    String?
   password String?
+}
+
+enum NotificationCategory {
+  PAYMENT
+  INVOICE
+  PURCHASE_ORDER
+  CONTRACT
+  SYSTEM
+}
+
+enum NotificationPriority {
+  CRITICAL
+  HIGH
+  NORMAL
+  LOW
+}
+
+enum NotificationKind {
+  STATE
+  EVENT
+}
+
+/// Phase 1 writes NOT_APPLICABLE. Phase 2 can queue PENDING rows without a schema change.
+enum NotificationEmailStatus {
+  NOT_APPLICABLE
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+/// In-app billing and system alerts. Email columns are stored for phase 2 and are not sent in phase 1.
+model Notification {
+  id               String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  dedupeKey        String                  @unique
+  category         NotificationCategory
+  eventType        String
+  priority         NotificationPriority
+  kind             NotificationKind
+  title            String
+  body             String
+  customerName     String?
+  companyName      String?
+  invoiceNumber    String?
+  poNumber         String?
+  entityType       String
+  entityId         String
+  href             String?
+  metadata         Json?
+  emailEligible    Boolean                 @default(false)
+  emailStatus      NotificationEmailStatus @default(NOT_APPLICABLE)
+  emailTemplateKey String?
+  emailSentAt      DateTime?
+  occurredAt       DateTime                @default(now())
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+  receipts         NotificationReceipt[]
+
+  @@index([category, occurredAt])
+  @@index([entityType, entityId])
+  @@index([occurredAt])
+  @@index([kind])
+  @@index([emailStatus])
+}
+
+model NotificationReceipt {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  notificationId String    @db.Uuid
+  userId         String    @db.Uuid
+  readAt         DateTime?
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, userId])
+  @@index([userId, deletedAt, readAt])
+  @@index([userId, createdAt])
 }
 
 enum AuditAction {

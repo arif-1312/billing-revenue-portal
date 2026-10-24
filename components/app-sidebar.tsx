@@ -6,6 +6,7 @@ import {
   IconBuilding,
   IconContract,
   IconHome,
+  IconBell,
   IconHistory,
   IconPackage,
   IconReceipt,
@@ -44,6 +45,11 @@ const data = {
       title: "Home",
       url: "/admin/home",
       icon: IconHome,
+    },
+    {
+      title: "Notifications",
+      url: "/admin/notifications",
+      icon: IconBell,
     },
 
     {
@@ -168,7 +174,7 @@ function filterNav<
       };
     })
     .filter((item) => {
-      if (item.url === "/admin/home") {
+      if (item.url === "/admin/home" || item.url === "/admin/notifications") {
         return true;
       }
 

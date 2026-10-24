@@ -6,6 +6,8 @@ import { prisma } from "../prisma";
 import { customerSchema } from "../validators";
 import { formatError } from "../utils";
 import { requirePermission, type PermissionRule } from "@/lib/rbac";
+import { fingerprint } from "@/lib/notifications/model";
+import { safePublishSystem } from "@/lib/notifications/publish";
 
 const customerReaders: PermissionRule[] = [
   { route: "/admin/revenue", action: "view" },
@@ -53,6 +55,18 @@ function normalizeCustomerPayload(customer: Customer) {
   } as const;
 }
 
+function customerLabel(customer: {
+  companyName?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+}) {
+  return (
+    customer.companyName?.trim() ||
+    [customer.firstName, customer.lastName].filter(Boolean).join(" ") ||
+    "A customer"
+  );
+}
+
 export async function getCustomers() {
   const access = await requirePermission("/admin/customer", "view", customerReaders);
   if (!access.ok) return [];
@@ -75,8 +89,25 @@ export async function createCustomer(data: Customer) {
     const customer = customerSchema.parse(data)
     const payload = normalizeCustomerPayload(customer)
 
-    await prisma.customer.create({
-      data: payload
+    const created = await prisma.customer.create({
+      data: payload,
+      select: { id: true },
+    })
+
+    await safePublishSystem({
+      eventType: "SYSTEM_RECORD_CHANGE",
+      entityType: "Customer",
+      entityId: created.id,
+      title: "Customer created",
+      body: `${customerLabel(payload)} was added.`,
+      href: "/admin/customer",
+      customerName: customerLabel(payload),
+      fingerprint: fingerprint([
+        "created",
+        payload.customerCode,
+        payload.companyName,
+        payload.email,
+      ]),
     })
 
     revalidatePath("/admin/customer");
@@ -143,6 +174,26 @@ export async function updateCustomer(data: Customer, id: string) {
       data: payload
     })
 
+    await safePublishSystem({
+      eventType: "SYSTEM_RECORD_CHANGE",
+      entityType: "Customer",
+      entityId: id,
+      title: "Customer updated",
+      body: `${customerLabel(payload)} was updated.`,
+      href: "/admin/customer",
+      customerName: customerLabel(payload),
+      fingerprint: fingerprint([
+        "updated",
+        payload.companyName,
+        payload.firstName,
+        payload.lastName,
+        payload.email,
+        payload.phone,
+        payload.status,
+        payload.gstNumber,
+      ]),
+    })
+
     revalidatePath("/admin/customer");
     revalidatePath("/admin/customer/create");
     revalidatePath(`/admin/customer/edit/${id}`);
@@ -171,6 +222,9 @@ export async function deleteCustomer(id: string) {
       where: { id },
       select: {
         id: true,
+        companyName: true,
+        firstName: true,
+        lastName: true,
         _count: {
           select: {
             purchaseOrders: true
@@ -195,6 +249,18 @@ export async function deleteCustomer(id: string) {
 
     await prisma.customer.delete({
       where: { id }
+    })
+
+    await safePublishSystem({
+      eventType: "SYSTEM_RECORD_CHANGE",
+      entityType: "Customer",
+      entityId: customer.id,
+      title: "Customer removed",
+      body: `${customerLabel(customer)} was removed.`,
+      href: "/admin/customer",
+      customerName: customerLabel(customer),
+      fingerprint: "deleted",
+      priority: "HIGH",
     })
 
     revalidatePath("/admin/customer");

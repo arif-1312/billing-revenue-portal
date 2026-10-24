@@ -21,6 +21,12 @@ import {
   type RevenueImportRowError,
 } from "@/lib/revenue-excel";
 import { formatError } from "@/lib/utils";
+import type { PurchaseOrderSnapshot } from "@/lib/notifications/model";
+import {
+  publishPurchaseOrderChanges,
+  safeNotify,
+} from "@/lib/notifications/publish";
+import { loadPurchaseOrderSnapshots } from "@/lib/notifications/store";
 
 const REVENUE_ROUTE = "/admin/revenue";
 const MAX_FILE_BYTES = 1024 * 1024;
@@ -317,13 +323,32 @@ export async function commitRevenueImport(
           throw new ImportRejected(assessed);
         }
 
+        const existingIds = [
+          ...new Set(
+            assessed.inserts.flatMap((row) =>
+              row.purchaseOrderId ? [row.purchaseOrderId] : [],
+            ),
+          ),
+        ];
+        let before: PurchaseOrderSnapshot[] | null = [];
+        try {
+          before = await loadPurchaseOrderSnapshots(tx, existingIds);
+        } catch {
+          before = null;
+        }
+
         const saved = await persistRevenueImport(tx, assessed);
-        return { saved, skippedRows: assessed.errors.length };
+        return { saved, skippedRows: assessed.errors.length, before };
       },
       { timeout: 60000 },
     );
 
-    const { saved, skippedRows } = importedCount;
+    const { saved, skippedRows, before } = importedCount;
+    if (before) {
+      await safeNotify(() =>
+        publishPurchaseOrderChanges(before, saved.affectedPurchaseOrderIds),
+      );
+    }
 
     revalidatePath("/admin/revenue");
 

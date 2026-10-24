@@ -18,6 +18,7 @@ import {
 import { RootState } from "@/store/store";
 import { userLogoutRequest } from "@/store/actions/user-actions";
 import { logoutUser } from "@/lib/actions/users";
+import { NotificationBell } from "@/components/notifications/notification-bell";
 
 type HeaderUser = {
   name?: string;
@@ -54,6 +55,8 @@ export function SiteHeader() {
             Manage billing operations, master data, and revenue workflows.
           </p>
         </div>
+
+        <NotificationBell />
 
         {isMounted ? (
           <DropdownMenu modal={false}>

@@ -23,6 +23,7 @@ async function main() {
         { name: "Revenue", route: "/admin/revenue" },
         { name: "Configuration", route: "/admin/configuration" },
         { name: "Activity Log", route: "/admin/activity-log" },
+        { name: "Notifications", route: "/admin/notifications" },
     ];
 
     const createdModules = [];

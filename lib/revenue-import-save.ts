@@ -283,11 +283,14 @@ export async function persistRevenueImport(
     };
   }
 
+  const createdIds: string[] = [];
+
   for (const [key, draft] of drafts) {
     const created = await db.purchaseOrder.create({
       data: purchaseOrderData(draft),
     });
     purchaseOrderIds.set(key, created.id);
+    createdIds.push(created.id);
   }
 
   for (const [id, draft] of purchaseOrderUpdates) {
@@ -356,10 +359,21 @@ export async function persistRevenueImport(
     }
   }
 
+  const affectedPurchaseOrderIds = [
+    ...new Set([
+      ...createdIds,
+      ...purchaseOrderUpdates.keys(),
+      ...assessed.inserts.flatMap((row) =>
+        row.purchaseOrderId ? [row.purchaseOrderId] : [],
+      ),
+    ]),
+  ];
+
   return {
     billingCyclesCreated: assessed.inserts.filter((row) => !row.billingCycleId).length,
     billingCyclesUpdated: assessed.inserts.filter((row) => row.billingCycleId).length,
     purchaseOrdersCreated: drafts.size,
     purchaseOrdersUpdated: purchaseOrderUpdates.size,
+    affectedPurchaseOrderIds,
   };
 }

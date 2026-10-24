@@ -16,6 +16,8 @@ import bcrypt from "bcrypt"
 import { hashPassword } from "@/lib/password";
 import { requirePermission } from "@/lib/rbac";
 import { recordSecurityEvent } from "@/lib/security-event";
+import { fingerprint } from "@/lib/notifications/model";
+import { safePublishSystem } from "@/lib/notifications/publish";
 
 const userPublicSelect = {
   id: true,
@@ -127,11 +129,23 @@ export async function createUser(data: User) {
 
     const hashedPassword = await hashPassword(password);
 
-    await prisma.user.create({
+    const created = await prisma.user.create({
       data: {
         ...payload,
         password: hashedPassword,
-      }
+      },
+      select: { id: true },
+    })
+
+    const name = [payload.firstName, payload.lastName].filter(Boolean).join(" ")
+    await safePublishSystem({
+      eventType: "SYSTEM_USER_ACTIVITY",
+      entityType: "User",
+      entityId: created.id,
+      title: "User account created",
+      body: `${name} (${payload.email}) was added as a user.`,
+      href: "/admin/users",
+      fingerprint: fingerprint(["created", payload.email, payload.roleId]),
     })
 
     return {
@@ -197,6 +211,25 @@ export async function updateUser(data: User, id: string) {
       data: payload
     })
 
+    const name = [payload.firstName, payload.lastName].filter(Boolean).join(" ")
+    await safePublishSystem({
+      eventType: "SYSTEM_USER_ACTIVITY",
+      entityType: "User",
+      entityId: id,
+      title: "User account updated",
+      body: `${name} (${payload.email}) was updated.`,
+      href: "/admin/users",
+      fingerprint: fingerprint([
+        "updated",
+        payload.username,
+        payload.email,
+        payload.firstName,
+        payload.lastName,
+        payload.status,
+        payload.roleId,
+      ]),
+    })
+
     return {
       success: true,
       message: "User updated successfully"
@@ -217,9 +250,28 @@ export async function deleteUser(id: string) {
       return { success: false, message: access.message };
     }
 
+    const existing = await prisma.user.findUnique({
+      where: { id },
+      select: { id: true, firstName: true, lastName: true, email: true },
+    })
+
     await prisma.user.delete({
       where: { id }
     })
+
+    if (existing) {
+      const name = [existing.firstName, existing.lastName].filter(Boolean).join(" ")
+      await safePublishSystem({
+        eventType: "SYSTEM_USER_ACTIVITY",
+        entityType: "User",
+        entityId: existing.id,
+        title: "User account removed",
+        body: `${name} (${existing.email}) was removed.`,
+        href: "/admin/users",
+        fingerprint: "deleted",
+        priority: "HIGH",
+      })
+    }
 
     return {
       success: true,

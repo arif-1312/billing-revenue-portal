@@ -8,6 +8,8 @@ import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { randomUUID } from "crypto";
 import { requirePermission } from "@/lib/rbac";
+import { fingerprint } from "@/lib/notifications/model";
+import { safePublishSystem } from "@/lib/notifications/publish";
 
 const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
 const ALLOWED_UPLOADS = new Map([
@@ -163,16 +165,28 @@ export async function createOrUpdateConfiguration(data: Configuration) {
 
     const existing = await prisma.configuration.findFirst();
 
-    if (existing) {
-      await prisma.configuration.update({
+    const saved = existing
+      ? await prisma.configuration.update({
         where: { id: existing.id },
         data: formattedData,
-      });
-    } else {
-      await prisma.configuration.create({
+      })
+      : await prisma.configuration.create({
         data: formattedData,
       });
-    }
+
+    await safePublishSystem({
+      eventType: "SYSTEM_UPDATE",
+      entityType: "Configuration",
+      entityId: saved.id,
+      title: "Portal settings updated",
+      body: "Organisation name or branding settings were changed.",
+      href: "/admin/configuration",
+      fingerprint: fingerprint([
+        formattedData.name,
+        formattedData.logo,
+        formattedData.favicon,
+      ]),
+    });
 
     return {
       success: true,

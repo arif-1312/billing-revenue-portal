@@ -5,6 +5,31 @@ import { prisma } from "../prisma";
 import { roleSchema } from "../validators";
 import { formatError } from "../utils";
 import { requirePermission } from "@/lib/rbac";
+import { fingerprint } from "@/lib/notifications/model";
+import { safePublishSystem } from "@/lib/notifications/publish";
+
+function permissionFingerprint(
+  modules: Array<{
+    moduleId?: string;
+    canView?: boolean;
+    canCreate?: boolean;
+    canEdit?: boolean;
+    canDelete?: boolean;
+  }> | undefined,
+) {
+  return (modules ?? [])
+    .map((module) =>
+      [
+        module.moduleId,
+        module.canView,
+        module.canCreate,
+        module.canEdit,
+        module.canDelete,
+      ].join(":"),
+    )
+    .sort()
+    .join(",");
+}
 
 function normalizeRolePayload(role: Role) {
   const name = role.name?.trim();
@@ -48,7 +73,7 @@ export async function createRole(data: any) {
     const role = roleSchema.parse(data)
     const payload = normalizeRolePayload(role)
 
-    await prisma.role.create({
+    const created = await prisma.role.create({
       data: {
         ...payload,
         roleModules: {
@@ -61,6 +86,20 @@ export async function createRole(data: any) {
           })),
         },
       },
+    });
+
+    await safePublishSystem({
+      eventType: "SYSTEM_USER_ACTIVITY",
+      entityType: "Role",
+      entityId: created.id,
+      title: "Role created",
+      body: `Role ${payload.name} was created.`,
+      href: "/admin/roles",
+      fingerprint: fingerprint([
+        "created",
+        payload.name,
+        permissionFingerprint(data.modules),
+      ]),
     });
 
     return {
@@ -139,6 +178,21 @@ export async function updateRole(data: any, id: string) {
       },
     });
 
+    await safePublishSystem({
+      eventType: "SYSTEM_USER_ACTIVITY",
+      entityType: "Role",
+      entityId: id,
+      title: "Role permissions updated",
+      body: `Role ${payload.name} permissions were updated.`,
+      href: "/admin/roles",
+      fingerprint: fingerprint([
+        "updated",
+        payload.name,
+        payload.status,
+        permissionFingerprint(data.modules),
+      ]),
+    });
+
     return {
       success: true,
       message: "Role updated successfully"
@@ -159,9 +213,27 @@ export async function deleteRole(id: any) {
       return { success: false, message: access.message };
     }
 
+    const existing = await prisma.role.findUnique({
+      where: { id },
+      select: { id: true, name: true },
+    });
+
     await prisma.role.delete({
       where: { id }
     })
+
+    if (existing) {
+      await safePublishSystem({
+        eventType: "SYSTEM_USER_ACTIVITY",
+        entityType: "Role",
+        entityId: existing.id,
+        title: "Role removed",
+        body: `Role ${existing.name} was removed.`,
+        href: "/admin/roles",
+        fingerprint: "deleted",
+        priority: "HIGH",
+      });
+    }
 
     return {
       success: true,

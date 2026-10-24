@@ -5,6 +5,8 @@ import { prisma } from "../prisma";
 import { companySchema } from "../validators";
 import { formatError, incrementCode } from "../utils";
 import { requirePermission, type PermissionRule } from "@/lib/rbac";
+import { fingerprint } from "@/lib/notifications/model";
+import { safePublishSystem } from "@/lib/notifications/publish";
 
 const companyReaders: PermissionRule[] = [
   { route: "/admin/revenue", action: "view" },
@@ -67,11 +69,23 @@ export async function createCompany(data: Company) {
     const company = companySchema.parse(data)
     const payload = normalizeCompanyPayload(company)
 
-    await prisma.company.create({
+    const created = await prisma.company.create({
       data: {
         ...payload,
         companyCode: companyCode,
-      }
+      },
+      select: { id: true },
+    })
+
+    await safePublishSystem({
+      eventType: "SYSTEM_RECORD_CHANGE",
+      entityType: "Company",
+      entityId: created.id,
+      title: "Company created",
+      body: `${payload.name} was added.`,
+      href: "/admin/company",
+      companyName: payload.name,
+      fingerprint: fingerprint(["created", companyCode, payload.name]),
     })
 
     return {
@@ -135,6 +149,24 @@ export async function updateCompany(data: Company, id: string) {
       data: payload
     })
 
+    await safePublishSystem({
+      eventType: "SYSTEM_RECORD_CHANGE",
+      entityType: "Company",
+      entityId: id,
+      title: "Company updated",
+      body: `${payload.name} was updated.`,
+      href: "/admin/company",
+      companyName: payload.name,
+      fingerprint: fingerprint([
+        "updated",
+        payload.name,
+        payload.email,
+        payload.phone,
+        payload.status,
+        payload.gstNumber,
+      ]),
+    })
+
     return {
       success: true,
       message: "company updated successfully"
@@ -155,9 +187,28 @@ export async function deleteCompany(id: any) {
       return { success: false, message: access.message };
     }
 
+    const existing = await prisma.company.findUnique({
+      where: { id },
+      select: { id: true, name: true },
+    })
+
     await prisma.company.delete({
       where: { id }
     })
+
+    if (existing) {
+      await safePublishSystem({
+        eventType: "SYSTEM_RECORD_CHANGE",
+        entityType: "Company",
+        entityId: existing.id,
+        title: "Company removed",
+        body: `${existing.name} was removed.`,
+        href: "/admin/company",
+        companyName: existing.name,
+        fingerprint: "deleted",
+        priority: "HIGH",
+      })
+    }
 
     return {
       success: true,

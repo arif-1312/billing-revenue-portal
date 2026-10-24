@@ -2,6 +2,12 @@ import { AsyncLocalStorage } from "node:async_hooks"
 
 import { AuditAction, Prisma, PrismaClient } from "@prisma/client"
 
+const UNAUDITED_MODELS = new Set([
+  "AuditLog",
+  "Notification",
+  "NotificationReceipt",
+])
+
 const WRITE_OPERATIONS = new Set([
   "create",
   "createMany",
@@ -110,7 +116,7 @@ export async function auditQuery({
   args: unknown
   query: (args: unknown) => Promise<unknown>
 }) {
-  if (!model || model === "AuditLog" || !WRITE_OPERATIONS.has(operation)) {
+  if (!model || UNAUDITED_MODELS.has(model) || !WRITE_OPERATIONS.has(operation)) {
     return query(args)
   }
 
