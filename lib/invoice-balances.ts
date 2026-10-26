@@ -1,15 +1,16 @@
 import { calendarDaysBetween } from "@/lib/fiscal-year";
+import { addMoney, money, moneyToNumber, subtractMoney } from "@/lib/money";
 
 type Receipt = {
-  amount?: number | null;
+  amount?: unknown;
 };
 
 export type InvoiceReceivableInput = {
   invoiceDate?: Date | string | null;
   paymentDueDate?: Date | string | null;
   paymentReceived?: string | null;
-  invoiceAmount?: number | null;
-  collectedAmount?: number | null;
+  invoiceAmount?: unknown;
+  collectedAmount?: unknown;
   payments?: Receipt[] | null;
 };
 
@@ -36,10 +37,10 @@ function asDate(value?: Date | string | null) {
 function collectedAgainstInvoice(invoice: InvoiceReceivableInput) {
   const payments = invoice.payments ?? [];
   if (payments.length > 0) {
-    return payments.reduce((total, payment) => total + Number(payment.amount || 0), 0);
+    return payments.reduce((total, payment) => addMoney(total, payment.amount), money(0));
   }
 
-  return Number(invoice.collectedAmount || 0);
+  return money(invoice.collectedAmount);
 }
 
 /**
@@ -55,7 +56,8 @@ export function classifyInvoiceReceivable(
   if (!invoiceDate || calendarDaysBetween(today, invoiceDate) < 0) return emptyReceivable;
   if (invoice.paymentReceived !== "NO") return emptyReceivable;
 
-  const balance = Math.max(Number(invoice.invoiceAmount || 0) - collectedAgainstInvoice(invoice), 0);
+  const remaining = subtractMoney(invoice.invoiceAmount, collectedAgainstInvoice(invoice));
+  const balance = moneyToNumber(remaining.isNegative() ? 0 : remaining);
   if (balance <= 0) return emptyReceivable;
 
   const dueDate = asDate(invoice.paymentDueDate);

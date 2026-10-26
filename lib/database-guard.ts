@@ -1,4 +1,20 @@
+import { assertAppEnv } from "./environment"
+
 const LOCAL_HOST = /@(localhost|127\.0\.0\.1)(?::\d+)?\//;
+
+export function databasePoolOptions(connectionString: string) {
+  const appEnv = assertAppEnv()
+  const local = LOCAL_HOST.test(connectionString)
+
+  if (appEnv === "production" && !local) {
+    return {
+      connectionString,
+      ssl: { rejectUnauthorized: true as const },
+    }
+  }
+
+  return { connectionString }
+}
 
 export function assertSafeDatabaseTarget(connectionString: string | undefined) {
   if (!connectionString) {

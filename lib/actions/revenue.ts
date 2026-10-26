@@ -6,6 +6,7 @@ import {
   getFinancialYearRangeToDate,
 } from "@/lib/date-utils";
 import { prisma } from "@/lib/prisma";
+import { moneyToNumber } from "@/lib/money";
 import { requirePermission, type PermissionRule } from "@/lib/rbac";
 
 const revenueReaders: PermissionRule[] = [
@@ -26,12 +27,12 @@ function getInvoiceDate(cycle: {
 }
 
 function getEffectiveCollectedAmount(cycle: {
-  collectedAmount?: number | null;
-  invoiceAmount?: number | null;
+  collectedAmount?: unknown;
+  invoiceAmount?: unknown;
   paymentReceived?: PaymentReceived | null;
 }) {
-  const billed = Number(cycle.invoiceAmount ?? 0);
-  const collected = Number(cycle.collectedAmount ?? 0);
+  const billed = moneyToNumber(cycle.invoiceAmount);
+  const collected = moneyToNumber(cycle.collectedAmount);
 
   if (
     cycle.paymentReceived === PaymentReceived.YES &&
@@ -247,7 +248,7 @@ export async function getRevenueByCustomer(
 
     if (!map.has(cid)) map.set(cid, { billed: 0, collected: 0 });
     const existing = map.get(cid)!;
-    existing.billed += Number(item.invoiceAmount ?? 0);
+    existing.billed += moneyToNumber(item.invoiceAmount);
     existing.collected += getEffectiveCollectedAmount(item);
   });
 
@@ -265,9 +266,15 @@ export async function getUpcomingPayments() {
   if (!access.ok) return [];
 
   const today = new Date();
-  return prisma.billingCycle.findMany({
+  const cycles = await prisma.billingCycle.findMany({
     where: { paymentDueDate: { gt: today } },
     select: { invoiceNumber: true, paymentDueDate: true, invoiceAmount: true },
     orderBy: { paymentDueDate: "asc" },
   });
+
+  return cycles.map((cycle) => ({
+    invoiceNumber: cycle.invoiceNumber,
+    paymentDueDate: cycle.paymentDueDate,
+    invoiceAmount: moneyToNumber(cycle.invoiceAmount),
+  }));
 }

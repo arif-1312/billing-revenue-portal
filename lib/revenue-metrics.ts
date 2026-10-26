@@ -1,3 +1,5 @@
+import { moneyToNumber } from "@/lib/money";
+
 export type DashboardFilters = {
   company: string;
   customer: string;
@@ -100,8 +102,7 @@ export const AGING_BUCKETS: Array<{ id: AgingBucketId; label: string }> = [
 ];
 
 export function toNumber(value: number | string | null | undefined) {
-  const numeric = Number(value ?? 0);
-  return Number.isFinite(numeric) ? numeric : 0;
+  return moneyToNumber(value);
 }
 
 export function formatInr(value: number, compact = false) {

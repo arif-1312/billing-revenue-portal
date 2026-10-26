@@ -94,20 +94,33 @@ export const userSchema = z.object({
   updatedAt: z.date().nullable().optional(),
 });
 
+export const PASSWORD_POLICY =
+  "Use at least 12 characters and three of these four kinds: lowercase letters, uppercase letters, numbers, and symbols.";
+
+export function passwordMeetsPolicy(password: string) {
+  if (password.trim().length < 12) return false;
+
+  const classes = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].filter((pattern) =>
+    pattern.test(password),
+  ).length;
+
+  return classes >= 3;
+}
+
+const passwordPolicy = z
+  .string()
+  .refine(passwordMeetsPolicy, { message: PASSWORD_POLICY });
+
 export const createUserSchema = userSchema.extend({
-  password: z
-    .string()
-    .min(12, "Password must be at least 12 characters")
-    .optional(),
+  password: passwordPolicy.optional(),
 });
 
 export const changePasswordSchema = z
   .object({
     currentPassword: z.string().trim().min(1, "Current password is required"),
-    newPassword: z
-      .string()
-      .trim()
-      .min(12, "New password must be at least 12 characters"),
+    newPassword: z.string().trim().refine(passwordMeetsPolicy, {
+      message: PASSWORD_POLICY,
+    }),
     confirmPassword: z.string().trim().min(1, "Confirm password is required"),
   })
   .refine((data) => data.newPassword === data.confirmPassword, {
@@ -139,6 +152,7 @@ export const billingCycleSchema = z.object({
         amount: moneyWithDefaultSchema,
       }),
     )
+    .max(60)
     .optional()
     .default([]),
 
@@ -197,7 +211,7 @@ export const purchaseOrderSchema = z.object({
 
   poOwner: optionalTrimmedString,
 
-  billingCycles: z.array(billingCycleSchema).optional().default([]),
+  billingCycles: z.array(billingCycleSchema).max(240).optional().default([]),
 
   purchaseOrderType: purchaseOrderTypeEnum,
 
@@ -214,7 +228,7 @@ export const purchaseOrderSchema = z.object({
 
   createdAt: z.date().nullable().optional(),
 
-  updatedAt: z.date().nullable().optional(),
+  updatedAt: z.union([z.date(), z.string()]).nullable().optional(),
 });
 
 /* ---------------- SERVICE TYPE ---------------- */

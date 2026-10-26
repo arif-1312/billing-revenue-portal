@@ -29,10 +29,14 @@ const email = "person@example.com";
 function permissionUser({
   roleName = "Finance",
   status = "ACTIVE",
+  roleStatus = "ACTIVE",
+  moduleStatus = "ACTIVE",
   canDelete = false,
 }: {
   roleName?: string;
   status?: "ACTIVE" | "INACTIVE";
+  roleStatus?: "ACTIVE" | "INACTIVE";
+  moduleStatus?: "ACTIVE" | "INACTIVE";
   canDelete?: boolean;
 } = {}) {
   return {
@@ -40,13 +44,15 @@ function permissionUser({
     status,
     role: {
       name: roleName,
+      status: roleStatus,
+      isSystem: false,
       roleModules: [
         {
           canView: true,
           canCreate: false,
           canEdit: false,
           canDelete,
-          module: { route: "/admin/customer" },
+          module: { route: "/admin/customer", status: moduleStatus },
         },
       ],
     },
@@ -98,18 +104,31 @@ describe("permission checks", () => {
     });
   });
 
-  it("allows only the exact admin role to bypass module permissions", async () => {
+  it("does not grant access because a role is named Admin", async () => {
     findUnique.mockResolvedValue(permissionUser({ roleName: "Admin", canDelete: false }));
-    await expect(canAccess("/admin/customer", "delete")).resolves.toBe(true);
+    await expect(canAccess("/admin/customer", "delete")).resolves.toBe(false);
 
-    findUnique.mockResolvedValue(
-      permissionUser({ roleName: "Finance Admin", canDelete: false }),
-    );
+    findUnique.mockResolvedValue(permissionUser({ roleName: "admin", canDelete: false }));
     await expect(canAccess("/admin/customer", "delete")).resolves.toBe(false);
 
     findUnique.mockResolvedValue(permissionUser({ canDelete: true }));
     await expect(requirePermission("/admin/customer", "delete")).resolves.toEqual({
       ok: true,
+    });
+  });
+
+  it("denies a disabled role and a disabled module", async () => {
+    findUnique.mockResolvedValue(
+      permissionUser({ roleStatus: "INACTIVE", canDelete: true }),
+    );
+    await expect(canAccess("/admin/customer", "view")).resolves.toBe(false);
+
+    findUnique.mockResolvedValue(
+      permissionUser({ moduleStatus: "INACTIVE", canDelete: true }),
+    );
+    await expect(requirePermission("/admin/customer", "delete")).resolves.toEqual({
+      ok: false,
+      message: "Unauthorized",
     });
   });
 });

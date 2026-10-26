@@ -1,4 +1,5 @@
 import "@/lib/load-env"
+import { assertAppEnv, assertProductionSeedPassword } from "@/lib/environment"
 import { hashPassword } from "@/lib/password"
 import { prisma } from "@/lib/prisma"
 import { Status } from "@prisma/client"
@@ -44,26 +45,18 @@ async function main() {
 
     console.log("Modules seeded");
 
-    const isProduction = process.env.APP_ENV === "production";
-    const username =
-        process.env.SEED_ADMIN_USERNAME?.trim() ||
-        (isProduction ? "" : "admin");
-    const plainPassword =
-        process.env.SEED_ADMIN_PASSWORD?.trim() ||
-        (isProduction ? "" : "admin123");
-    const email =
-        process.env.SEED_ADMIN_EMAIL?.trim() ||
-        (isProduction ? "" : "admin@example.com");
+    const appEnv = assertAppEnv();
+    const isProduction = appEnv === "production";
+    const username = process.env.SEED_ADMIN_USERNAME?.trim() || "";
+    const plainPassword = assertProductionSeedPassword(
+        process.env.SEED_ADMIN_PASSWORD,
+        appEnv,
+    );
+    const email = process.env.SEED_ADMIN_EMAIL?.trim() || "";
 
-    if (!username || !plainPassword || !email) {
+    if (!username || !email) {
         throw new Error(
             "Set SEED_ADMIN_USERNAME, SEED_ADMIN_PASSWORD, and SEED_ADMIN_EMAIL before seeding this instance.",
-        );
-    }
-
-    if (isProduction && plainPassword === "admin123") {
-        throw new Error(
-            "Production seed cannot use the development password.",
         );
     }
 
@@ -71,11 +64,12 @@ async function main() {
 
     const adminRole = await prisma.role.upsert({
         where: { name: "Admin" },
-        update: {},
+        update: { isSystem: true },
         create: {
             name: "Admin",
             remark: "System Administrator",
-            status: Status.ACTIVE
+            status: Status.ACTIVE,
+            isSystem: true,
         }
     })
 

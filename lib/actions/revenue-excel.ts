@@ -20,6 +20,7 @@ import {
   type RevenueImportPreviewRow,
   type RevenueImportRowError,
 } from "@/lib/revenue-excel";
+import { importRowBlockReason } from "@/lib/import-guard";
 import { formatError } from "@/lib/utils";
 import type { PurchaseOrderSnapshot } from "@/lib/notifications/model";
 import {
@@ -147,8 +148,45 @@ function toImportResult(
   };
 }
 
+async function authorizeImportMutations(assessed: AssessedRevenueImport) {
+  const updates = assessed.inserts.filter(
+    (row) => row.purchaseOrderId || row.billingCycleId,
+  );
+  const paymentReplacements = assessed.inserts.filter((row) => row.billingCycleId);
+  const blocked = new Map<number, string>();
+
+  const edit = updates.length
+    ? await requirePermission(REVENUE_ROUTE, "edit")
+    : { ok: true };
+  const remove = paymentReplacements.length
+    ? await requirePermission(REVENUE_ROUTE, "delete")
+    : { ok: true };
+  const permissions = { canEdit: edit.ok, canDelete: remove.ok };
+
+  for (const row of assessed.inserts) {
+    const reason = importRowBlockReason(row, permissions);
+    if (reason) blocked.set(row.excelRow, reason);
+  }
+
+  if (blocked.size === 0) return assessed;
+
+  const inserts = assessed.inserts.filter((row) => !blocked.has(row.excelRow));
+  return {
+    ...assessed,
+    inserts,
+    errors: [
+      ...assessed.errors,
+      ...[...blocked.entries()].map(([row, message]) => ({
+        row,
+        messages: [message],
+      })),
+    ],
+    canCommit: inserts.length > 0 && assessed.columnErrors.length === 0,
+  };
+}
+
 async function assessUpload(buffer: Buffer, db: ImportDb = prisma) {
-  const parsed = parseRevenueWorkbook(buffer);
+  const parsed = await parseRevenueWorkbook(buffer);
   const assessed = assessRevenueImport(
     parsed,
     parsed.candidates.length
@@ -159,7 +197,7 @@ async function assessUpload(buffer: Buffer, db: ImportDb = prisma) {
         },
   );
 
-  return assessed;
+  return authorizeImportMutations(assessed);
 }
 
 export async function exportRevenueWorkbook(
@@ -247,7 +285,7 @@ export async function exportRevenueWorkbook(
       ];
     });
 
-    const workbook = buildRevenueWorkbook(exportRows);
+    const workbook = await buildRevenueWorkbook(exportRows);
     const today = new Date().toISOString().slice(0, 10);
 
     return {

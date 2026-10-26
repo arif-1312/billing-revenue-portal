@@ -1,15 +1,15 @@
 import { PrismaClient } from "@prisma/client"
 import { PrismaPg } from "@prisma/adapter-pg"
 import { Pool } from "pg"
-import { assertSafeDatabaseTarget } from "./database-guard"
+import { assertSafeDatabaseTarget, databasePoolOptions } from "./database-guard"
 import { auditQuery, runInAuditBuffer } from "./audit"
 
 assertSafeDatabaseTarget(process.env.DATABASE_URL)
 
 function createPrismaClient() {
-  const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-  })
+  const pool = new Pool(
+    databasePoolOptions(process.env.DATABASE_URL as string),
+  )
 
   const adapter = new PrismaPg(pool)
   const base = new PrismaClient({

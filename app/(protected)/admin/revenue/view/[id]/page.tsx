@@ -124,7 +124,7 @@ export default async function PurchaseOrderViewPage({ params }: Props) {
   }
 
   const po = res.data;
-  const billingCycles = (po.billingCycles ?? []) as BillingCycleView[];
+  const billingCycles = (po.billingCycles ?? []) as unknown as BillingCycleView[];
 
   const totalCollected = billingCycles.reduce(
     (sum, cycle) => sum + Number(cycle.collectedAmount || 0),

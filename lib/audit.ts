@@ -8,6 +8,13 @@ const UNAUDITED_MODELS = new Set([
   "NotificationReceipt",
 ])
 
+const CRITICAL_AUDIT_MODELS = new Set([
+  "PurchaseOrder",
+  "BillingCycle",
+  "BillingCyclePayment",
+  "Vendor",
+])
+
 const WRITE_OPERATIONS = new Set([
   "create",
   "createMany",
@@ -31,6 +38,7 @@ const TIMESTAMP_FIELDS = new Set(["createdAt", "updatedAt"])
 
 const CHILD_RELATIONS: Record<string, { model: string; foreignKey: string }[]> = {
   PurchaseOrder: [{ model: "BillingCycle", foreignKey: "purchaseOrderId" }],
+  BillingCycle: [{ model: "BillingCyclePayment", foreignKey: "billingCycleId" }],
   Role: [{ model: "RoleModule", foreignKey: "roleId" }],
   Module: [{ model: "RoleModule", foreignKey: "moduleId" }],
   Project: [{ model: "ProjectMonthlyPL", foreignKey: "projectId" }],
@@ -174,6 +182,9 @@ export async function auditQuery({
     await enqueue(base, events)
   } catch (error) {
     console.error("Failed to record audit log", error)
+    if (model && CRITICAL_AUDIT_MODELS.has(model)) {
+      throw error
+    }
   }
 
   return result

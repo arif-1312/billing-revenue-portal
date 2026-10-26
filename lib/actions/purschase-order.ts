@@ -7,7 +7,9 @@ import { toBusinessDateValue } from "../date-utils";
 import { PurchaseOrder } from "@/types";
 import { PaymentReceived, Prisma } from "@prisma/client";
 import { generatePurchaseOrderBillingCycles } from "../billing-cycle-utils";
-import { requirePermission } from "@/lib/rbac";
+import { moneyToNumber } from "../money";
+import { purchaseOrderUpdateBlock } from "../purchase-order-guard";
+import { canAccess, getUserPermissions, requirePermission } from "@/lib/rbac";
 import type { PurchaseOrderSnapshot } from "@/lib/notifications/model";
 import {
   publishPurchaseOrderChange,
@@ -52,6 +54,7 @@ const receiptCreates = (billingCycle?: {
   collectedAmount?: number | null;
   paymentReceivedDate?: string | Date | null;
   payments?: Array<{
+    id?: string | null;
     receivedDate?: string | Date | null;
     amount?: number | null;
   }> | null;
@@ -60,7 +63,11 @@ const receiptCreates = (billingCycle?: {
     const receivedDate = toLocalDate(payment.receivedDate);
     const amount = Number(payment.amount || 0);
     if (!receivedDate || !Number.isFinite(amount) || amount === 0) return [];
-    return [{ receivedDate, amount }];
+    return [{
+      id: typeof payment.id === "string" ? payment.id : undefined,
+      receivedDate,
+      amount,
+    }];
   });
 
   if (entered.length > 0) return entered;
@@ -69,7 +76,7 @@ const receiptCreates = (billingCycle?: {
   const amount = Number(billingCycle?.collectedAmount || 0);
   if (!receivedDate || !Number.isFinite(amount) || amount === 0) return [];
 
-  return [{ receivedDate, amount }];
+  return [{ id: undefined, receivedDate, amount }];
 };
 
 const billingCycleCreateData = (billingCycle: {
@@ -131,7 +138,14 @@ const createBillingCycles = async (
       billingRemark: item.cycle.billingRemark,
       tds: item.cycle.tds,
       purchaseOrder: { connect: { id: purchaseOrderId } },
-      payments: item.payments.length ? { create: item.payments } : undefined,
+      payments: item.payments.length
+        ? {
+            create: item.payments.map((payment) => ({
+              amount: payment.amount,
+              receivedDate: payment.receivedDate,
+            })),
+          }
+        : undefined,
     };
 
     await db.billingCycle.create({ data });
@@ -148,6 +162,7 @@ export async function getPurchaseOrders() {
 
     const data = await prisma.purchaseOrder.findMany({
       orderBy: { createdAt: "desc" },
+      take: 2000,
       include: {
         billingPlan: true,
         ServiceType: true,
@@ -308,6 +323,118 @@ export async function getPurchaseOrderById(id: string) {
   }
 }
 
+const syncBillingCycles = async (
+  db: Prisma.TransactionClient,
+  purchaseOrderId: string,
+  cycles: NonNullable<PurchaseOrder["billingCycles"]>,
+  options: { canDelete: boolean; isSystem: boolean },
+) => {
+  const existing = await db.billingCycle.findMany({
+    where: { purchaseOrderId },
+    include: { payments: true },
+  });
+  const existingById = new Map(existing.map((cycle) => [cycle.id, cycle]));
+  const seen = new Set<string>();
+
+  for (const cycle of cycles) {
+    const prepared = billingCycleCreateData(cycle);
+    const previous = cycle.id ? existingById.get(cycle.id) : undefined;
+
+    if (previous) {
+      seen.add(previous.id);
+      const paid =
+        previous.payments.length > 0 || previous.paymentReceived === "YES";
+      if (
+        paid &&
+        !options.isSystem &&
+        moneyToNumber(previous.invoiceAmount) !==
+          moneyToNumber(prepared.cycle.invoiceAmount)
+      ) {
+        throw new Error("Paid billing cycles cannot be changed.");
+      }
+
+      await db.billingCycle.update({
+        where: { id: previous.id },
+        data: {
+          ...prepared.cycle,
+          paymentReceived: prepared.cycle.paymentReceived ?? undefined,
+        },
+      });
+
+      const incomingIds = new Set(
+        prepared.payments.flatMap((payment) =>
+          payment.id ? [payment.id] : [],
+        ),
+      );
+      for (const payment of previous.payments) {
+        if (incomingIds.has(payment.id)) continue;
+        if (!options.canDelete && !options.isSystem) {
+          throw new Error("Delete permission is required to remove a payment.");
+        }
+        await db.billingCyclePayment.delete({ where: { id: payment.id } });
+      }
+
+      for (const payment of prepared.payments) {
+        if (payment.id && previous.payments.some((item) => item.id === payment.id)) {
+          await db.billingCyclePayment.update({
+            where: { id: payment.id },
+            data: {
+              amount: payment.amount,
+              receivedDate: payment.receivedDate,
+            },
+          });
+          continue;
+        }
+
+        await db.billingCyclePayment.create({
+          data: {
+            billingCycleId: previous.id,
+            amount: payment.amount,
+            receivedDate: payment.receivedDate,
+          },
+        });
+      }
+      continue;
+    }
+
+    await db.billingCycle.create({
+      data: {
+        invoiceNumber: prepared.cycle.invoiceNumber,
+        invoiceAmount: prepared.cycle.invoiceAmount,
+        collectedAmount: prepared.cycle.collectedAmount,
+        invoiceDate: prepared.cycle.invoiceDate,
+        billingSubmittedDate: prepared.cycle.billingSubmittedDate,
+        paymentReceivedDate: prepared.cycle.paymentReceivedDate,
+        paymentDueDate: prepared.cycle.paymentDueDate,
+        paymentReceived: prepared.cycle.paymentReceived ?? undefined,
+        billingRemark: prepared.cycle.billingRemark,
+        tds: prepared.cycle.tds,
+        purchaseOrder: { connect: { id: purchaseOrderId } },
+        payments: prepared.payments.length
+          ? {
+              create: prepared.payments.map((payment) => ({
+                amount: payment.amount,
+                receivedDate: payment.receivedDate,
+              })),
+            }
+          : undefined,
+      },
+    });
+  }
+
+  for (const cycle of existing) {
+    if (seen.has(cycle.id)) continue;
+    const paid = cycle.payments.length > 0 || cycle.paymentReceived === "YES";
+    if (paid && !options.isSystem) {
+      throw new Error("Paid billing history cannot be removed.");
+    }
+    if (!options.canDelete && !options.isSystem) {
+      throw new Error("Delete permission is required to remove a billing cycle.");
+    }
+    await db.billingCycle.delete({ where: { id: cycle.id } });
+  }
+};
+
 // ================= UPDATE =================
 export async function updatePurchaseOrder(
   data: PurchaseOrder,
@@ -353,18 +480,40 @@ export async function updatePurchaseOrder(
       scope: emptyToUndefined(validated.scope) ?? null,
     };
 
+    const current = await prisma.purchaseOrder.findUnique({
+      where: { id },
+      select: { status: true, updatedAt: true },
+    });
+    if (!current) {
+      return { success: false, message: "Purchase order not found" };
+    }
+
+    const actor = await getUserPermissions();
+    const actorIsSystem = Boolean(
+      actor?.role?.isSystem && actor.role.status === "ACTIVE",
+    );
+    const blocked = purchaseOrderUpdateBlock({
+      status: current.status,
+      actorIsSystem,
+      expectedUpdatedAt: validated.updatedAt,
+      currentUpdatedAt: current.updatedAt,
+    });
+    if (blocked) {
+      return { success: false, message: blocked };
+    }
+
+    const canDelete = await canAccess("/admin/revenue", "delete");
+
     await prisma.$transaction(async (tx) => {
       await tx.purchaseOrder.update({
         where: { id },
         data: purchaseOrderData,
       });
-      await tx.billingCycle.deleteMany({
-        where: { purchaseOrderId: id },
-      });
-      await createBillingCycles(
+      await syncBillingCycles(
         tx,
         id,
-        validated.billingCycles?.map((bc) => billingCycleCreateData(bc)) ?? [],
+        validated.billingCycles ?? [],
+        { canDelete, isSystem: actorIsSystem },
       );
     });
 

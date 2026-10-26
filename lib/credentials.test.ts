@@ -21,12 +21,14 @@ vi.mock("@/lib/prisma", () => ({
 
 import { authorizeCredentials } from "./credentials";
 import { resetLoginThrottleForTests } from "./login-throttle";
+import { resetLoginRateLimitForTests } from "./login-rate-limit";
 
 const password = "correct-horse";
 const userId = "11111111-1111-4111-8111-111111111111";
 
 beforeEach(async () => {
   resetLoginThrottleForTests();
+  resetLoginRateLimitForTests();
   findFirst.mockReset();
   updateUser.mockReset();
   createAuditLog.mockReset();

@@ -14,8 +14,14 @@ import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { auth, signIn, signOut } from "@/auth";
 import bcrypt from "bcrypt"
 import { hashPassword } from "@/lib/password";
-import { requirePermission } from "@/lib/rbac";
+import { getUserPermissions, requirePermission } from "@/lib/rbac";
 import { recordSecurityEvent } from "@/lib/security-event";
+import {
+  canRemoveSystemUser,
+  roleAssignmentDecision,
+  rolePermissionsExceed,
+  type PermissionFlags,
+} from "@/lib/privilege";
 import { fingerprint } from "@/lib/notifications/model";
 import { safePublishSystem } from "@/lib/notifications/publish";
 
@@ -72,6 +78,96 @@ function normalizeUserPayload(user: User) {
   } as const;
 }
 
+function grantMap(role: {
+  status?: string | null;
+  roleModules?: Array<{
+    moduleId: string;
+    canView: boolean;
+    canCreate: boolean;
+    canEdit: boolean;
+    canDelete: boolean;
+    module?: { status?: string | null } | null;
+  }>;
+} | null | undefined) {
+  const grants = new Map<string, PermissionFlags>();
+  if (!role || role.status !== "ACTIVE") return grants;
+
+  for (const roleModule of role.roleModules ?? []) {
+    if (roleModule.module && roleModule.module.status !== "ACTIVE") continue;
+    grants.set(roleModule.moduleId, {
+      canView: roleModule.canView,
+      canCreate: roleModule.canCreate,
+      canEdit: roleModule.canEdit,
+      canDelete: roleModule.canDelete,
+    });
+  }
+
+  return grants;
+}
+
+async function assertRoleAssignment(input: {
+  targetUserId?: string;
+  roleId: string;
+  nextStatus?: string | null;
+}) {
+  const actor = await getUserPermissions();
+  if (!actor?.id) {
+    return { ok: false as const, message: "Unauthorized" };
+  }
+
+  const nextRole = await prisma.role.findUnique({
+    where: { id: input.roleId },
+    include: {
+      roleModules: {
+        include: { module: { select: { status: true } } },
+      },
+    },
+  });
+
+  if (!nextRole) {
+    return { ok: false as const, message: "Role not found" };
+  }
+
+  const target = input.targetUserId
+    ? await prisma.user.findUnique({
+        where: { id: input.targetUserId },
+        include: { role: { select: { isSystem: true, status: true } } },
+      })
+    : null;
+
+  if (input.targetUserId && !target) {
+    return { ok: false as const, message: "User not found" };
+  }
+
+  const otherActiveSystemUsers = await prisma.user.count({
+    where: {
+      ...(input.targetUserId ? { id: { not: input.targetUserId } } : {}),
+      status: "ACTIVE",
+      role: { isSystem: true, status: "ACTIVE" },
+    },
+  });
+
+  const targetIsActiveSystem = Boolean(
+    target &&
+      target.status === "ACTIVE" &&
+      target.role.isSystem &&
+      target.role.status === "ACTIVE",
+  );
+
+  return roleAssignmentDecision({
+    actorIsSystem: Boolean(actor.role?.isSystem && actor.role.status === "ACTIVE"),
+    targetIsActiveSystem,
+    nextRoleIsSystem: nextRole.isSystem,
+    nextRoleIsActive: nextRole.status === "ACTIVE",
+    nextRoleExceedsActor: rolePermissionsExceed(
+      grantMap(actor.role),
+      grantMap(nextRole),
+    ),
+    otherActiveSystemUsers,
+    deactivatesTarget: input.nextStatus === "INACTIVE",
+  });
+}
+
 async function getAuthenticatedUserIdentity() {
   const session = (await auth()) as AuthenticatedSession;
   const userId = session?.user?.id;
@@ -126,6 +222,13 @@ export async function createUser(data: User) {
       throw new Error("Password is required");
     }
     const payload = normalizeUserPayload(user);
+    const assignment = await assertRoleAssignment({
+      roleId: payload.roleId,
+      nextStatus: payload.status,
+    });
+    if (!assignment.ok) {
+      return { success: false, message: assignment.message };
+    }
 
     const hashedPassword = await hashPassword(password);
 
@@ -205,6 +308,20 @@ export async function updateUser(data: User, id: string) {
 
     const user = userSchema.parse(data)
     const payload = normalizeUserPayload(user)
+    const assignment = await assertRoleAssignment({
+      targetUserId: id,
+      roleId: payload.roleId,
+      nextStatus: payload.status,
+    });
+    if (!assignment.ok) {
+      await recordSecurityEvent({
+        event: "PRIVILEGE_CHANGE",
+        result: "failure",
+        route: "/admin/users",
+        action: "edit",
+      });
+      return { success: false, message: assignment.message };
+    }
 
     await prisma.user.update({
       where: { id },
@@ -252,8 +369,40 @@ export async function deleteUser(id: string) {
 
     const existing = await prisma.user.findUnique({
       where: { id },
-      select: { id: true, firstName: true, lastName: true, email: true },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        status: true,
+        role: { select: { isSystem: true, status: true } },
+      },
     })
+    const otherActiveSystemUsers = await prisma.user.count({
+      where: {
+        id: { not: id },
+        status: "ACTIVE",
+        role: { isSystem: true, status: "ACTIVE" },
+      },
+    })
+    const removal = canRemoveSystemUser({
+      targetIsActiveSystem: Boolean(
+        existing &&
+          existing.status === "ACTIVE" &&
+          existing.role.isSystem &&
+          existing.role.status === "ACTIVE",
+      ),
+      otherActiveSystemUsers,
+    })
+    if (!removal.ok) {
+      await recordSecurityEvent({
+        event: "PRIVILEGE_CHANGE",
+        result: "failure",
+        route: "/admin/users",
+        action: "delete",
+      })
+      return { success: false, message: removal.message }
+    }
 
     await prisma.user.delete({
       where: { id }

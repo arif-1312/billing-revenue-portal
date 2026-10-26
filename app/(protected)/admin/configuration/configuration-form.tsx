@@ -33,7 +33,7 @@ import {
 import { Input } from "@/components/ui/input";
 
 type ConfigurationFormProps = {
-  data?: Configuration;
+  data?: Configuration & { passwordConfigured?: boolean };
 };
 
 function SectionHeader({
@@ -381,7 +381,11 @@ const ConfigurationForm = ({ data }: ConfigurationFormProps) => {
                           <FormControl>
                             <Input
                               type="password"
-                              placeholder="Enter email app password"
+                              placeholder={
+                                data?.passwordConfigured
+                                  ? "A password is saved. Enter a new one to replace it."
+                                  : "Enter email app password"
+                              }
                               className="h-12 rounded-2xl border-slate-200 bg-slate-50"
                               {...field}
                             />

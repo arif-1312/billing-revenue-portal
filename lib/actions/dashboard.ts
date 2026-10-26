@@ -20,6 +20,7 @@ import {
 import { classifyInvoiceReceivable } from "@/lib/invoice-balances";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/rbac";
+import { addMoney, moneyToNumber } from "@/lib/money";
 
 function emptyDashboardSummary(): RevenueDashboardSummary {
   return {
@@ -417,7 +418,7 @@ function getPaymentChartDate(
 
 type StoredPayment = {
   receivedDate?: Date | null;
-  amount?: number | null;
+  amount?: unknown;
 };
 
 function getEffectiveCollectedAmount(
@@ -429,13 +430,15 @@ function getEffectiveCollectedAmount(
   const payments = cycle.payments ?? [];
 
   if (payments.length > 0) {
-    return payments.reduce((total, payment) => total + Number(payment.amount || 0), 0);
+    return moneyToNumber(
+      payments.reduce((total, payment) => addMoney(total, payment.amount), addMoney(0, 0)),
+    );
   }
 
-  const collected = Number(cycle.collectedAmount || 0);
+  const collected = moneyToNumber(cycle.collectedAmount);
 
   if (cycle.paymentReceived === PaymentReceived.YES && collected <= 0) {
-    return Number(cycle.invoiceAmount || 0);
+    return moneyToNumber(cycle.invoiceAmount);
   }
 
   return collected;
@@ -652,7 +655,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       continue;
     }
 
-    const billed = Number(cycle.invoiceAmount || 0);
+    const billed = moneyToNumber(cycle.invoiceAmount);
 
     const collected = getEffectiveCollectedAmount(cycle);
 
@@ -721,7 +724,7 @@ export async function getMonthlyBillingData(
   }));
 
   for (const cycle of cycles) {
-    const billed = Number(cycle.invoiceAmount || 0);
+    const billed = moneyToNumber(cycle.invoiceAmount);
 
     const invoiceDate = getInvoiceDate(cycle);
 
@@ -843,7 +846,7 @@ export async function getRevenueDashboardSummary(
       }
 
       if (matchesFinancialYearSelection) {
-        const billedAmount = Number(cycle.invoiceAmount || 0);
+        const billedAmount = moneyToNumber(cycle.invoiceAmount);
         const matchesTillNowSelection =
           isWithinFilterDateRange(normalizedInvoiceDate, filters) &&
           matchesFilterMonth(normalizedInvoiceDate, filters);
@@ -912,7 +915,7 @@ export async function getRevenueDashboardSummary(
       continue;
     }
 
-    dueForBillingTillNow += Number(cycle.invoiceAmount || 0);
+    dueForBillingTillNow += moneyToNumber(cycle.invoiceAmount);
   }
 
   aging.supported =
@@ -1013,7 +1016,7 @@ export async function getDueForBillingAmount(
       continue;
     }
 
-    totalDueForBilling += Number(cycle.invoiceAmount || 0);
+    totalDueForBilling += moneyToNumber(cycle.invoiceAmount);
   }
 
   return totalDueForBilling;
@@ -1075,7 +1078,7 @@ export async function getBillingStatusDetails(
       continue;
     }
 
-    const billed = Number(cycle.invoiceAmount || 0);
+    const billed = moneyToNumber(cycle.invoiceAmount);
     const collected = getEffectiveCollectedAmount(cycle);
     const receivable = classifyInvoiceReceivable(cycle);
     const pendingAmount = receivable.outstanding;
@@ -1240,7 +1243,7 @@ export async function getRevenueDetailsByMonth(
       return true;
     })
     .map((cycle) => {
-      const billedAmount = Number(cycle.invoiceAmount || 0);
+      const billedAmount = moneyToNumber(cycle.invoiceAmount);
       const receiptsInMonth = paymentReceipts(cycle).filter((receipt) => {
         const normalizedDate = normalizeDate(receipt.receivedDate);
         return normalizedDate >= start && normalizedDate <= end;

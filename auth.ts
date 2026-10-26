@@ -4,6 +4,7 @@ import { prisma } from "./lib/prisma"
 import CredentialsProvider from "next-auth/providers/credentials"
 import { authorizeCredentials } from "./lib/credentials"
 import { readSessionDecision } from "./lib/session-revocation"
+import { IDLE_TIMEOUT_MS, idleExpired } from "./lib/session-decision"
 
 const TWELVE_HOURS = 12 * 60 * 60
 const secureCookies = process.env.NODE_ENV === "production"
@@ -38,8 +39,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                 username: { label: "Username", type: "text" },
                 password: { label: "Password", type: "password" },
             },
-            async authorize(credentials) {
-                return authorizeCredentials(credentials)
+            async authorize(credentials, request) {
+                const forwarded = request?.headers?.get("x-forwarded-for")
+                const ip = forwarded?.split(",")[0]?.trim() || "unknown"
+                return authorizeCredentials(credentials, ip)
             }
         })
     ],
@@ -67,9 +70,16 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                 token.email = user.email
                 token.username = user.username
                 token.credentialVersion = user.credentialVersion
+                token.lastActive = Date.now()
                 token.invalid = false
                 return token
             }
+
+            if (idleExpired(token.lastActive, Date.now(), IDLE_TIMEOUT_MS)) {
+                token.invalid = true
+                return token
+            }
+            token.lastActive = Date.now()
 
             const issuedAt = Number(token.iat)
             const userId = token.id || token.sub

@@ -1,4 +1,4 @@
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -71,7 +71,7 @@ describe("revenue spreadsheet safety", () => {
     expect(assessed.inserts[0]?.invoiceAmount).toBe(500);
   });
 
-  it("prefixes formula-like text and keeps invoice amounts numeric", () => {
+  it("prefixes formula-like text and keeps invoice amounts numeric", async () => {
     const purchaseOrder: RevenueExportPurchaseOrder = {
       customerPONumber: "PO-1",
       poAmount: 1000,
@@ -96,11 +96,21 @@ describe("revenue spreadsheet safety", () => {
       ],
     };
 
-    const workbook = XLSX.read(buildRevenueWorkbook([purchaseOrder]));
-    const sheet = workbook.Sheets.Revenue;
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
-      raw: true,
-    });
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(
+      (await buildRevenueWorkbook([purchaseOrder])) as unknown as ExcelJS.Buffer,
+    );
+    const sheet = workbook.getWorksheet("Revenue");
+    const header = sheet?.getRow(1).values;
+    const first = sheet?.getRow(2).values;
+    const rows = [
+      Object.fromEntries(
+        (Array.isArray(header) ? header.slice(1) : []).map((name, index) => [
+          String(name),
+          Array.isArray(first) ? first[index + 1] : undefined,
+        ]),
+      ),
+    ];
 
     expect(rows[0]?.Remark).toBe("'=SUM(A1)");
     expect(rows[0]?.["Scope Of Work"]).toBe("'+cmd");

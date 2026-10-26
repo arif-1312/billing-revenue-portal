@@ -8,6 +8,8 @@ import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { randomUUID } from "crypto";
 import { requirePermission } from "@/lib/rbac";
+import { encryptSecret, isSecretConfigured } from "@/lib/secret-box";
+import { fileMatchesSignature } from "@/lib/file-signature";
 import { fingerprint } from "@/lib/notifications/model";
 import { safePublishSystem } from "@/lib/notifications/publish";
 
@@ -44,7 +46,7 @@ export async function getConfigurationSettings() {
   if (!access.ok) return null;
 
   try {
-    return await prisma.configuration.findFirst({
+    const configuration = await prisma.configuration.findFirst({
       select: {
         id: true,
         name: true,
@@ -54,6 +56,17 @@ export async function getConfigurationSettings() {
         password: true,
       },
     });
+
+    if (!configuration) return null;
+
+    return {
+      id: configuration.id,
+      name: configuration.name,
+      logo: configuration.logo,
+      favicon: configuration.favicon,
+      email: configuration.email,
+      passwordConfigured: isSecretConfigured(configuration.password),
+    };
   } catch {
     console.error("Error fetching configuration settings");
     return null;
@@ -80,6 +93,10 @@ async function saveUploadedFile(file: File) {
 
   const bytes = await file.arrayBuffer();
   const buffer = Buffer.from(bytes);
+
+  if (!fileMatchesSignature(buffer, extension)) {
+    throw new Error("The file contents do not match the image type.");
+  }
 
   const fileName = `${randomUUID()}${extension}`;
 
@@ -148,6 +165,7 @@ export async function createOrUpdateConfiguration(data: Configuration) {
     }
 
     const configuration = configurationSchema.parse(data);
+    const existing = await prisma.configuration.findFirst();
 
     const formattedData = {
       name: configuration.name || null,
@@ -160,10 +178,10 @@ export async function createOrUpdateConfiguration(data: Configuration) {
           ? configuration.favicon
           : null,
       email: configuration.email || null,
-      password: configuration.password || null,
+      password: configuration.password
+        ? encryptSecret(configuration.password)
+        : existing?.password ?? null,
     };
-
-    const existing = await prisma.configuration.findFirst();
 
     const saved = existing
       ? await prisma.configuration.update({

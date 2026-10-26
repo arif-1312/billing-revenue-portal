@@ -51,6 +51,8 @@ model Role {
   name      String   @unique
   remark    String?
   status    Status   @default(ACTIVE)
+  /// Protected super-administrator role. Permissions still come from RoleModule.
+  isSystem  Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   users     User[]
@@ -107,7 +109,7 @@ model RoleModule {
 model PurchaseOrder {
   id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   customerPONumber   String?
-  poAmount           Float?
+  poAmount           Decimal?         @db.Decimal(14, 2)
   serviceTypeId      String?          @db.Uuid
   contractId         String?          @db.Uuid
   startFrom          DateTime?
@@ -146,8 +148,8 @@ model BillingCycle {
   purchaseOrderId      String          @db.Uuid
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @updatedAt
-  collectedAmount      Float?
-  invoiceAmount        Float?
+  collectedAmount      Decimal?        @db.Decimal(14, 2)
+  invoiceAmount        Decimal?        @db.Decimal(14, 2)
   invoiceDate          DateTime?
   invoiceNumber        String
   tds                  Decimal         @default(0) @db.Decimal(12, 2)
@@ -159,7 +161,7 @@ model BillingCyclePayment {
   id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   billingCycleId String       @db.Uuid
   receivedDate   DateTime
-  amount         Float
+  amount         Decimal      @db.Decimal(14, 2)
   createdAt      DateTime     @default(now())
   billingCycle   BillingCycle @relation(fields: [billingCycleId], references: [id], onDelete: Cascade)
 
@@ -424,6 +426,14 @@ enum AuditAction {
   CREATE
   UPDATE
   DELETE
+}
+
+model RateLimitBucket {
+  key      String   @id
+  count    Int
+  resetAt  DateTime
+
+  @@index([resetAt])
 }
 
 model AuditLog {

@@ -1,9 +1,11 @@
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 
 import { formatStoredDate } from "@/lib/date-utils";
 import { isAllowedMoneyAmount } from "@/lib/validators";
 
 const MAX_IMPORT_ROWS = 1000;
+const MAX_IMPORT_SHEETS = 3;
+const MAX_IMPORT_COLUMNS = 40;
 const MIN_DATE_YEAR = 1990;
 const MAX_DATE_YEAR = 2100;
 
@@ -172,8 +174,8 @@ export type RevenueImportContext = {
 export type RevenueExportCycle = {
   invoiceNumber?: string | null;
   invoiceDate?: Date | string | null;
-  invoiceAmount?: number | null;
-  collectedAmount?: number | null;
+  invoiceAmount?: unknown;
+  collectedAmount?: unknown;
   tds?: number | string | null;
   paymentReceived?: string | null;
   paymentReceivedDate?: Date | string | null;
@@ -184,7 +186,7 @@ export type RevenueExportCycle = {
 
 export type RevenueExportPurchaseOrder = {
   customerPONumber?: string | null;
-  poAmount?: number | null;
+  poAmount?: unknown;
   status?: string | null;
   scope?: string | null;
   poOwner?: string | null;
@@ -305,10 +307,12 @@ function parseExcelDate(value: unknown): ParsedDate {
   }
 
   if (typeof value === "number" && Number.isFinite(value)) {
-    const parsed = XLSX.SSF.parse_date_code(value);
-    if (!parsed) return "invalid";
-    return isRealCalendarDate(parsed.y, parsed.m, parsed.d)
-      ? toIsoDate(parsed.y, parsed.m, parsed.d)
+    const utc = new Date(Date.UTC(1899, 11, 30) + Math.floor(value) * 86400000);
+    const year = utc.getUTCFullYear();
+    const month = utc.getUTCMonth() + 1;
+    const day = utc.getUTCDate();
+    return isRealCalendarDate(year, month, day)
+      ? toIsoDate(year, month, day)
       : "invalid";
   }
 
@@ -354,7 +358,22 @@ function roundMoney(value: number) {
   return Math.round(value * 100) / 100;
 }
 
-export function readRevenueWorkbookMatrix(buffer: Buffer) {
+function cellValue(value: ExcelJS.CellValue): unknown {
+  if (value == null) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === "object" && "result" in value) {
+    return cellValue(value.result as ExcelJS.CellValue);
+  }
+  if (typeof value === "object" && "text" in value && typeof value.text === "string") {
+    return value.text;
+  }
+  if (typeof value === "object" && "richText" in value && Array.isArray(value.richText)) {
+    return value.richText.map((part) => part.text).join("");
+  }
+  return value;
+}
+
+export async function readRevenueWorkbookMatrix(buffer: Buffer) {
   if (
     !Buffer.isBuffer(buffer) ||
     buffer.length < 4 ||
@@ -368,25 +387,32 @@ export function readRevenueWorkbookMatrix(buffer: Buffer) {
   }
 
   try {
-    const workbook = XLSX.read(buffer, {
-      type: "buffer",
-      cellDates: false,
-    });
-    const sheetName = workbook.SheetNames[0];
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
+    if (workbook.worksheets.length > MAX_IMPORT_SHEETS) {
+      return {
+        matrix: [] as unknown[][],
+        error: "The workbook has too many sheets.",
+      };
+    }
+    const sheet = workbook.worksheets[0];
 
-    if (!sheetName) {
+    if (!sheet) {
       return { matrix: [] as unknown[][], error: "The workbook has no sheets." };
     }
 
-    const matrix = XLSX.utils.sheet_to_json<unknown[]>(
-      workbook.Sheets[sheetName],
-      {
-        header: 1,
-        raw: true,
-        defval: null,
-        blankrows: true,
-      },
-    );
+    if (sheet.columnCount > MAX_IMPORT_COLUMNS) {
+      return {
+        matrix: [] as unknown[][],
+        error: "The worksheet has too many columns.",
+      };
+    }
+
+    const matrix: unknown[][] = [];
+    sheet.eachRow({ includeEmpty: true }, (row) => {
+      const values = Array.isArray(row.values) ? row.values.slice(1) : [];
+      matrix.push(values.map((value) => cellValue(value as ExcelJS.CellValue)));
+    });
 
     return { matrix, error: null };
   } catch {
@@ -469,10 +495,10 @@ export function parseRevenueMatrix(matrix: unknown[][]): ParsedRevenueWorkbook {
   return { columnErrors: [], candidates };
 }
 
-export function parseRevenueWorkbook(buffer: Buffer): ParsedRevenueWorkbook & {
+export async function parseRevenueWorkbook(buffer: Buffer): Promise<ParsedRevenueWorkbook & {
   fileError?: string;
-} {
-  const read = readRevenueWorkbookMatrix(buffer);
+}> {
+  const read = await readRevenueWorkbookMatrix(buffer);
   if (read.error) {
     return { columnErrors: [read.error], candidates: [], fileError: read.error };
   }
@@ -685,7 +711,15 @@ export function assessRevenueImport(
       context.purchaseOrdersByNumber.get(normalizeRevenueKey(customerPONumber)) ??
       [];
 
-    if (matches.length > 0) purchaseOrderId = matches[0];
+    if (matches.length > 1) {
+      errors.push({
+        row,
+        messages: ["More than one purchase order uses this PO number."],
+      });
+      continue;
+    }
+
+    if (matches.length === 1) purchaseOrderId = matches[0];
 
     const draft = readPurchaseOrderDraft(candidate, customerPONumber);
     const key = normalizeRevenueKey(customerPONumber);
@@ -700,7 +734,15 @@ export function assessRevenueImport(
       const existing =
         context.existingInvoices.get(normalizeRevenueKey(invoiceNumber)) ?? [];
 
-      if (existing.length > 0) {
+      if (existing.length > 1) {
+        errors.push({
+          row,
+          messages: ["More than one billing cycle uses this invoice number."],
+        });
+        continue;
+      }
+
+      if (existing.length === 1) {
         billingCycleId = existing[0].id;
         if (!purchaseOrderId) purchaseOrderId = existing[0].purchaseOrderId;
       }
@@ -839,7 +881,7 @@ function flattenExportRows(purchaseOrders: RevenueExportPurchaseOrder[]) {
   });
 }
 
-export function buildRevenueWorkbook(purchaseOrders: RevenueExportPurchaseOrder[]) {
+export async function buildRevenueWorkbook(purchaseOrders: RevenueExportPurchaseOrder[]) {
   const headers = REVENUE_EXCEL_COLUMNS.map((column) => column.header);
   const records = flattenExportRows(purchaseOrders);
   const body = records.map((record) =>
@@ -848,18 +890,14 @@ export function buildRevenueWorkbook(purchaseOrders: RevenueExportPurchaseOrder[
       return typeof value === "string" ? neutralizeSpreadsheetText(value) : value;
     }),
   );
-  const sheet = XLSX.utils.aoa_to_sheet([headers, ...body]);
-  sheet["!cols"] = headers.map((header) => ({
-    wch: Math.max(header.length + 2, 18),
-  }));
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("Revenue");
+  sheet.addRow(headers);
+  for (const row of body) sheet.addRow(row);
+  headers.forEach((header, index) => {
+    sheet.getColumn(index + 1).width = Math.max(header.length + 2, 18);
+  });
 
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, sheet, "Revenue");
-
-  return Buffer.from(
-    XLSX.write(workbook, {
-      bookType: "xlsx",
-      type: "buffer",
-    }),
-  );
+  const contents = await workbook.xlsx.writeBuffer();
+  return Buffer.from(contents);
 }

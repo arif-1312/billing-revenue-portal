@@ -4,7 +4,14 @@ import { Role } from "@/types";
 import { prisma } from "../prisma";
 import { roleSchema } from "../validators";
 import { formatError } from "../utils";
-import { requirePermission } from "@/lib/rbac";
+import { getUserPermissions, requirePermission } from "@/lib/rbac";
+import {
+  roleChangeDecision,
+  unauthorizedGrant,
+  type PermissionFlags,
+  type RequestedModuleGrant,
+} from "@/lib/privilege";
+import { recordSecurityEvent } from "@/lib/security-event";
 import { fingerprint } from "@/lib/notifications/model";
 import { safePublishSystem } from "@/lib/notifications/publish";
 
@@ -29,6 +36,58 @@ function permissionFingerprint(
     )
     .sort()
     .join(",");
+}
+
+function actorGrantMap(user: Awaited<ReturnType<typeof getUserPermissions>>) {
+  const grants = new Map<string, PermissionFlags>();
+
+  if (!user?.role || user.role.status !== "ACTIVE") return grants;
+
+  for (const roleModule of user.role.roleModules) {
+    if (roleModule.module.status !== "ACTIVE") continue;
+    grants.set(roleModule.moduleId, {
+      canView: roleModule.canView,
+      canCreate: roleModule.canCreate,
+      canEdit: roleModule.canEdit,
+      canDelete: roleModule.canDelete,
+    });
+  }
+
+  return grants;
+}
+
+function requestedGrants(modules: unknown): RequestedModuleGrant[] {
+  if (!Array.isArray(modules)) return [];
+
+  return modules.flatMap((module) => {
+    if (!module || typeof module !== "object") return [];
+    const record = module as Record<string, unknown>;
+    const moduleId = typeof record.moduleId === "string" ? record.moduleId : "";
+    if (!moduleId) return [];
+
+    return [{
+      moduleId,
+      canView: Boolean(record.canView),
+      canCreate: Boolean(record.canCreate),
+      canEdit: Boolean(record.canEdit),
+      canDelete: Boolean(record.canDelete),
+    }];
+  });
+}
+
+async function privilegeEvent(
+  eventAction: string,
+  result: "success" | "failure",
+) {
+  const actor = await getUserPermissions();
+  await recordSecurityEvent({
+    event: "PRIVILEGE_CHANGE",
+    username: actor?.email,
+    userId: actor?.id,
+    result,
+    route: "/admin/roles",
+    action: eventAction,
+  });
 }
 
 function normalizeRolePayload(role: Role) {
@@ -72,10 +131,30 @@ export async function createRole(data: any) {
 
     const role = roleSchema.parse(data)
     const payload = normalizeRolePayload(role)
+    const actor = await getUserPermissions()
+    const actorIsSystem = Boolean(
+      actor?.role?.isSystem && actor.role.status === "ACTIVE",
+    )
+    const grants = requestedGrants(data.modules)
+    const decision = roleChangeDecision({
+      actorIsSystem,
+      targetIsSystem: false,
+      nextStatus: payload.status === "INACTIVE" ? "INACTIVE" : "ACTIVE",
+      renamesRole: false,
+      grantsExceedActor:
+        !actorIsSystem &&
+        Boolean(unauthorizedGrant(actorGrantMap(actor), grants)),
+    })
+
+    if (!decision.ok) {
+      await privilegeEvent("create", "failure")
+      return { success: false, message: decision.message }
+    }
 
     const created = await prisma.role.create({
       data: {
         ...payload,
+        isSystem: false,
         roleModules: {
           create: data.modules.map((m: any) => ({
             moduleId: m.moduleId,
@@ -101,6 +180,8 @@ export async function createRole(data: any) {
         permissionFingerprint(data.modules),
       ]),
     });
+
+    await privilegeEvent("create", "success")
 
     return {
       success: true,
@@ -161,10 +242,41 @@ export async function updateRole(data: any, id: string) {
 
     const role = roleSchema.parse(data)
     const payload = normalizeRolePayload(role)
+    const [actor, existing] = await Promise.all([
+      getUserPermissions(),
+      prisma.role.findUnique({
+        where: { id },
+        select: { id: true, name: true, isSystem: true, status: true },
+      }),
+    ])
+
+    if (!existing) {
+      return { success: false, message: "Role not found" }
+    }
+
+    const actorIsSystem = Boolean(
+      actor?.role?.isSystem && actor.role.status === "ACTIVE",
+    )
+    const decision = roleChangeDecision({
+      actorIsSystem,
+      targetIsSystem: existing.isSystem,
+      nextStatus: payload.status === "INACTIVE" ? "INACTIVE" : "ACTIVE",
+      renamesRole: existing.name !== payload.name,
+      grantsExceedActor:
+        !actorIsSystem &&
+        Boolean(unauthorizedGrant(actorGrantMap(actor), requestedGrants(data.modules))),
+    })
+
+    if (!decision.ok) {
+      await privilegeEvent("edit", "failure")
+      return { success: false, message: decision.message }
+    }
+
     await prisma.role.update({
       where: { id },
       data: {
         ...payload,
+        isSystem: existing.isSystem,
         roleModules: {
           deleteMany: {}, // deletes all existing roleModules for this role
           create: data.modules.map((m: any) => ({
@@ -193,6 +305,8 @@ export async function updateRole(data: any, id: string) {
       ]),
     });
 
+    await privilegeEvent("edit", "success")
+
     return {
       success: true,
       message: "Role updated successfully"
@@ -215,8 +329,16 @@ export async function deleteRole(id: any) {
 
     const existing = await prisma.role.findUnique({
       where: { id },
-      select: { id: true, name: true },
+      select: { id: true, name: true, isSystem: true },
     });
+
+    if (existing?.isSystem) {
+      await privilegeEvent("delete", "failure")
+      return {
+        success: false,
+        message: "The system administrator role cannot be changed.",
+      }
+    }
 
     await prisma.role.delete({
       where: { id }
@@ -234,6 +356,8 @@ export async function deleteRole(id: any) {
         priority: "HIGH",
       });
     }
+
+    await privilegeEvent("delete", "success")
 
     return {
       success: true,

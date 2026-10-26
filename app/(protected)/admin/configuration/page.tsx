@@ -24,7 +24,8 @@ const ConfigurationPage = async () => {
                         logo: configuration.logo || undefined,
                         favicon: configuration.favicon || undefined,
                         email: configuration.email || undefined,
-                        password: configuration.password || undefined,
+                        password: "",
+                        passwordConfigured: configuration.passwordConfigured,
                     }
                     : undefined
             }

@@ -104,11 +104,11 @@ function userCan(
   action: string,
 ) {
   if (!user || user.status !== "ACTIVE") return false
+  if (!user.role || user.role.status !== "ACTIVE") return false
 
-  if (user.role?.name?.toLowerCase() === "admin") return true
-
-  const permission = user.role?.roleModules?.find(
-    (roleModule) => roleModule.module.route === route,
+  const permission = user.role.roleModules?.find(
+    (roleModule) =>
+      roleModule.module.route === route && roleModule.module.status === "ACTIVE",
   )
 
   if (!permission) return false

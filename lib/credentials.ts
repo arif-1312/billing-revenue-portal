@@ -2,10 +2,10 @@ import bcrypt from "bcrypt"
 
 import { prisma } from "@/lib/prisma"
 import {
-  clearLoginFailures,
-  isLoginLocked,
-  recordLoginFailure,
-} from "@/lib/login-throttle"
+  clearSharedLoginFailures,
+  loginIsLimited,
+  recordSharedLoginFailure,
+} from "@/lib/login-rate-limit"
 import { recordSecurityEvent } from "@/lib/security-event"
 import { passwordFingerprint } from "@/lib/password"
 
@@ -14,7 +14,13 @@ type Credentials = {
   password?: unknown
 } | null | undefined
 
-export async function authorizeCredentials(credentials: Credentials) {
+const DUMMY_PASSWORD_HASH =
+  "$2b$12$fhISTPUZkdjPrgA9UY6Ux.sRWDp9AjSK8s/eJMrMOnLC3R0oQ9xbS"
+
+export async function authorizeCredentials(
+  credentials: Credentials,
+  ip = "unknown",
+) {
   const username =
     typeof credentials?.username === "string" ? credentials.username.trim() : ""
   const password =
@@ -24,7 +30,7 @@ export async function authorizeCredentials(credentials: Credentials) {
     return null
   }
 
-  if (isLoginLocked(username)) {
+  if (await loginIsLimited(username, ip)) {
     await recordSecurityEvent({
       event: "LOGIN_FAILURE",
       username,
@@ -38,12 +44,13 @@ export async function authorizeCredentials(credentials: Credentials) {
     include: { role: true },
   })
 
-  const passwordMatches = Boolean(
-    user?.password && (await bcrypt.compare(password, user.password)),
+  const passwordMatches = await bcrypt.compare(
+    password,
+    user?.password || DUMMY_PASSWORD_HASH,
   )
 
   if (!user || !passwordMatches || user.status !== "ACTIVE") {
-    recordLoginFailure(username)
+    await recordSharedLoginFailure(username, ip)
     await recordSecurityEvent({
       event: "LOGIN_FAILURE",
       username,
@@ -52,7 +59,7 @@ export async function authorizeCredentials(credentials: Credentials) {
     return null
   }
 
-  clearLoginFailures(username)
+  await clearSharedLoginFailures(username, ip)
   await recordSecurityEvent({
     event: "LOGIN_SUCCESS",
     username: user.username,
