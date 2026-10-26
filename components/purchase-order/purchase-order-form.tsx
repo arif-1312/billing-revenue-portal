@@ -269,6 +269,7 @@ const createBillingCycleDraft = ({
   invoiceAmount: preserveInvoiceAmount
     ? Number(existingCycle?.invoiceAmount ?? invoiceAmount)
     : Number(invoiceAmount),
+  creditNote: Number(existingCycle?.creditNote ?? 0),
   collectedAmount: Number(existingCycle?.collectedAmount ?? 0),
   invoiceDate:
     existingCycle?.invoiceDate ??
@@ -716,6 +717,7 @@ const POForm = ({
             id: existingCycle?.id,
             invoiceNumber: existingCycle?.invoiceNumber ?? "",
             invoiceAmount: resolvedInvoiceAmount.amount,
+            creditNote: Number(existingCycle?.creditNote ?? 0),
             collectedAmount: Number(existingCycle?.collectedAmount ?? 0),
             invoiceDate:
               existingCycle?.invoiceDate ??
@@ -852,6 +854,7 @@ const POForm = ({
         id: bc.id,
         invoiceNumber: bc.invoiceNumber ?? "",
         invoiceAmount: Number(bc.invoiceAmount ?? 0),
+        creditNote: Number(bc.creditNote ?? 0),
         collectedAmount: Number(bc.collectedAmount ?? 0),
 
         invoiceDate: bc.invoiceDate

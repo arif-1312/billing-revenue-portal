@@ -122,6 +122,7 @@ export function OverviewView({
     scope: string;
     serviceType: string;
     billed: number;
+    creditNote: number;
     collected: number;
     outstanding: number;
     status: string;
@@ -141,10 +142,12 @@ export function OverviewView({
   const mrrRows = mrrMonths.map((point) => ({
     month: point.month,
     MRR: billedByMonth.get(point.month) ?? 0,
+    creditNote: point.creditNote ?? 0,
   }));
   const monthRows = monthly.map((point) => ({
     month: point.month,
     "Billed amount without GST": point.billing,
+    "Credit note": point.creditNote ?? 0,
     "Collected amount without GST": point.payment,
   }));
   const companies = topParties(groupByParty(recordRows, "companyName"), "billed", 8);
@@ -152,12 +155,14 @@ export function OverviewView({
   const companyRows = companies.map((row) => ({
     Company: displayPartyName(row.name),
     "Billed amount without GST": row.billed,
+    "Credit note": row.creditNote,
     "Collected amount without GST": row.collected,
   }));
   const customerRows = customers.map((row) => ({
     Customer: displayPartyName(row.name),
     Outstanding: row.due,
     Overdue: row.pastDue,
+    "Credit note": row.creditNote,
     "Collected amount without GST": row.collected,
   }));
 
@@ -250,6 +255,7 @@ export function OverviewView({
             Scope: line.scope,
             "Service type": line.serviceType,
             "Billed amount without GST": line.billed,
+            "Credit note": line.creditNote,
             "Collected amount without GST": line.collected,
             Outstanding: line.outstanding,
             Status: line.status,
@@ -358,7 +364,7 @@ export function OverviewView({
           title="MRR"
           description="Invoiced amount for the months, companies, customers, and billing statuses in the current filters."
           filename="mrr.csv"
-          rows={mrrRows.map((row) => ({ Month: row.month, MRR: row.MRR }))}
+          rows={mrrRows.map((row) => ({ Month: row.month, MRR: row.MRR, "Credit note": row.creditNote }))}
           loading={loading}
           error={error}
           empty={mrrRows.every((row) => row.MRR === 0)}
@@ -425,6 +431,7 @@ export function PartyView({
           rows={ranked.map((row) => ({
             Name: displayPartyName(row.name),
             Amount: purpose === "customer" ? row.due : row.billed,
+            "Credit note": row.creditNote,
             "Collected amount without GST": row.collected,
           }))}
           data={ranked}
@@ -440,6 +447,7 @@ export function PartyView({
           rows={ranked.map((row) => ({
             Name: displayPartyName(row.name),
             "Billed amount without GST": row.billed,
+            "Credit note": row.creditNote,
             "Collected amount without GST": row.collected,
             Outstanding: row.due,
             Overdue: row.pastDue,
@@ -604,6 +612,7 @@ export function ForecastView({
     month: point.month,
     Projected: point.projected ?? point.billing,
     "Billed amount without GST": point.billing,
+    "Credit note": point.creditNote ?? 0,
   }));
 
   return (

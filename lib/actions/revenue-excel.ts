@@ -273,6 +273,7 @@ export async function exportRevenueWorkbook(
             invoiceNumber: cycle.invoiceNumber,
             invoiceDate: cycle.invoiceDate,
             invoiceAmount: cycle.invoiceAmount,
+            creditNote: cycle.creditNote,
             collectedAmount: cycle.collectedAmount,
             tds: Number(cycle.tds ?? 0),
             paymentReceived: cycle.paymentReceived,

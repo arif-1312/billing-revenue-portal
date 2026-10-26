@@ -164,6 +164,8 @@ export const billingCycleSchema = z.object({
 
   invoiceAmount: optionalMoneySchema,
 
+  creditNote: moneyWithDefaultSchema,
+
   invoiceDate: z.union([z.date(), z.string()]).nullable().optional(),
 
   invoiceNumber: z.string().optional(),
@@ -172,6 +174,17 @@ export const billingCycleSchema = z.object({
 
   createdAt: z.date().nullable().optional(),
   updatedAt: z.date().nullable().optional(),
+}).superRefine((cycle, ctx) => {
+  const invoiceAmount = cycle.invoiceAmount ?? 0;
+  const creditNote = cycle.creditNote ?? 0;
+
+  if (creditNote > invoiceAmount) {
+    ctx.addIssue({
+      code: "custom",
+      message: "Credit Note cannot exceed the invoice amount",
+      path: ["creditNote"],
+    });
+  }
 });
 
 const optionalTrimmedString = z.preprocess((val) => {

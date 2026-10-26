@@ -40,6 +40,7 @@ export type RevenueRecord = {
   poNumber?: string | null;
   scope?: string | null;
   amount?: number | string | null;
+  creditNote?: number | string | null;
   collectedAmount?: number | string | null;
   overdueAmount?: number | string | null;
   serviceType?: string | null;
@@ -53,6 +54,7 @@ export type RevenueRecord = {
 export type MonthPoint = {
   month: string;
   billing: number;
+  creditNote?: number;
   payment: number;
   overdue: number;
   projected?: number;
@@ -67,6 +69,7 @@ export type CrossFilter =
 export type PartyRow = {
   name: string;
   billed: number;
+  creditNote: number;
   collected: number;
   due: number;
   pastDue: number;
@@ -261,6 +264,7 @@ export function groupByParty(
     const current = groups.get(name) ?? {
       name,
       billed: 0,
+      creditNote: 0,
       collected: 0,
       due: 0,
       pastDue: 0,
@@ -268,6 +272,7 @@ export function groupByParty(
       records: 0,
     };
     current.billed += toNumber(record.amount);
+    current.creditNote += toNumber(record.creditNote);
     current.collected += toNumber(record.collectedAmount);
     current.due += toNumber(record.overdueAmount);
     current.pastDue += toNumber(record.pastDueAmount);

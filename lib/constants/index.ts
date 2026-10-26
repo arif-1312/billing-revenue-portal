@@ -78,6 +78,7 @@ export const purchaseOrderDefaultValues = {
     {
       invoiceNumber: "",
       invoiceAmount: 0,
+      creditNote: 0,
       collectedAmount: 0,
       invoiceDate: null as Date | null,
       billingSubmittedDate: null as Date | null,

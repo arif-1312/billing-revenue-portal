@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { classifyInvoiceReceivable } from "./invoice-balances";
+import { billedInvoiceAmount, classifyInvoiceReceivable } from "./invoice-balances";
 
 const today = new Date("2026-10-21T08:00:00+05:30");
 
@@ -14,6 +14,30 @@ function invoice(overrides: Parameters<typeof classifyInvoiceReceivable>[0]) {
     ...overrides,
   };
 }
+
+describe("credit notes", () => {
+  it("subtracts a positive credit note once and ignores blank or zero notes", () => {
+    expect(billedInvoiceAmount({ invoiceAmount: 50000, creditNote: 5000 })).toBe(45000);
+    expect(billedInvoiceAmount({ invoiceAmount: 50000, creditNote: 0 })).toBe(50000);
+    expect(billedInvoiceAmount({ invoiceAmount: 50000, creditNote: "" })).toBe(50000);
+    expect(billedInvoiceAmount({ invoiceAmount: 50000 })).toBe(50000);
+    expect(billedInvoiceAmount({ invoiceAmount: 1000, creditNote: 1000 })).toBe(0);
+  });
+
+  it("uses the reduced invoice amount for the outstanding balance", () => {
+    const parts = classifyInvoiceReceivable(
+      invoice({
+        invoiceAmount: 50000,
+        creditNote: 5000,
+        paymentDueDate: new Date("2026-11-01T00:00:00.000Z"),
+      }),
+      today,
+    );
+
+    expect(parts.outstanding).toBe(45000);
+    expect(parts.overdue).toBe(0);
+  });
+});
 
 describe("invoice receivable balances", () => {
   it("keeps an unpaid invoice outstanding until the due date, then moves it to overdue", () => {

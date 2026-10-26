@@ -199,6 +199,7 @@ describe("revenue import identity", () => {
           vendorName: "",
           invoiceDate: "2026-04-01",
           invoiceAmount: 100,
+          creditNote: null,
           collectedAmount: 0,
           tds: 0,
           paymentReceived: "NO",

@@ -5,9 +5,11 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DeleteDialog } from "@/components/ui/delete-dailog";
+import { billedInvoiceAmount } from "@/lib/invoice-balances";
 
 type BillingCycleRow = {
   invoiceAmount?: number | null;
+  creditNote?: number | null;
   collectedAmount?: number | null;
   invoiceDate?: string | Date | null;
   billingSubmittedDate?: string | Date | null;
@@ -40,7 +42,7 @@ function getRevenueTotals(
 ) {
   return (cycles || []).reduce(
     (sum, cycle) => {
-      const billedAmount = Number(cycle.invoiceAmount || 0);
+      const billedAmount = billedInvoiceAmount(cycle);
       const collectedAmount = Math.min(
         Number(cycle.collectedAmount || 0),
         billedAmount,

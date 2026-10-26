@@ -1,0 +1,2 @@
+ALTER TABLE "BillingCycle"
+ADD COLUMN "creditNote" DECIMAL(14, 2) NOT NULL DEFAULT 0;

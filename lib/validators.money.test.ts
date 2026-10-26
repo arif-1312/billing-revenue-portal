@@ -20,6 +20,19 @@ describe("financial bounds", () => {
     expect(parsed.billingCycles[0]?.invoiceAmount).toBe(1000);
   });
 
+  it("treats a blank credit note as zero and rejects notes above the invoice", () => {
+    const blank = billingCycleSchema.parse({ invoiceAmount: 50000, creditNote: "" });
+    expect(blank.creditNote).toBe(0);
+
+    const applied = billingCycleSchema.parse({ invoiceAmount: 50000, creditNote: 5000 });
+    expect(applied.creditNote).toBe(5000);
+
+    expect(() => billingCycleSchema.parse({ invoiceAmount: 50000, creditNote: -1 })).toThrow();
+    expect(() => billingCycleSchema.parse({ invoiceAmount: 50000, creditNote: 50001 })).toThrow(
+      /Credit Note cannot exceed the invoice amount/,
+    );
+  });
+
   it("rejects negative, non-finite, and oversized amounts", () => {
     expect(() => purchaseOrderSchema.parse({ poAmount: -1 })).toThrow();
     expect(() =>

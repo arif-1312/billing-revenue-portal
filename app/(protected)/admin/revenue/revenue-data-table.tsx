@@ -7,11 +7,13 @@ import { toast } from "sonner"
 import { DataTable } from "@/components/datatable/DataTable"
 import { RevenueExcelActions } from "@/components/revenue/revenue-excel-actions"
 import { deletePurchaseOrder } from "@/lib/actions/purschase-order"
+import { billedInvoiceAmount } from "@/lib/invoice-balances"
 
 import { getUsersColumns } from "./column"
 
 type BillingCycleRow = {
   invoiceAmount?: number | null
+  creditNote?: number | null
   collectedAmount?: number | null
   invoiceDate?: string | Date | null
   billingSubmittedDate?: string | Date | null
@@ -41,7 +43,7 @@ function getRevenueTotals(
 ) {
   return (cycles || []).reduce(
     (sum, cycle) => {
-      const billedAmount = Number(cycle.invoiceAmount || 0)
+      const billedAmount = billedInvoiceAmount(cycle)
       const collectedAmount = Math.min(
         Number(cycle.collectedAmount || 0),
         billedAmount,

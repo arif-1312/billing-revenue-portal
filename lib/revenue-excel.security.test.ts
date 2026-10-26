@@ -25,6 +25,7 @@ function candidate(
     vendorName: "",
     invoiceDate: "2026-04-01",
     invoiceAmount,
+    creditNote: null,
     collectedAmount: 10,
     tds: 0,
     paymentReceived: "NO",

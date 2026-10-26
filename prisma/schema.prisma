@@ -150,6 +150,7 @@ model BillingCycle {
   updatedAt            DateTime        @updatedAt
   collectedAmount      Decimal?        @db.Decimal(14, 2)
   invoiceAmount        Decimal?        @db.Decimal(14, 2)
+  creditNote           Decimal         @default(0) @db.Decimal(14, 2)
   invoiceDate          DateTime?
   invoiceNumber        String
   tds                  Decimal         @default(0) @db.Decimal(12, 2)

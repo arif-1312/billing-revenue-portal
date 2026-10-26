@@ -1,6 +1,7 @@
 import { Prisma, type PrismaClient } from "@prisma/client"
 
 import { formatKolkataDate } from "@/lib/fiscal-year"
+import { billedInvoiceAmount } from "@/lib/invoice-balances"
 import { prisma } from "@/lib/prisma"
 import { canAccess, getUserPermissions } from "@/lib/rbac"
 
@@ -501,7 +502,7 @@ function toSnapshot(order: PurchaseOrderRow): PurchaseOrderSnapshot {
     poAmount: order.poAmount == null ? null : Number(order.poAmount),
     invoices: order.billingCycles.map((cycle) => ({
       invoiceNumber: cycle.invoiceNumber?.trim() ?? "",
-      invoiceAmount: Number(cycle.invoiceAmount ?? 0),
+      invoiceAmount: billedInvoiceAmount(cycle),
       invoiceOn: civilDate(cycle.invoiceDate),
       dueOn: civilDate(cycle.paymentDueDate),
       receipts: cycle.payments.flatMap((payment) => {

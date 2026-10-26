@@ -253,6 +253,7 @@ export function RevenueExcelActions({
                             <th className="px-3 py-2">Customer PO Number</th>
                             <th className="px-3 py-2">Invoice Date</th>
                             <th className="px-3 py-2">Invoice Amount</th>
+                            <th className="px-3 py-2">Credit Note</th>
                             <th className="px-3 py-2">TDS</th>
                             <th className="px-3 py-2">Payment Received</th>
                           </tr>
@@ -266,6 +267,7 @@ export function RevenueExcelActions({
                               <td className="px-3 py-2">{row.customerPONumber}</td>
                               <td className="px-3 py-2">{row.invoiceDate}</td>
                               <td className="px-3 py-2">{row.invoiceAmount}</td>
+                              <td className="px-3 py-2">{row.creditNote}</td>
                               <td className="px-3 py-2">{row.tds}</td>
                               <td className="px-3 py-2">{row.paymentReceived}</td>
                             </tr>

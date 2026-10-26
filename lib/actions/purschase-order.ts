@@ -82,6 +82,7 @@ const receiptCreates = (billingCycle?: {
 const billingCycleCreateData = (billingCycle: {
   invoiceNumber?: string | null;
   invoiceAmount?: number | null;
+  creditNote?: number | null;
   collectedAmount?: number | null;
   invoiceDate?: string | Date | null;
   billingSubmittedDate?: string | Date | null;
@@ -107,6 +108,7 @@ const billingCycleCreateData = (billingCycle: {
     cycle: {
       invoiceNumber: billingCycle.invoiceNumber ?? "",
       invoiceAmount: billingCycle.invoiceAmount ?? 0,
+      creditNote: new Prisma.Decimal(billingCycle.creditNote ?? 0),
       collectedAmount,
       invoiceDate: toLocalDate(billingCycle.invoiceDate),
       billingSubmittedDate: resolveBillingSubmittedDate(billingCycle),
@@ -129,6 +131,7 @@ const createBillingCycles = async (
     const data: Prisma.BillingCycleCreateInput = {
       invoiceNumber: item.cycle.invoiceNumber,
       invoiceAmount: item.cycle.invoiceAmount,
+      creditNote: item.cycle.creditNote,
       collectedAmount: item.cycle.collectedAmount,
       invoiceDate: item.cycle.invoiceDate,
       billingSubmittedDate: item.cycle.billingSubmittedDate,
@@ -347,8 +350,10 @@ const syncBillingCycles = async (
       if (
         paid &&
         !options.isSystem &&
-        moneyToNumber(previous.invoiceAmount) !==
-          moneyToNumber(prepared.cycle.invoiceAmount)
+        (moneyToNumber(previous.invoiceAmount) !==
+          moneyToNumber(prepared.cycle.invoiceAmount) ||
+          moneyToNumber(previous.creditNote) !==
+            moneyToNumber(prepared.cycle.creditNote))
       ) {
         throw new Error("Paid billing cycles cannot be changed.");
       }
@@ -401,6 +406,7 @@ const syncBillingCycles = async (
       data: {
         invoiceNumber: prepared.cycle.invoiceNumber,
         invoiceAmount: prepared.cycle.invoiceAmount,
+        creditNote: prepared.cycle.creditNote,
         collectedAmount: prepared.cycle.collectedAmount,
         invoiceDate: prepared.cycle.invoiceDate,
         billingSubmittedDate: prepared.cycle.billingSubmittedDate,

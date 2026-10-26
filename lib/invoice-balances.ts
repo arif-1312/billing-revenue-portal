@@ -10,6 +10,7 @@ export type InvoiceReceivableInput = {
   paymentDueDate?: Date | string | null;
   paymentReceived?: string | null;
   invoiceAmount?: unknown;
+  creditNote?: unknown;
   collectedAmount?: unknown;
   payments?: Receipt[] | null;
 };
@@ -34,6 +35,25 @@ function asDate(value?: Date | string | null) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+/**
+ * Final billed amount. The stored invoice amount stays unchanged.
+ * Blank and zero credit notes leave it as entered. A positive credit note is subtracted once.
+ */
+export function netInvoiceAmount(invoiceAmount: unknown, creditNote?: unknown) {
+  const note = money(creditNote);
+  if (!note.greaterThan(0)) return money(invoiceAmount);
+
+  const net = subtractMoney(invoiceAmount, note);
+  return net.isNegative() ? money(0) : net;
+}
+
+export function billedInvoiceAmount(invoice: {
+  invoiceAmount?: unknown;
+  creditNote?: unknown;
+}) {
+  return moneyToNumber(netInvoiceAmount(invoice.invoiceAmount, invoice.creditNote));
+}
+
 function collectedAgainstInvoice(invoice: InvoiceReceivableInput) {
   const payments = invoice.payments ?? [];
   if (payments.length > 0) {
@@ -56,7 +76,10 @@ export function classifyInvoiceReceivable(
   if (!invoiceDate || calendarDaysBetween(today, invoiceDate) < 0) return emptyReceivable;
   if (invoice.paymentReceived !== "NO") return emptyReceivable;
 
-  const remaining = subtractMoney(invoice.invoiceAmount, collectedAgainstInvoice(invoice));
+  const remaining = subtractMoney(
+    netInvoiceAmount(invoice.invoiceAmount, invoice.creditNote),
+    collectedAgainstInvoice(invoice),
+  );
   const balance = moneyToNumber(remaining.isNegative() ? 0 : remaining);
   if (balance <= 0) return emptyReceivable;
 

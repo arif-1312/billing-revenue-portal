@@ -39,6 +39,7 @@ export const REVENUE_EXCEL_COLUMNS: RevenueColumn[] = [
   { header: "Vendor", key: "vendorName", required: false, kind: "text" },
   { header: "Invoice Date", key: "invoiceDate", required: true, kind: "date" },
   { header: "Invoice Amount", key: "invoiceAmount", required: true, kind: "number" },
+  { header: "Credit Note", key: "creditNote", required: false, kind: "number" },
   { header: "Collected Amount", key: "collectedAmount", required: false, kind: "number" },
   { header: "TDS", key: "tds", required: false, kind: "number" },
   {
@@ -75,6 +76,7 @@ const IMPORT_KEYS = [
   "vendorName",
   "invoiceDate",
   "invoiceAmount",
+  "creditNote",
   "collectedAmount",
   "tds",
   "paymentReceived",
@@ -115,6 +117,7 @@ export type RevenueImportPreviewRow = {
   customerName: string;
   invoiceDate: string;
   invoiceAmount: number;
+  creditNote: number;
   collectedAmount: number;
   tds: number;
   paymentReceived: "YES" | "NO";
@@ -152,6 +155,7 @@ export type RevenueImportInsert = {
   invoiceNumber: string;
   invoiceDate: string;
   invoiceAmount: number;
+  creditNote: number | null;
   collectedAmount: number;
   tds: number;
   paymentReceived: "YES" | "NO";
@@ -175,6 +179,7 @@ export type RevenueExportCycle = {
   invoiceNumber?: string | null;
   invoiceDate?: Date | string | null;
   invoiceAmount?: unknown;
+  creditNote?: unknown;
   collectedAmount?: unknown;
   tds?: number | string | null;
   paymentReceived?: string | null;
@@ -692,18 +697,25 @@ export function assessRevenueImport(
       parseExcelDate(candidate.billingSubmittedDate),
     );
     const invoiceParsed = parseExcelAmount(candidate.invoiceAmount);
+    const creditParsed = parseExcelAmount(candidate.creditNote);
     const collectedParsed = parseExcelAmount(candidate.collectedAmount);
     const tdsParsed = parseExcelAmount(candidate.tds);
     const poParsed = parseExcelAmount(candidate.poAmount);
+    const invoiceAmount = usableAmount(invoiceParsed);
+    const creditNoteProvided = creditParsed !== null;
+    const creditNote = usableAmount(creditParsed);
+    const collectedAmount = usableAmount(collectedParsed);
+    const tds = usableAmount(tdsParsed);
     const moneyMessages = [
       moneyProblem("Invoice amount", invoiceParsed),
+      moneyProblem("Credit Note", creditParsed),
       moneyProblem("Collected amount", collectedParsed),
       moneyProblem("TDS", tdsParsed),
       moneyProblem("PO amount", poParsed),
+      creditNoteProvided && creditNote > invoiceAmount
+        ? "Credit Note cannot exceed the invoice amount"
+        : null,
     ].filter((message): message is string => Boolean(message));
-    const invoiceAmount = usableAmount(invoiceParsed);
-    const collectedAmount = usableAmount(collectedParsed);
-    const tds = usableAmount(tdsParsed);
 
     let purchaseOrderId = "";
     let billingCycleId = "";
@@ -766,6 +778,7 @@ export function assessRevenueImport(
         ? formatImportDate(resolvedInvoiceDate)
         : "",
       invoiceAmount,
+      creditNote,
       collectedAmount,
       tds,
       paymentReceived,
@@ -789,6 +802,7 @@ export function assessRevenueImport(
       invoiceNumber,
       invoiceDate: resolvedInvoiceDate,
       invoiceAmount,
+      creditNote: creditNoteProvided ? creditNote : null,
       collectedAmount,
       tds,
       paymentReceived,
@@ -854,6 +868,7 @@ function flattenExportRows(purchaseOrders: RevenueExportPurchaseOrder[]) {
           "Invoice Number": "",
           "Invoice Date": "",
           "Invoice Amount": "",
+          "Credit Note": "",
           "Collected Amount": "",
           TDS: "",
           "Payment Received": "",
@@ -870,6 +885,7 @@ function flattenExportRows(purchaseOrders: RevenueExportPurchaseOrder[]) {
       "Invoice Number": cycle.invoiceNumber ?? "",
       "Invoice Date": exportDate(cycle.invoiceDate),
       "Invoice Amount": exportAmount(cycle.invoiceAmount, true),
+      "Credit Note": exportAmount(cycle.creditNote, true),
       "Collected Amount": exportAmount(cycle.collectedAmount, true),
       TDS: exportAmount(cycle.tds, true),
       "Payment Received": cycle.paymentReceived ?? "",

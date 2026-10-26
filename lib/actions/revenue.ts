@@ -6,6 +6,7 @@ import {
   getFinancialYearRangeToDate,
 } from "@/lib/date-utils";
 import { prisma } from "@/lib/prisma";
+import { billedInvoiceAmount } from "@/lib/invoice-balances";
 import { moneyToNumber } from "@/lib/money";
 import { requirePermission, type PermissionRule } from "@/lib/rbac";
 
@@ -29,9 +30,10 @@ function getInvoiceDate(cycle: {
 function getEffectiveCollectedAmount(cycle: {
   collectedAmount?: unknown;
   invoiceAmount?: unknown;
+  creditNote?: unknown;
   paymentReceived?: PaymentReceived | null;
 }) {
-  const billed = moneyToNumber(cycle.invoiceAmount);
+  const billed = billedInvoiceAmount(cycle);
   const collected = moneyToNumber(cycle.collectedAmount);
 
   if (
@@ -80,6 +82,7 @@ export async function getRevenueSummary(
     },
     select: {
       invoiceAmount: true,
+      creditNote: true,
       collectedAmount: true,
       invoiceDate: true,
       billingSubmittedDate: true,
@@ -97,7 +100,7 @@ export async function getRevenueSummary(
       return;
     }
 
-    const inv = Number(c.invoiceAmount ?? 0);
+    const inv = billedInvoiceAmount(c);
     const col = getEffectiveCollectedAmount(c);
     billed += inv;
     collected += col;
@@ -146,6 +149,7 @@ export async function getRevenueByCompany(
     },
     select: {
       invoiceAmount: true,
+      creditNote: true,
       collectedAmount: true,
       invoiceDate: true,
       billingSubmittedDate: true,
@@ -179,7 +183,7 @@ export async function getRevenueByCompany(
 
     const entry = map.get(name)!;
 
-    entry.billed += Number(c.invoiceAmount || 0);
+    entry.billed += billedInvoiceAmount(c);
     entry.collected += getEffectiveCollectedAmount(c);
   });
 
@@ -225,6 +229,7 @@ export async function getRevenueByCustomer(
     },
     select: {
       invoiceAmount: true,
+      creditNote: true,
       collectedAmount: true,
       invoiceDate: true,
       billingSubmittedDate: true,
@@ -248,7 +253,7 @@ export async function getRevenueByCustomer(
 
     if (!map.has(cid)) map.set(cid, { billed: 0, collected: 0 });
     const existing = map.get(cid)!;
-    existing.billed += moneyToNumber(item.invoiceAmount);
+    existing.billed += billedInvoiceAmount(item);
     existing.collected += getEffectiveCollectedAmount(item);
   });
 
@@ -268,13 +273,13 @@ export async function getUpcomingPayments() {
   const today = new Date();
   const cycles = await prisma.billingCycle.findMany({
     where: { paymentDueDate: { gt: today } },
-    select: { invoiceNumber: true, paymentDueDate: true, invoiceAmount: true },
+    select: { invoiceNumber: true, paymentDueDate: true, invoiceAmount: true, creditNote: true },
     orderBy: { paymentDueDate: "asc" },
   });
 
   return cycles.map((cycle) => ({
     invoiceNumber: cycle.invoiceNumber,
     paymentDueDate: cycle.paymentDueDate,
-    invoiceAmount: moneyToNumber(cycle.invoiceAmount),
+    invoiceAmount: billedInvoiceAmount(cycle),
   }));
 }

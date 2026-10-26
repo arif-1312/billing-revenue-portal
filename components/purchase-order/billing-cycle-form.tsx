@@ -8,6 +8,7 @@ import { FieldPathValue, UseFormReturn, useFieldArray, useWatch } from "react-ho
 import { z } from "zod";
 
 import { cn } from "@/lib/utils";
+import { billedInvoiceAmount } from "@/lib/invoice-balances";
 import { purchaseOrderSchema } from "@/lib/validators";
 import {
   formatBillingCycleLabel,
@@ -99,6 +100,10 @@ const BillingCycleForm = ({
   const invoiceAmount = Number(
     form.watch(`billingCycles.${index}.invoiceAmount`) || 0,
   );
+  const creditNote = Number(
+    form.watch(`billingCycles.${index}.creditNote`) || 0,
+  );
+  const finalInvoiceAmount = billedInvoiceAmount({ invoiceAmount, creditNote });
   const { fields: paymentFields, append: appendPayment, remove: removePayment } = useFieldArray({
     control: form.control,
     name: `billingCycles.${index}.payments`,
@@ -140,7 +145,7 @@ const BillingCycleForm = ({
     form.watch(`billingCycles.${index}.collectedAmount`) || 0,
   );
   const tdsAmount = Number(form.watch(`billingCycles.${index}.tds`) || 0);
-  const pendingAmount = invoiceAmount - collectedAmount;
+  const pendingAmount = finalInvoiceAmount - collectedAmount;
   const poStartDate = form.watch("startFrom");
   const poEndDate = form.watch("endDate");
   const cycleReferenceDate =
@@ -205,7 +210,8 @@ const BillingCycleForm = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-4 text-sm font-medium">
-          <span>Invoice: Rs.{invoiceAmount.toLocaleString()}</span>
+          <span>Invoice: Rs.{finalInvoiceAmount.toLocaleString("en-IN")}</span>
+          <span>Credit Note: Rs.{creditNote.toLocaleString("en-IN")}</span>
           <span>Collected amount without GST: Rs.{collectedAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           <span>Pending: Rs.{pendingAmount.toLocaleString()}</span>
           <span>TDS: Rs.{tdsAmount.toLocaleString()}</span>
@@ -324,6 +330,41 @@ const BillingCycleForm = ({
                   }
                 />
               </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name={`billingCycles.${index}.creditNote`}
+          render={({ field }) => (
+            <FormItem className={themedFieldClassName}>
+              <FormLabel className={themedLabelClassName}>
+                Credit Note
+              </FormLabel>
+              <FormControl>
+                <Input
+                  className={themedInputClassName}
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  placeholder="Enter Credit Note"
+                  name={field.name}
+                  ref={field.ref}
+                  onBlur={field.onBlur}
+                  value={field.value ?? 0}
+                  onChange={(event) => {
+                    const raw = event.target.value;
+                    field.onChange(raw === "" ? 0 : Number(raw));
+                  }}
+                />
+              </FormControl>
+              {creditNote > 0 ? (
+                <p className="text-xs text-slate-500">
+                  Final invoice amount: Rs.{finalInvoiceAmount.toLocaleString("en-IN")}
+                </p>
+              ) : null}
               <FormMessage />
             </FormItem>
           )}
