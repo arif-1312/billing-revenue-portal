@@ -23,6 +23,9 @@ export type DeliveryPayload = {
   href: string
   occurredAt: string
   secureLink: string
+  username: string
+  activityDate: string
+  activityTime: string
 }
 
 export type DeliveryJob = {
@@ -45,6 +48,7 @@ export async function attemptDelivery(input: {
   now: Date
   portalName: string
   baseUrl?: string
+  brand?: { logoUrl?: string | null; supportEmail?: string | null }
 }) {
   const recipient = normalizeEmailAddress(input.job.recipientEmail)
   if (!recipient) {
@@ -80,7 +84,13 @@ export async function attemptDelivery(input: {
 
   let rendered: { text: string; html: string }
   try {
-    rendered = renderDelivery(input.job.templateKey, payload, input.portalName, input.baseUrl)
+    rendered = renderDelivery(
+      input.job.templateKey,
+      payload,
+      input.portalName,
+      input.baseUrl,
+      input.brand,
+    )
   } catch {
     return deliveryOutcome({
       attemptCount: input.job.attemptCount,
@@ -140,6 +150,9 @@ export function readPayload(value: unknown): DeliveryPayload | null {
     href: text("href"),
     occurredAt: text("occurredAt"),
     secureLink: text("secureLink"),
+    username: text("username"),
+    activityDate: text("activityDate"),
+    activityTime: text("activityTime"),
   }
 }
 
@@ -148,7 +161,18 @@ function renderDelivery(
   payload: DeliveryPayload,
   portalName: string,
   baseUrl?: string,
+  brand?: { logoUrl?: string | null; supportEmail?: string | null },
 ) {
+  const shared = {
+    portalName,
+    recipientName: payload.recipientName,
+    brand: {
+      companyName: portalName,
+      logoUrl: brand?.logoUrl,
+      supportEmail: brand?.supportEmail,
+    },
+  }
+
   if (templateKey === "password_reset") {
     const resetUrl = decryptSecret(payload.secureLink)
     const origin = baseUrl || ""
@@ -156,17 +180,18 @@ function renderDelivery(
       throw new Error("Email content is incomplete.")
     }
     return renderPasswordResetEmail({
-      portalName,
-      recipientName: payload.recipientName,
+      ...shared,
       resetUrl,
     })
   }
 
   if (templateKey === "password_changed") {
     return renderPasswordChangedEmail({
-      portalName,
-      recipientName: payload.recipientName,
+      ...shared,
       when: payload.occurredAt || new Date().toISOString(),
+      username: payload.username,
+      activityDate: payload.activityDate,
+      activityTime: payload.activityTime,
     })
   }
 
@@ -174,5 +199,7 @@ function renderDelivery(
     ...payload,
     portalName,
     baseUrl,
+    logoUrl: brand?.logoUrl,
+    supportEmail: brand?.supportEmail,
   })
 }

@@ -1,5 +1,12 @@
 import { escapeHtml, plainText, singleLine } from "./html"
 import { applicationLink } from "./links"
+import {
+  EMAIL_PRODUCT_NAME,
+  emailButton,
+  emailDocument,
+  emailInfoTable,
+  emailParagraphs,
+} from "./layout"
 
 export type EmailTemplateInput = {
   portalName: string
@@ -14,6 +21,8 @@ export type EmailTemplateInput = {
   href?: string | null
   occurredAt?: string | null
   baseUrl?: string
+  logoUrl?: string | null
+  supportEmail?: string | null
 }
 
 const SUBJECTS: Record<string, string> = {
@@ -88,52 +97,26 @@ export function renderNotificationEmail(input: EmailTemplateInput) {
     .filter((line) => line != null)
     .join("\n")
 
-  const rowHtml = rows
-    .map(
-      (row) =>
-        `<tr><td style="padding:8px 0;color:#64748b;font-size:13px;width:160px;vertical-align:top;">${escapeHtml(row.label)}</td><td style="padding:8px 0;color:#0f172a;font-size:14px;font-weight:600;">${escapeHtml(row.value)}</td></tr>`,
-    )
-    .join("")
-
+  const rowHtml = emailInfoTable(rows)
   const button = actionUrl
-    ? `<p style="margin:24px 0 0;"><a href="${escapeHtml(actionUrl)}" style="display:inline-block;background:#0369a1;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 18px;border-radius:8px;">${escapeHtml(label)}</a></p>`
-    : `<p style="margin:24px 0 0;color:#64748b;font-size:13px;">Sign in to the Billing Portal to view this record.</p>`
+    ? emailButton(actionUrl, label)
+    : `<p style="margin:0 0 16px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.5;color:#64748b;">Sign in to the Billing Portal to view this record.</p>`
 
-  const html = `<!DOCTYPE html>
-<html lang="en">
-<body style="margin:0;padding:0;background:#f8fafc;">
-  <div style="display:none;max-height:0;overflow:hidden;">${escapeHtml(title)}</div>
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;padding:24px 12px;">
-    <tr>
-      <td align="center">
-        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;">
-          <tr>
-            <td style="padding:24px 28px;border-bottom:1px solid #e2e8f0;">
-              <p style="margin:0;font-family:Arial,sans-serif;font-size:12px;font-weight:700;letter-spacing:0.08em;color:#0369a1;">${escapeHtml(portalName.toUpperCase())}</p>
-              <h1 style="margin:8px 0 0;font-family:Georgia,serif;font-size:22px;line-height:1.3;color:#0f172a;">${escapeHtml(title)}</h1>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:24px 28px;font-family:Arial,sans-serif;color:#334155;font-size:15px;line-height:1.6;">
-              <p style="margin:0 0 16px;">Hello ${escapeHtml(recipientName)},</p>
-              <p style="margin:0;">${escapeHtml(body).replace(/\n/g, "<br>")}</p>
-              ${rowHtml ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:20px;border-top:1px solid #e2e8f0;">${rowHtml}</table>` : ""}
-              ${button}
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:16px 28px;background:#f8fafc;border-top:1px solid #e2e8f0;font-family:Arial,sans-serif;font-size:12px;line-height:1.5;color:#64748b;">
-              <p style="margin:0;">${escapeHtml(when)}</p>
-              <p style="margin:8px 0 0;">Regards,<br>${escapeHtml(portalName)} Team</p>
-              <p style="margin:8px 0 0;">You received this message because of your Billing Portal account. Optional categories can be changed in the notification centre.</p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`
+  const html = emailDocument({
+    preheader: title,
+    brand: {
+      portalName: EMAIL_PRODUCT_NAME,
+      companyName: portalName,
+      logoUrl: input.logoUrl,
+      supportEmail: input.supportEmail,
+    },
+    heading: title,
+    introHtml: emailParagraphs([
+      `Hello ${recipientName},`,
+      body,
+    ]),
+    bodyHtml: `${rowHtml}${button}<p style="margin:0 0 8px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#64748b;">${escapeHtml(when)}</p>`,
+  })
 
   return { text, html }
 }

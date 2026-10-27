@@ -18,8 +18,8 @@ import { encryptSecret } from "@/lib/secret-box"
 import { passwordMeetsPolicy } from "@/lib/validators"
 import bcrypt from "bcrypt"
 
-const RESET_SUBJECT = "Reset Your Password — Billing & Revenue Portal"
-const CHANGED_SUBJECT = "Your Password Has Been Changed — Billing & Revenue Portal"
+const RESET_SUBJECT = "Password Reset Request | Billing & Revenue Portal"
+const CHANGED_SUBJECT = "Password Updated Successfully | Billing & Revenue Portal"
 
 export async function requestPasswordReset(identifier: string) {
   const key = identifier.trim().toLowerCase().slice(0, 200)
@@ -168,7 +168,7 @@ export async function notifyPasswordChanged(userId: string) {
   })
   if (!user?.email) return
 
-  const when = formatWhen(new Date())
+  const when = formatActivity(new Date())
   const name = displayName(user)
 
   try {
@@ -178,7 +178,7 @@ export async function notifyPasswordChanged(userId: string) {
       recipientEmail: user.email,
       subject: CHANGED_SUBJECT,
       templateKey: "password_changed",
-      payload: authPayload(name, when),
+      payload: authPayload(user, when),
     })
   } catch {
     console.error("Password change email could not be queued")
@@ -187,7 +187,7 @@ export async function notifyPasswordChanged(userId: string) {
   await ownerNotice({
     userId: user.id,
     title: "Password changed successfully",
-    body: `Your account password was changed successfully on ${when}.`,
+    body: `Your account password was changed successfully on ${when.label}.`,
     fingerprint: `changed:${user.id}:${Date.now()}`,
   })
 }
@@ -228,6 +228,7 @@ async function issueResetLink(identifier: string) {
 async function sendResetLink(user: {
   id: string
   email: string
+  username: string
   firstName: string
   lastName: string
 }) {
@@ -252,7 +253,7 @@ async function sendResetLink(user: {
       subject: RESET_SUBJECT,
       templateKey: "password_reset",
       payload: {
-        ...authPayload(displayName(user), formatWhen(now)),
+        ...authPayload(user, formatActivity(now)),
         secureLink: encryptSecret(url),
       },
     })
@@ -312,9 +313,13 @@ async function ownerNotice(input: {
   }
 }
 
-function authPayload(recipientName: string, when: string) {
+function authPayload(
+  user: { firstName: string; lastName: string; username: string },
+  when: { label: string; date: string; time: string },
+) {
   return {
-    recipientName,
+    recipientName: displayName(user),
+    username: user.username,
     title: "Account security",
     body: "This message is about your account password.",
     category: "SYSTEM",
@@ -324,7 +329,9 @@ function authPayload(recipientName: string, when: string) {
     companyName: "",
     customerName: "",
     href: "",
-    occurredAt: when,
+    occurredAt: when.label,
+    activityDate: when.date,
+    activityTime: when.time,
   }
 }
 
@@ -332,13 +339,17 @@ function displayName(user: { firstName: string; lastName: string }) {
   return [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || "there"
 }
 
-function formatWhen(date: Date) {
-  return `${new Intl.DateTimeFormat("en-IN", {
+function formatActivity(date: Date) {
+  const datePart = new Intl.DateTimeFormat("en-IN", {
     timeZone: "Asia/Kolkata",
     day: "2-digit",
     month: "short",
     year: "numeric",
+  }).format(date)
+  const timePart = `${new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
     hour: "numeric",
     minute: "2-digit",
   }).format(date)} IST`
+  return { date: datePart, time: timePart, label: `${datePart}, ${timePart}` }
 }

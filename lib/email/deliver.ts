@@ -6,6 +6,8 @@ import { persistDrafts } from "@/lib/notifications/store"
 import { attemptDelivery, type MailTransport } from "./attempt"
 import { readSmtpConfig } from "./config"
 import { applicationBaseUrl } from "./links"
+import { absoluteAssetUrl } from "./layout"
+import { normalizeEmailAddress } from "./address"
 import { sendSmtpMail } from "./smtp"
 import { claimEmailJobs, recordEmailResult, recoverStaleEmailJobs, requeueOrphanNotifications } from "./queue"
 
@@ -69,23 +71,30 @@ export async function processEmailJob(
 }
 
 async function deliverOne(job: ClaimedEmailJob, transport: MailTransport, now: Date) {
-  const configuration = await prisma.configuration.findFirst({ select: { name: true } })
+  const configuration = await prisma.configuration.findFirst({
+    select: { name: true, logo: true, email: true },
+  })
+  const baseUrl = applicationBaseUrl()
   const outcome = await attemptDelivery({
     job: {
       recipientEmail: job.recipientEmail,
       cc: job.cc,
       bcc: job.bcc,
       subject: job.subject,
-        attemptCount: job.attemptCount,
-        maxAttempts: job.maxAttempts,
-        payload: job.payload,
-        templateKey: job.templateKey,
-      },
+      attemptCount: job.attemptCount,
+      maxAttempts: job.maxAttempts,
+      payload: job.payload,
+      templateKey: job.templateKey,
+    },
     config: readSmtpConfig(),
     transport,
     now,
     portalName: configuration?.name?.trim() || "Billing & Revenue Portal",
-    baseUrl: applicationBaseUrl(),
+    baseUrl,
+    brand: {
+      logoUrl: absoluteAssetUrl(configuration?.logo, baseUrl),
+      supportEmail: normalizeEmailAddress(configuration?.email),
+    },
   })
 
   const recorded = await recordEmailResult(job, outcome)
