@@ -9,6 +9,7 @@ import {
   changeCurrentUserPassword,
   updateCurrentUserProfile,
 } from "@/lib/actions/users";
+import { sendMyPasswordResetLink } from "@/lib/actions/password-reset";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -67,6 +68,8 @@ export function ProfileTabs({
     useTransition();
   const [isUpdatingPassword, startPasswordTransition] =
     useTransition();
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [isSendingReset, startResetTransition] = useTransition();
 
   const updateInformationField = (
     key: keyof InformationForm,
@@ -333,7 +336,7 @@ export function ProfileTabs({
                 />
               </div>
 
-              <div className="md:col-span-2">
+              <div className="md:col-span-2 flex flex-wrap gap-3">
                 <Button
                   type="submit"
                   disabled={isUpdatingPassword}
@@ -343,7 +346,46 @@ export function ProfileTabs({
                     ? "Updating..."
                     : "Update Password"}
                 </Button>
+                {confirmReset ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isSendingReset}
+                    onClick={() => {
+                      startResetTransition(async () => {
+                        const result = await sendMyPasswordResetLink();
+                        setConfirmReset(false);
+                        if (result.success) toast.success(result.message);
+                        else toast.error(result.message);
+                      });
+                    }}
+                  >
+                    {isSendingReset ? "Sending..." : "Send reset link"}
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setConfirmReset(true)}
+                  >
+                    Reset Password
+                  </Button>
+                )}
+                {confirmReset ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => setConfirmReset(false)}
+                  >
+                    Cancel
+                  </Button>
+                ) : null}
               </div>
+              {confirmReset ? (
+                <p className="md:col-span-2 text-sm text-slate-500">
+                  This sends a one-time reset link to your registered email address. It expires in 15 minutes.
+                </p>
+              ) : null}
             </form>
           </CardContent>
         </Card>

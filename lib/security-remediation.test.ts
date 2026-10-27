@@ -154,6 +154,20 @@ describe("shared login limits", () => {
     await expect(loginIsLimited("other", "203.0.113.4", 1_000)).resolves.toBe(true);
     resetLoginRateLimitForTests();
   });
+
+  it("does not let a missing address lock every other account", async () => {
+    resetLoginRateLimitForTests();
+    const shared = new MemoryRateLimitStore();
+    useLoginRateLimitStore(shared);
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await recordSharedLoginFailure("ada", "", 1_000);
+    }
+
+    await expect(loginIsLimited("ada", "", 1_000)).resolves.toBe(true);
+    await expect(loginIsLimited("other", "", 1_000)).resolves.toBe(false);
+    resetLoginRateLimitForTests();
+  });
 });
 
 describe("uploads and headers", () => {
@@ -181,7 +195,7 @@ describe("session idle timeout", () => {
     const now = 10_000_000;
     expect(idleExpired(now - 3 * 60 * 60 * 1000, now)).toBe(true);
     expect(idleExpired(now - 60 * 1000, now)).toBe(false);
-    expect(idleExpired(undefined, now)).toBe(false);
+    expect(idleExpired(undefined, now)).toBe(true);
   });
 });
 
@@ -237,7 +251,7 @@ describe("revenue import identity", () => {
     expect(assessed.errors[0]?.messages.join(" ")).toContain("More than one");
   });
 
-  it("blocks create-only callers from updates and payment replacement", () => {
+  it("blocks create-only callers from updates and leaves payment history alone", () => {
     expect(importRowBlockReason(
       { purchaseOrderId: "po-1" },
       { canEdit: false, canDelete: false },
@@ -245,7 +259,7 @@ describe("revenue import identity", () => {
     expect(importRowBlockReason(
       { billingCycleId: "cycle-1" },
       { canEdit: true, canDelete: false },
-    )).toMatch(/Delete permission/);
+    )).toBeNull();
     expect(importRowBlockReason(
       {},
       { canEdit: false, canDelete: false },

@@ -1,25 +1,21 @@
 import { prisma } from "@/lib/prisma"
 import { passwordFingerprint } from "@/lib/password"
+import { requestCache } from "@/lib/request-cache"
 import { decideSession } from "@/lib/session-decision"
 
-export async function readSessionDecision(input: {
-  userId: string
-  issuedAt: Date
-  tokenFingerprint?: string
-}) {
-  const user = await prisma.user.findUnique({
-    where: { id: input.userId },
-    select: { status: true, password: true },
-  })
+const loadSessionDecision = requestCache(
+  async (userId: string, issuedAtMs: number, tokenFingerprint: string) => {
+    const issuedAt = new Date(issuedAtMs)
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { status: true, password: true },
+    })
 
-  let loggedOutAfterIssue = false
-
-  try {
     const logout = await prisma.auditLog.findFirst({
       where: {
-        userId: input.userId,
+        userId,
         model: "SecurityEvent",
-        createdAt: { gt: input.issuedAt },
+        createdAt: { gt: issuedAt },
         after: {
           path: ["event"],
           equals: "LOGOUT",
@@ -27,17 +23,26 @@ export async function readSessionDecision(input: {
       },
       select: { id: true },
     })
-    loggedOutAfterIssue = Boolean(logout)
-  } catch {
-    loggedOutAfterIssue = false
-  }
 
-  return decideSession({
-    status: user?.status,
-    currentFingerprint: user?.password
-      ? passwordFingerprint(user.password)
-      : null,
-    tokenFingerprint: input.tokenFingerprint,
-    loggedOutAfterIssue,
-  })
+    return decideSession({
+      status: user?.status,
+      currentFingerprint: user?.password
+        ? passwordFingerprint(user.password)
+        : null,
+      tokenFingerprint: tokenFingerprint || undefined,
+      loggedOutAfterIssue: Boolean(logout),
+    })
+  },
+)
+
+export async function readSessionDecision(input: {
+  userId: string
+  issuedAt: Date
+  tokenFingerprint?: string
+}) {
+  return loadSessionDecision(
+    input.userId,
+    input.issuedAt.getTime(),
+    input.tokenFingerprint ?? "",
+  )
 }

@@ -10,6 +10,7 @@ import { randomUUID } from "crypto";
 import { requirePermission } from "@/lib/rbac";
 import { encryptSecret, isSecretConfigured } from "@/lib/secret-box";
 import { fileMatchesSignature } from "@/lib/file-signature";
+import { safeBrandingPath } from "@/lib/branding-path";
 import { fingerprint } from "@/lib/notifications/model";
 import { safePublishSystem } from "@/lib/notifications/publish";
 
@@ -171,11 +172,11 @@ export async function createOrUpdateConfiguration(data: Configuration) {
       name: configuration.name || null,
       logo:
         typeof configuration.logo === "string"
-          ? configuration.logo
+          ? safeBrandingPath(configuration.logo)
           : null,
       favicon:
         typeof configuration.favicon === "string"
-          ? configuration.favicon
+          ? safeBrandingPath(configuration.favicon)
           : null,
       email: configuration.email || null,
       password: configuration.password

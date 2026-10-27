@@ -2,6 +2,8 @@ import {
   NotificationCentre,
   NotificationCentreError,
 } from "@/components/notifications/notification-centre"
+import { NotificationPreferences } from "@/components/notifications/notification-preferences"
+import { getMyNotificationPreferences } from "@/lib/email/preferences"
 import { getNotificationCentre } from "@/lib/notifications/store"
 
 export const dynamic = "force-dynamic"
@@ -26,7 +28,14 @@ export default async function NotificationsPage({
     return <NotificationCentreError message={result.message} />
   }
 
-  return <NotificationCentre {...result.data} />
+  const preferences = await getMyNotificationPreferences()
+
+  return (
+    <div className="flex flex-col gap-4">
+      <NotificationCentre {...result.data} />
+      {preferences ? <NotificationPreferences items={preferences} /> : null}
+    </div>
+  )
 }
 
 function firstParam(value: string | string[] | undefined) {

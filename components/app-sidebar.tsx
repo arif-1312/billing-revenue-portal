@@ -8,6 +8,7 @@ import {
   IconHome,
   IconBell,
   IconHistory,
+  IconMail,
   IconPackage,
   IconReceipt,
   IconTrendingUp,
@@ -129,6 +130,12 @@ const data = {
       title: "Activity Log",
       url: "/admin/activity-log",
       icon: IconHistory,
+    },
+
+    {
+      title: "Email",
+      url: "/admin/email",
+      icon: IconMail,
     },
   ],
 

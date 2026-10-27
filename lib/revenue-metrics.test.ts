@@ -50,6 +50,13 @@ describe("aging buckets", () => {
   });
 });
 
+describe("GST display amount", () => {
+  it("adds 18 percent and keeps two decimal places", () => {
+    expect(amountWithGst(10000.01)).toBe(11800.01);
+    expect(amountWithGst(45000)).toBe(53100);
+  });
+});
+
 describe("collection slices", () => {
   it("splits outstanding into pending and overdue without double counting", () => {
     expect(collectionSlices(50, 50, 20)).toEqual([

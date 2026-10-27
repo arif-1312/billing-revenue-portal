@@ -55,6 +55,27 @@ type RoleModulePermission = {
 
 type PermissionKey = "canView" | "canCreate" | "canEdit" | "canDelete";
 
+const PERMISSION_KEYS: PermissionKey[] = ["canView", "canCreate", "canEdit", "canDelete"];
+
+function fullPermission(moduleId: string): RoleModulePermission {
+  return {
+    moduleId,
+    canView: true,
+    canCreate: true,
+    canEdit: true,
+    canDelete: true,
+  };
+}
+
+function hasEveryPermission(permission?: RoleModulePermission) {
+  return Boolean(
+    permission?.canView &&
+      permission.canCreate &&
+      permission.canEdit &&
+      permission.canDelete,
+  );
+}
+
 type RoleFormData = {
   id?: string;
   roleModules?: RoleModulePermission[];
@@ -181,6 +202,30 @@ const RoleForm = ({
           title="Permissions Matrix"
           description="Choose which modules this role can view, create, edit, and delete."
         >
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="border-sky-100"
+              onClick={() =>
+                setSelectedModules(
+                  modules.flatMap((module) =>
+                    module.id ? [fullPermission(module.id)] : [],
+                  ),
+                )
+              }
+            >
+              Select all
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="border-sky-100"
+              onClick={() => setSelectedModules([])}
+            >
+              Clear all
+            </Button>
+          </div>
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             {modules.map((module) => {
               const moduleId = module.id ?? "";
@@ -193,13 +238,31 @@ const RoleForm = ({
                   key={moduleId || module.name}
                   className="rounded-2xl border border-sky-100 bg-white/85 p-4 shadow-[0_16px_36px_-28px_rgba(14,165,233,0.32)]"
                 >
-                  <div className="mb-3 text-left text-base font-semibold text-slate-900">
-                    {module.name}
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div className="text-left text-base font-semibold text-slate-900">
+                      {module.name}
+                    </div>
+                    <label className="flex items-center gap-2 text-sm text-slate-600">
+                      <input
+                        type="checkbox"
+                        className={themedCheckboxClassName}
+                        checked={hasEveryPermission(selected)}
+                        onChange={() => {
+                          setSelectedModules((prev) => {
+                            const rest = prev.filter((item) => item.moduleId !== moduleId);
+                            return hasEveryPermission(selected)
+                              ? rest
+                              : [...rest, fullPermission(moduleId)];
+                          });
+                        }}
+                      />
+                      All
+                    </label>
                   </div>
 
                   <div className="flex flex-wrap gap-3 text-sm text-slate-700">
-                    {["view", "create", "edit", "delete"].map((permission) => {
-                      const key = `can${permission.charAt(0).toUpperCase()}${permission.slice(1)}` as PermissionKey;
+                    {PERMISSION_KEYS.map((key) => {
+                      const permission = key.slice(3).toLowerCase();
 
                       return (
                         <label

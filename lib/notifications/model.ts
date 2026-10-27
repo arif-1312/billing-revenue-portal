@@ -56,7 +56,11 @@ export type NotificationDraft = {
 }
 
 export type SystemNotificationInput = {
-  eventType: "SYSTEM_UPDATE" | "SYSTEM_USER_ACTIVITY" | "SYSTEM_RECORD_CHANGE"
+  eventType:
+    | "SYSTEM_UPDATE"
+    | "SYSTEM_USER_ACTIVITY"
+    | "SYSTEM_RECORD_CHANGE"
+    | "SYSTEM_EMAIL_FAILURE"
   entityType: string
   entityId: string
   title: string

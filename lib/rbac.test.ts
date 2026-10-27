@@ -22,7 +22,7 @@ vi.mock("@/lib/security-event", () => ({
   recordSecurityEvent,
 }));
 
-import { canAccess, requirePermission } from "./rbac";
+import { canAccess, getAllowedRoute, requirePermission } from "./rbac";
 
 const email = "person@example.com";
 
@@ -130,5 +130,12 @@ describe("permission checks", () => {
       ok: false,
       message: "Unauthorized",
     });
+  });
+
+  it("loads the permission record once for every action on a route", async () => {
+    findUnique.mockResolvedValue(permissionUser({ canDelete: true }));
+
+    await expect(getAllowedRoute("/admin/customer")).resolves.toBe("/admin/customer");
+    expect(findUnique).toHaveBeenCalledTimes(1);
   });
 });

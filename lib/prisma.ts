@@ -2,7 +2,14 @@ import { PrismaClient } from "@prisma/client"
 import { PrismaPg } from "@prisma/adapter-pg"
 import { Pool } from "pg"
 import { assertSafeDatabaseTarget, databasePoolOptions } from "./database-guard"
-import { auditQuery, runInAuditBuffer } from "./audit"
+import {
+  auditQuery,
+  bindAuditReader,
+  flushAuditEvents,
+  registerFinancialTransaction,
+  runInAuditBuffer,
+} from "./audit"
+import type { PrismaClient as PrismaClientType } from "@prisma/client"
 
 assertSafeDatabaseTarget(process.env.DATABASE_URL)
 
@@ -33,20 +40,48 @@ function createPrismaClient() {
     },
   })
 
-  return new Proxy(extended, {
+  const proxied = new Proxy(extended, {
     get(target, property, receiver) {
       if (property === "$transaction") {
         const original = target.$transaction
 
         return (first: unknown, ...rest: unknown[]) =>
-          runInAuditBuffer(base, () =>
-            original.call(target, first as never, ...(rest as never[])),
-          )
+          runInAuditBuffer(base, () => {
+            if (typeof first !== "function") {
+              return original.call(target, first as never, ...(rest as never[]))
+            }
+
+            const run = first as (tx: PrismaClientType) => Promise<unknown>
+
+            return original.call(
+              target,
+              (async (tx: PrismaClientType) => {
+                bindAuditReader(tx)
+                try {
+                  const result = await run(tx)
+                  await flushAuditEvents(tx)
+                  return result
+                } finally {
+                  bindAuditReader(null)
+                }
+              }) as never,
+              ...(rest as never[]),
+            )
+          })
       }
 
       return Reflect.get(target, property, receiver)
     },
   }) as typeof extended
+
+  registerFinancialTransaction((fn) => {
+    const run = proxied.$transaction as unknown as (
+      callback: typeof fn,
+    ) => ReturnType<typeof fn>
+    return run(fn)
+  })
+
+  return proxied
 }
 
 type AppPrisma = ReturnType<typeof createPrismaClient>

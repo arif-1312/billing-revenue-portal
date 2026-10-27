@@ -7,6 +7,7 @@ import {
   CompanyStatus,
   PurchaseOrderType,
 } from "@prisma/client";
+import { isCommonPassword } from "@/lib/password-reset";
 
 /* ---------------- ENUMS ---------------- */
 export const statusEnum = z.nativeEnum(Status).optional();
@@ -95,10 +96,11 @@ export const userSchema = z.object({
 });
 
 export const PASSWORD_POLICY =
-  "Use at least 12 characters and three of these four kinds: lowercase letters, uppercase letters, numbers, and symbols.";
+  "Use at least 12 characters and three of these four kinds: lowercase letters, uppercase letters, numbers, and symbols. Avoid common passwords.";
 
 export function passwordMeetsPolicy(password: string) {
   if (password.trim().length < 12) return false;
+  if (isCommonPassword(password)) return false;
 
   const classes = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].filter((pattern) =>
     pattern.test(password),

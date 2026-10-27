@@ -1,5 +1,3 @@
-"use server";
-
 import type { ReactNode } from "react";
 
 import { fetchPLPageData } from "@/lib/actions/project";

@@ -12,7 +12,9 @@ The initial administrator is created only by `prisma db seed`. `SEED_ADMIN_USERN
 
 ## Secrets
 
-The mailbox password is encrypted with AES-256-GCM before it is stored. The key is `CONFIG_ENCRYPTION_KEY`, or `AUTH_SECRET` when that dedicated key is unset. Production should set `CONFIG_ENCRYPTION_KEY` and keep it outside the database and the repository.
+The mailbox password stored on the configuration record is encrypted with AES-256-GCM before it is stored. The key is `CONFIG_ENCRYPTION_KEY`, or `AUTH_SECRET` when that dedicated key is unset. Production should set `CONFIG_ENCRYPTION_KEY` and keep it outside the database and the repository. That stored mailbox password is not used to send mail.
+
+Outbound email uses SMTP settings from the server environment: `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM_ADDRESS`, and `SMTP_FROM_NAME`. The admin email page shows the host, port, security mode, and a masked sender address. It never receives the password. Test messages can be sent only to the signed-in administrator's own account address.
 
 The settings screen receives only `passwordConfigured`. It never receives the password. Saving a blank password keeps the stored value. Saving a new password replaces it. A password stored before this change remains readable only on the server until an administrator saves a new one; that save encrypts the replacement. Rotate the mailbox password after deploying this change.
 
@@ -22,7 +24,7 @@ Sessions are JWT cookies, HttpOnly, `SameSite=Lax`, and `Secure` in production. 
 
 Logout is the POST server action `logoutUser`. It records a logout event and invalidates tokens issued before that event. `GET /api/session/end` does not log out a valid session. It only clears a cookie after the session is already invalid.
 
-Passwords are hashed with bcrypt at cost 12. New passwords and password changes need at least 12 characters and three of: lowercase, uppercase, number, symbol. There is no self-service reset and no multi-factor authentication. Those remain follow-up product work. Privileged accounts should use a second factor once a reset and mail flow exist.
+Passwords are hashed with bcrypt at cost 12. New passwords and password changes need at least 12 characters and three of: lowercase, uppercase, number, symbol, and they reject a short list of common passwords. A forgotten password can be reset from the login page. The reset link is single-use, expires after 15 minutes, and only a hash of the token is stored. Changing the password invalidates existing sessions because the session fingerprint no longer matches. There is no multi-factor authentication.
 
 Login failures are limited to five attempts per account and per source address in a 15-minute window. Production stores those counters in `RateLimitBucket` so they survive another application instance. The limit expires; it does not permanently lock the account. Unknown usernames and wrong passwords return the same result, and a dummy bcrypt comparison runs when the account does not exist.
 

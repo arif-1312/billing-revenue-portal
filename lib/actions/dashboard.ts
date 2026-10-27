@@ -17,10 +17,10 @@ import {
   type AgingSummary,
   type DashboardFilters,
 } from "@/lib/revenue-metrics";
-import { billedInvoiceAmount, classifyInvoiceReceivable } from "@/lib/invoice-balances";
+import { billedInvoiceAmount, classifyInvoiceReceivable, collectedAmountOf } from "@/lib/invoice-balances";
+import { moneyToNumber } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/rbac";
-import { addMoney, moneyToNumber } from "@/lib/money";
 
 function emptyDashboardSummary(): RevenueDashboardSummary {
   return {
@@ -424,26 +424,12 @@ type StoredPayment = {
 };
 
 function getEffectiveCollectedAmount(
-  cycle: Pick<
-    BillingCycleWithPurchaseOrder,
-    "paymentReceived" | "collectedAmount" | "invoiceAmount"
-  > & { payments?: StoredPayment[] | null; creditNote?: unknown },
+  cycle: {
+    collectedAmount?: unknown;
+    payments?: StoredPayment[] | null;
+  },
 ) {
-  const payments = cycle.payments ?? [];
-
-  if (payments.length > 0) {
-    return moneyToNumber(
-      payments.reduce((total, payment) => addMoney(total, payment.amount), addMoney(0, 0)),
-    );
-  }
-
-  const collected = moneyToNumber(cycle.collectedAmount);
-
-  if (cycle.paymentReceived === PaymentReceived.YES && collected <= 0) {
-    return billedInvoiceAmount(cycle);
-  }
-
-  return collected;
+  return moneyToNumber(collectedAmountOf(cycle));
 }
 
 function paymentReceipts(
@@ -459,7 +445,7 @@ function paymentReceipts(
 ) {
   const stored = (cycle.payments ?? []).flatMap((payment) => {
     if (!payment.receivedDate) return [];
-    const amount = Number(payment.amount || 0);
+    const amount = moneyToNumber(payment.amount);
     if (!Number.isFinite(amount) || amount === 0) return [];
     return [{ receivedDate: payment.receivedDate, amount }];
   });
@@ -637,7 +623,13 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 
   const currentMonth = getFinancialMonth(new Date());
 
-  const cycles = await prisma.billingCycle.findMany();
+  const cycles = await prisma.billingCycle.findMany({
+    include: {
+      payments: {
+        select: { amount: true, receivedDate: true },
+      },
+    },
+  });
 
   let billCount = 0;
   let totalBilledAmount = 0;

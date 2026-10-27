@@ -74,7 +74,10 @@ model User {
   roleId    String   @db.Uuid
   role      Role     @relation(fields: [roleId], references: [id])
 
-  notificationReceipts NotificationReceipt[]
+  notificationReceipts    NotificationReceipt[]
+  notificationPreferences NotificationPreference[]
+  emailJobs               EmailJob[]
+  passwordResetTokens     PasswordResetToken[]
 }
 
 model Module {
@@ -364,7 +367,7 @@ enum NotificationKind {
   EVENT
 }
 
-/// Phase 1 writes NOT_APPLICABLE. Phase 2 can queue PENDING rows without a schema change.
+/// Summary of related EmailJob rows. PENDING includes queued, processing, and retrying jobs.
 enum NotificationEmailStatus {
   NOT_APPLICABLE
   PENDING
@@ -373,7 +376,15 @@ enum NotificationEmailStatus {
   SKIPPED
 }
 
-/// In-app billing and system alerts. Email columns are stored for phase 2 and are not sent in phase 1.
+enum EmailJobStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  RETRYING
+}
+
+/// In-app billing and system alerts. Delivery attempts are stored on EmailJob.
 model Notification {
   id               String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   dedupeKey        String                  @unique
@@ -399,6 +410,7 @@ model Notification {
   createdAt        DateTime                @default(now())
   updatedAt        DateTime                @updatedAt
   receipts         NotificationReceipt[]
+  emailJobs        EmailJob[]
 
   @@index([category, occurredAt])
   @@index([entityType, entityId])
@@ -421,6 +433,74 @@ model NotificationReceipt {
   @@unique([notificationId, userId])
   @@index([userId, deletedAt, readAt])
   @@index([userId, createdAt])
+}
+
+model NotificationPreference {
+  id           String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String               @db.Uuid
+  category     NotificationCategory
+  inAppEnabled Boolean              @default(true)
+  emailEnabled Boolean              @default(true)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, category])
+  @@index([userId])
+}
+
+/// Administrator switch for optional email categories. Missing rows stay enabled.
+model EmailCategorySetting {
+  category     NotificationCategory @id
+  emailEnabled Boolean              @default(true)
+  updatedAt    DateTime             @updatedAt
+}
+
+/// Durable outbox. SMTP credentials are never stored on these rows.
+model EmailJob {
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  idempotencyKey   String         @unique
+  notificationId   String?        @db.Uuid
+  eventKey         String
+  recipientUserId  String?        @db.Uuid
+  recipientEmail   String
+  cc               String[]       @default([])
+  bcc              String[]       @default([])
+  subject          String
+  templateKey      String
+  payload          Json
+  status           EmailJobStatus @default(PENDING)
+  attemptCount     Int            @default(0)
+  maxAttempts      Int            @default(5)
+  nextAttemptAt    DateTime       @default(now())
+  lastAttemptAt    DateTime?
+  sentAt           DateTime?
+  lastError        String?
+  lockedAt         DateTime?
+  lockToken        String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  notification     Notification?  @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  recipient        User?          @relation(fields: [recipientUserId], references: [id], onDelete: SetNull)
+
+  @@index([status, nextAttemptAt])
+  @@index([notificationId])
+  @@index([recipientUserId])
+  @@index([createdAt])
+}
+
+/// Single-use password reset secrets. Only the hash is stored.
+model PasswordResetToken {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  usedAt    DateTime?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
 }
 
 enum AuditAction {

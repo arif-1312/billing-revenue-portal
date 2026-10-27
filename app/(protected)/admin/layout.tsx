@@ -3,7 +3,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { SiteHeader } from "@/components/site-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { getConfiguration } from "@/lib/actions/configuration";
-import { getAllowedRoute, getUserPermissions } from "@/lib/rbac";
+import { getUserPermissions, visibleRoute } from "@/lib/rbac";
 import { isSignedInSession } from "@/lib/session-decision";
 import { redirect } from "next/navigation";
 
@@ -36,10 +36,8 @@ export default async function AdminLayout({
     redirect("/api/session/end");
   }
 
-  const allowedRoutes = await Promise.all(
-    (userRoles?.role?.roleModules || []).map(async (roleModule: RoleModule) => {
-      return getAllowedRoute(roleModule.module.route);
-    }),
+  const allowedRoutes = (userRoles.role?.roleModules || []).map(
+    (roleModule: RoleModule) => visibleRoute(userRoles, roleModule.module.route),
   );
 
   const user = userRoles

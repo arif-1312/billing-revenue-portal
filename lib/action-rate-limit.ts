@@ -27,3 +27,17 @@ export function consumeRateLimit(
 export function resetRateLimitsForTests() {
   buckets.clear()
 }
+
+export async function consumeActionRateLimit(
+  key: string,
+  limit: number,
+  windowMs: number,
+  now = Date.now(),
+) {
+  if (process.env.APP_ENV !== "production") {
+    return consumeRateLimit(key, limit, windowMs, now)
+  }
+
+  const { reserveSharedRateLimit } = await import("@/lib/login-rate-limit")
+  return reserveSharedRateLimit(`action:${key}`, limit, windowMs, now)
+}

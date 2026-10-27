@@ -7,8 +7,20 @@ import { toBusinessDateValue } from "../date-utils";
 import { PurchaseOrder } from "@/types";
 import { PaymentReceived, Prisma } from "@prisma/client";
 import { generatePurchaseOrderBillingCycles } from "../billing-cycle-utils";
-import { moneyToNumber } from "../money";
-import { purchaseOrderUpdateBlock } from "../purchase-order-guard";
+import { addMoney, moneyEquals, moneyToNumber, splitMoney } from "../money";
+import {
+  cycleIsPaid,
+  paidCycleChangeBlock,
+  paidCycleRemovalBlock,
+  paymentRemovalBlock,
+  purchaseOrderDeleteBlock,
+  purchaseOrderUpdateBlock,
+} from "../purchase-order-guard";
+import {
+  assertInvoiceNumbersAvailable,
+  lockPurchaseOrders,
+  normalizeInvoiceNumber,
+} from "../financial-write";
 import { canAccess, getUserPermissions, requirePermission } from "@/lib/rbac";
 import type { PurchaseOrderSnapshot } from "@/lib/notifications/model";
 import {
@@ -98,7 +110,12 @@ const billingCycleCreateData = (billingCycle: {
 }) => {
   const payments = receiptCreates(billingCycle);
   const collectedAmount = payments.length
-    ? payments.reduce((total, payment) => total + payment.amount, 0)
+    ? moneyToNumber(
+        payments.reduce(
+          (total, payment) => addMoney(total, payment.amount),
+          addMoney(0, 0),
+        ),
+      )
     : billingCycle.collectedAmount ?? 0;
   const latestReceipt = [...payments].sort(
     (left, right) => left.receivedDate.getTime() - right.receivedDate.getTime(),
@@ -106,7 +123,7 @@ const billingCycleCreateData = (billingCycle: {
 
   return {
     cycle: {
-      invoiceNumber: billingCycle.invoiceNumber ?? "",
+      invoiceNumber: normalizeInvoiceNumber(billingCycle.invoiceNumber),
       invoiceAmount: billingCycle.invoiceAmount ?? 0,
       creditNote: new Prisma.Decimal(billingCycle.creditNote ?? 0),
       collectedAmount,
@@ -127,6 +144,11 @@ const createBillingCycles = async (
   purchaseOrderId: string,
   cycles: Array<ReturnType<typeof billingCycleCreateData>>,
 ) => {
+  await assertInvoiceNumbersAvailable(
+    db,
+    cycles.map((item) => ({ invoiceNumber: item.cycle.invoiceNumber })),
+  );
+
   for (const item of cycles) {
     const data: Prisma.BillingCycleCreateInput = {
       invoiceNumber: item.cycle.invoiceNumber,
@@ -223,13 +245,13 @@ export async function createPurchaseOrder(data: PurchaseOrder) {
             type: billingPlan.billingCycleType as "START" | "MID" | "END",
           })
         : [];
-    const generatedInvoiceAmount =
-      generatedCycles.length > 0
-        ? Math.round(((validated.poAmount ?? 0) / generatedCycles.length) * 100) / 100
-        : 0;
-    const generatedBillingCycles = generatedCycles.map((cycle) => ({
+    const generatedShares = splitMoney(
+      validated.poAmount ?? 0,
+      generatedCycles.length,
+    );
+    const generatedBillingCycles = generatedCycles.map((cycle, index) => ({
       invoiceNumber: "",
-      invoiceAmount: generatedInvoiceAmount,
+      invoiceAmount: generatedShares[index] ?? new Prisma.Decimal(0),
       collectedAmount: 0,
       invoiceDate: cycle.invoiceDate,
       billingSubmittedDate: resolveBillingSubmittedDate(cycle),
@@ -332,6 +354,14 @@ const syncBillingCycles = async (
   cycles: NonNullable<PurchaseOrder["billingCycles"]>,
   options: { canDelete: boolean; isSystem: boolean },
 ) => {
+  await assertInvoiceNumbersAvailable(
+    db,
+    cycles.map((cycle) => ({
+      invoiceNumber: cycle.invoiceNumber,
+      exceptId: cycle.id,
+    })),
+  );
+
   const existing = await db.billingCycle.findMany({
     where: { purchaseOrderId },
     include: { payments: true },
@@ -345,18 +375,23 @@ const syncBillingCycles = async (
 
     if (previous) {
       seen.add(previous.id);
-      const paid =
-        previous.payments.length > 0 || previous.paymentReceived === "YES";
-      if (
-        paid &&
-        !options.isSystem &&
-        (moneyToNumber(previous.invoiceAmount) !==
-          moneyToNumber(prepared.cycle.invoiceAmount) ||
-          moneyToNumber(previous.creditNote) !==
-            moneyToNumber(prepared.cycle.creditNote))
-      ) {
-        throw new Error("Paid billing cycles cannot be changed.");
-      }
+      const paid = cycleIsPaid({
+        paymentCount: previous.payments.length,
+        paymentReceived: previous.paymentReceived,
+      });
+      const blocked = paidCycleChangeBlock({
+        paid,
+        actorIsSystem: options.isSystem,
+        invoiceAmountChanged: !moneyEquals(
+          previous.invoiceAmount,
+          prepared.cycle.invoiceAmount,
+        ),
+        creditNoteChanged: !moneyEquals(
+          previous.creditNote,
+          prepared.cycle.creditNote,
+        ),
+      });
+      if (blocked) throw new Error(blocked);
 
       await db.billingCycle.update({
         where: { id: previous.id },
@@ -373,9 +408,11 @@ const syncBillingCycles = async (
       );
       for (const payment of previous.payments) {
         if (incomingIds.has(payment.id)) continue;
-        if (!options.canDelete && !options.isSystem) {
-          throw new Error("Delete permission is required to remove a payment.");
-        }
+        const blocked = paymentRemovalBlock({
+          canDelete: options.canDelete,
+          actorIsSystem: options.isSystem,
+        });
+        if (blocked) throw new Error(blocked);
         await db.billingCyclePayment.delete({ where: { id: payment.id } });
       }
 
@@ -430,13 +467,18 @@ const syncBillingCycles = async (
 
   for (const cycle of existing) {
     if (seen.has(cycle.id)) continue;
-    const paid = cycle.payments.length > 0 || cycle.paymentReceived === "YES";
-    if (paid && !options.isSystem) {
-      throw new Error("Paid billing history cannot be removed.");
-    }
-    if (!options.canDelete && !options.isSystem) {
-      throw new Error("Delete permission is required to remove a billing cycle.");
-    }
+    const blocked = paidCycleRemovalBlock({
+      paid: cycleIsPaid({
+        paymentCount: cycle.payments.length,
+        paymentReceived: cycle.paymentReceived,
+      }),
+      actorIsSystem: options.isSystem,
+      canDelete: options.canDelete,
+    });
+    if (blocked) throw new Error(blocked);
+    await db.billingCyclePayment.deleteMany({
+      where: { billingCycleId: cycle.id },
+    });
     await db.billingCycle.delete({ where: { id: cycle.id } });
   }
 };
@@ -486,31 +528,30 @@ export async function updatePurchaseOrder(
       scope: emptyToUndefined(validated.scope) ?? null,
     };
 
-    const current = await prisma.purchaseOrder.findUnique({
-      where: { id },
-      select: { status: true, updatedAt: true },
-    });
-    if (!current) {
-      return { success: false, message: "Purchase order not found" };
-    }
-
     const actor = await getUserPermissions();
     const actorIsSystem = Boolean(
       actor?.role?.isSystem && actor.role.status === "ACTIVE",
     );
-    const blocked = purchaseOrderUpdateBlock({
-      status: current.status,
-      actorIsSystem,
-      expectedUpdatedAt: validated.updatedAt,
-      currentUpdatedAt: current.updatedAt,
-    });
-    if (blocked) {
-      return { success: false, message: blocked };
-    }
-
     const canDelete = await canAccess("/admin/revenue", "delete");
 
     await prisma.$transaction(async (tx) => {
+      await lockPurchaseOrders(tx, [id]);
+      const current = await tx.purchaseOrder.findUnique({
+        where: { id },
+        select: { status: true, updatedAt: true },
+      });
+      if (!current) {
+        throw new Error("Purchase order not found");
+      }
+
+      const blocked = purchaseOrderUpdateBlock({
+        status: current.status,
+        actorIsSystem,
+        expectedUpdatedAt: validated.updatedAt,
+        currentUpdatedAt: current.updatedAt,
+      });
+      if (blocked) throw new Error(blocked);
+
       await tx.purchaseOrder.update({
         where: { id },
         data: purchaseOrderData,
@@ -541,14 +582,50 @@ export async function deletePurchaseOrder(id: string) {
       return { success: false, message: access.message };
     }
 
-    await prisma.$transaction([
-      prisma.billingCycle.deleteMany({
-        where: { purchaseOrderId: id },
-      }),
-      prisma.purchaseOrder.delete({
+    const actor = await getUserPermissions();
+    const actorIsSystem = Boolean(
+      actor?.role?.isSystem && actor.role.status === "ACTIVE",
+    );
+
+    await prisma.$transaction(async (tx) => {
+      await lockPurchaseOrders(tx, [id]);
+      const current = await tx.purchaseOrder.findUnique({
         where: { id },
-      }),
-    ]);
+        include: {
+          billingCycles: {
+            select: {
+              id: true,
+              paymentReceived: true,
+              payments: { select: { id: true } },
+            },
+          },
+        },
+      });
+      if (!current) throw new Error("Purchase order not found");
+
+      const blocked = purchaseOrderDeleteBlock({
+        status: current.status,
+        actorIsSystem,
+        hasPaidCycle: current.billingCycles.some((cycle) =>
+          cycleIsPaid({
+            paymentCount: cycle.payments.length,
+            paymentReceived: cycle.paymentReceived,
+          }),
+        ),
+      });
+      if (blocked) throw new Error(blocked);
+
+      const cycleIds = current.billingCycles.map((cycle) => cycle.id);
+      if (cycleIds.length > 0) {
+        await tx.billingCyclePayment.deleteMany({
+          where: { billingCycleId: { in: cycleIds } },
+        });
+        await tx.billingCycle.deleteMany({
+          where: { purchaseOrderId: id },
+        });
+      }
+      await tx.purchaseOrder.delete({ where: { id } });
+    });
 
     return {
       success: true,

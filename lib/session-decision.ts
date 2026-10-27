@@ -8,7 +8,7 @@ export function idleExpired(
   idleMs = IDLE_TIMEOUT_MS,
 ) {
   const activeAt = Number(lastActive)
-  if (!Number.isFinite(activeAt)) return false
+  if (!Number.isFinite(activeAt)) return true
   return now - activeAt > idleMs
 }
 

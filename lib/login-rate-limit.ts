@@ -10,6 +10,20 @@ const WINDOW_MS = 15 * 60 * 1000
 
 const memoryStore = new MemoryRateLimitStore()
 let store: RateLimitStore = memoryStore
+let lastPurgeAt = 0
+
+async function purgeExpiredBuckets(now: number) {
+  if (now - lastPurgeAt < 5 * 60 * 1000) return
+  lastPurgeAt = now
+
+  try {
+    await prisma.rateLimitBucket.deleteMany({
+      where: { resetAt: { lt: new Date(now) } },
+    })
+  } catch {
+    console.error("Failed to purge expired rate limit buckets")
+  }
+}
 
 export function useLoginRateLimitStore(next: RateLimitStore) {
   store = next
@@ -30,6 +44,7 @@ async function databaseCount(key: string, now = Date.now()) {
 }
 
 async function databaseIncrement(key: string, windowMs: number, now = Date.now()) {
+  await purgeExpiredBuckets(now)
   const resetAt = new Date(now + windowMs)
   const rows = await prisma.$queryRaw<Array<{ count: number }>>`
     INSERT INTO "RateLimitBucket" ("key", "count", "resetAt")
@@ -68,15 +83,25 @@ async function activeStore() {
   return store
 }
 
+export async function reserveSharedRateLimit(
+  key: string,
+  limit: number,
+  windowMs: number,
+  now = Date.now(),
+) {
+  const count = await databaseIncrement(key, windowMs, now)
+  return count <= limit
+}
+
 export async function loginIsLimited(username: string, ip: string, now = Date.now()) {
   const keys = loginKeys(username, ip)
   const limiter = await activeStore()
-  const [account, source] = await Promise.all([
-    limiter.count(keys.account, now),
-    limiter.count(keys.source, now),
-  ])
+  const account = await limiter.count(keys.account, now)
+  if (account >= LIMIT) return true
+  if (!ip.trim()) return false
 
-  return account >= LIMIT || source >= LIMIT
+  const source = await limiter.count(keys.source, now)
+  return source >= LIMIT
 }
 
 export async function recordSharedLoginFailure(
@@ -86,26 +111,28 @@ export async function recordSharedLoginFailure(
 ) {
   const keys = loginKeys(username, ip)
   const limiter = await activeStore()
-  await Promise.all([
-    limiter.increment(keys.account, WINDOW_MS, now),
-    limiter.increment(keys.source, WINDOW_MS, now),
-  ])
+  const writes = [limiter.increment(keys.account, WINDOW_MS, now)]
+  if (ip.trim()) writes.push(limiter.increment(keys.source, WINDOW_MS, now))
+  await Promise.all(writes)
 }
 
 export async function clearSharedLoginFailures(username: string, ip: string) {
   const keys = loginKeys(username, ip)
 
   if (process.env.APP_ENV === "production") {
+    const keysToClear = ip.trim()
+      ? [keys.account, keys.source]
+      : [keys.account]
     await prisma.rateLimitBucket.deleteMany({
-      where: { key: { in: [keys.account, keys.source] } },
+      where: { key: { in: keysToClear } },
     })
     return
   }
 
   memoryStore.clearKey(keys.account)
-  memoryStore.clearKey(keys.source)
+  if (ip.trim()) memoryStore.clearKey(keys.source)
   if (store instanceof MemoryRateLimitStore) {
     store.clearKey(keys.account)
-    store.clearKey(keys.source)
+    if (ip.trim()) store.clearKey(keys.source)
   }
 }

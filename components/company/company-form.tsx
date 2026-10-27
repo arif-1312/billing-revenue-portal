@@ -138,10 +138,7 @@ export default function CompanyForm({
   return (
     <Form {...form}>
       <form
-        onSubmit={form.handleSubmit(
-          onSubmit,
-          (error) => console.log(error)
-        )}
+        onSubmit={form.handleSubmit(onSubmit)}
         className="space-y-6"
       >
         <ThemedFormSection title="Company Details">

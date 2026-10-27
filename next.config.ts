@@ -26,6 +26,14 @@ const nextConfig = {
         source: "/:path*",
         headers: securityHeadersFor(),
       },
+      {
+        source: "/forgot-password",
+        headers: [{ key: "Referrer-Policy", value: "no-referrer" }],
+      },
+      {
+        source: "/reset-password",
+        headers: [{ key: "Referrer-Policy", value: "no-referrer" }],
+      },
     ];
   },
 };

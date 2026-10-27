@@ -14,6 +14,7 @@ import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { auth, signIn, signOut } from "@/auth";
 import bcrypt from "bcrypt"
 import { hashPassword } from "@/lib/password";
+import { notifyPasswordChanged } from "@/lib/password-reset-service";
 import { getUserPermissions, requirePermission } from "@/lib/rbac";
 import { recordSecurityEvent } from "@/lib/security-event";
 import {
@@ -76,6 +77,62 @@ function normalizeUserPayload(user: User) {
     roleId,
     remark: user.remark?.trim() || null,
   } as const;
+}
+
+function userActivityCopy(input: {
+  name: string
+  email: string
+  previousStatus: string
+  previousRoleId: string
+  previousRoleName: string
+  nextStatus: string
+  nextRoleId: string
+  nextRoleName: string
+}) {
+  const statusChanged = input.previousStatus !== input.nextStatus
+  const roleChanged = input.previousRoleId !== input.nextRoleId
+  const priority =
+    (statusChanged && input.nextStatus === "INACTIVE") || roleChanged
+      ? "HIGH" as const
+      : "NORMAL" as const
+
+  if (statusChanged && !roleChanged && input.nextStatus === "ACTIVE") {
+    return {
+      title: "User account activated",
+      body: `${input.name} (${input.email}) was activated.`,
+      priority,
+    }
+  }
+
+  if (statusChanged && !roleChanged && input.nextStatus === "INACTIVE") {
+    return {
+      title: "User account deactivated",
+      body: `${input.name} (${input.email}) was deactivated.`,
+      priority,
+    }
+  }
+
+  if (roleChanged && !statusChanged) {
+    return {
+      title: "User role changed",
+      body: `${input.name} (${input.email}) moved from ${input.previousRoleName} to ${input.nextRoleName}.`,
+      priority,
+    }
+  }
+
+  const parts: string[] = []
+  if (statusChanged) {
+    parts.push(`status is ${input.nextStatus === "ACTIVE" ? "active" : "inactive"}`)
+  }
+  if (roleChanged) parts.push(`role is ${input.nextRoleName}`)
+
+  return {
+    title: "User account updated",
+    body: parts.length
+      ? `${input.name} (${input.email}) was updated. ${parts.join("; ")}.`
+      : `${input.name} (${input.email}) was updated.`,
+    priority,
+  }
 }
 
 function grantMap(role: {
@@ -323,19 +380,47 @@ export async function updateUser(data: User, id: string) {
       return { success: false, message: assignment.message };
     }
 
+    const previous = await prisma.user.findUnique({
+      where: { id },
+      select: {
+        status: true,
+        roleId: true,
+        role: { select: { name: true } },
+      },
+    })
+    if (!previous) {
+      return { success: false, message: "User not found" }
+    }
+
+    const nextRole = await prisma.role.findUnique({
+      where: { id: payload.roleId },
+      select: { name: true },
+    })
+
     await prisma.user.update({
       where: { id },
       data: payload
     })
 
     const name = [payload.firstName, payload.lastName].filter(Boolean).join(" ")
+    const activity = userActivityCopy({
+      name,
+      email: payload.email,
+      previousStatus: previous.status,
+      previousRoleId: previous.roleId,
+      previousRoleName: previous.role.name,
+      nextStatus: payload.status,
+      nextRoleId: payload.roleId,
+      nextRoleName: nextRole?.name || "another role",
+    })
     await safePublishSystem({
       eventType: "SYSTEM_USER_ACTIVITY",
       entityType: "User",
       entityId: id,
-      title: "User account updated",
-      body: `${name} (${payload.email}) was updated.`,
+      title: activity.title,
+      body: activity.body,
       href: "/admin/users",
+      priority: activity.priority,
       fingerprint: fingerprint([
         "updated",
         payload.username,
@@ -620,6 +705,8 @@ export async function changeCurrentUserPassword(payload: {
         password: hashedPassword,
       },
     });
+
+    await notifyPasswordChanged(user.id);
 
     return {
       success: true,

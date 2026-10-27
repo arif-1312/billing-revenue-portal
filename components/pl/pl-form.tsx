@@ -241,7 +241,7 @@ const PLForm = ({
   return (
     <Form {...form}>
       <form
-        onSubmit={form.handleSubmit(onSubmit, (errors) => console.log(errors))}
+        onSubmit={form.handleSubmit(onSubmit)}
         className="space-y-6"
       >
         <Tabs defaultValue="general" className="w-full">

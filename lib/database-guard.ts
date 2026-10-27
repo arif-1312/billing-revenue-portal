@@ -6,14 +6,15 @@ export function databasePoolOptions(connectionString: string) {
   const appEnv = assertAppEnv()
   const local = LOCAL_HOST.test(connectionString)
 
-  if (appEnv === "production" && !local) {
-    return {
-      connectionString,
-      ssl: { rejectUnauthorized: true as const },
-    }
+  return {
+    connectionString,
+    max: 10,
+    idleTimeoutMillis: 20_000,
+    connectionTimeoutMillis: 10_000,
+    ...(appEnv === "production" && !local
+      ? { ssl: { rejectUnauthorized: true as const } }
+      : {}),
   }
-
-  return { connectionString }
 }
 
 export function assertSafeDatabaseTarget(connectionString: string | undefined) {

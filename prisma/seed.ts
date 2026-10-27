@@ -25,18 +25,26 @@ async function main() {
         { name: "Configuration", route: "/admin/configuration" },
         { name: "Activity Log", route: "/admin/activity-log" },
         { name: "Notifications", route: "/admin/notifications" },
+        { name: "Email", route: "/admin/email" },
     ];
 
     const createdModules = [];
 
     for (const mod of modules) {
+        const description =
+            mod.route === "/admin/email"
+                ? "Email delivery settings and logs"
+                : mod.name
         const m = await prisma.module.upsert({
             where: { route: mod.route },
-            update: {},
+            update:
+                mod.route === "/admin/email"
+                    ? { name: mod.name, description, status: Status.ACTIVE }
+                    : {},
             create: {
                 name: mod.name,
                 route: mod.route,
-                description: mod.name,
+                description,
             },
         });
 
@@ -74,6 +82,7 @@ async function main() {
     })
 
     for (const createdModule of createdModules) {
+        const emailAccess = createdModule.route === "/admin/email"
         await prisma.roleModule.upsert({
             where: {
                 roleId_moduleId: {
@@ -81,7 +90,14 @@ async function main() {
                     moduleId: createdModule.id,
                 },
             },
-            update: {},
+            update: emailAccess
+                ? {
+                    canView: true,
+                    canCreate: true,
+                    canEdit: true,
+                    canDelete: true,
+                }
+                : {},
             create: {
                 roleId: adminRole.id,
                 moduleId: createdModule.id,

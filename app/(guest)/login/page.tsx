@@ -11,11 +11,18 @@ export const metadata: Metadata = {
   title: "Sign In",
 };
 
-async function SignInPage() {
+async function SignInPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
+}) {
   const session = await auth();
   const configuration = await getConfiguration();
   const companyName = configuration?.name || "SY ASSOCIATES";
   const logo = configuration?.logo || "/sy.png";
+  const params = searchParams ? await searchParams : {};
+  const resetValue = Array.isArray(params.reset) ? params.reset[0] : params.reset;
+  const resetNotice = resetValue === "success";
 
   if (isSignedInSession(session)) {
     return redirect("/admin/home");
@@ -28,13 +35,14 @@ async function SignInPage() {
           <div className="relative hidden overflow-hidden bg-[linear-gradient(155deg,#0f172a_0%,#1d4ed8_48%,#60a5fa_100%)] px-10 py-12 text-white lg:flex lg:flex-col lg:justify-between">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(255,255,255,0.18),_transparent_28%),radial-gradient(circle_at_bottom_left,_rgba(255,255,255,0.12),_transparent_25%)]" />
 
-            <div className="relative  flex align-items gap-4">
-              <div className="rounded-2xl h-[100px] w-[100px] flex align-items justify-content backdrop-blur">
+            <div className="relative flex items-center gap-4">
+              <div className="relative h-[100px] w-[100px] overflow-hidden rounded-2xl">
                 <Image
                   src={logo}
                   alt="Logo"
                   fill
-                  className="rounded-xl object-cover w-full h-full"
+                  sizes="100px"
+                  className="rounded-xl object-cover"
                 />
               </div>
               <div>
@@ -123,7 +131,7 @@ async function SignInPage() {
                 </p>
               </div>
 
-              <LoginForm companyName={companyName} />
+              <LoginForm companyName={companyName} resetNotice={resetNotice} />
 
               <p className="text-center text-xs text-slate-400 lg:text-left">
                 Protected access for authorized users only.

@@ -6,9 +6,5 @@ export function importRowBlockReason(
     return "Update permission is required to change an existing purchase order or invoice."
   }
 
-  if (row.billingCycleId && !permissions.canDelete) {
-    return "Delete permission is required before existing payment records can be replaced."
-  }
-
   return null
 }

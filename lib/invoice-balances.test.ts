@@ -73,13 +73,25 @@ describe("invoice receivable balances", () => {
     expect(parts.overdue).toBe(600);
   });
 
-  it("excludes invoices whose payment has been received", () => {
-    const parts = classifyInvoiceReceivable(
-      invoice({ paymentReceived: "YES", collectedAmount: 900, invoiceAmount: 1000 }),
+  it("keeps the unpaid remainder when the received flag is set but the cash is short", () => {
+    const partial = classifyInvoiceReceivable(
+      invoice({
+        paymentReceived: "YES",
+        collectedAmount: 20000,
+        invoiceAmount: 50000,
+        creditNote: 5000,
+        paymentDueDate: new Date("2026-11-01T00:00:00.000Z"),
+      }),
+      today,
+    );
+    const settled = classifyInvoiceReceivable(
+      invoice({ paymentReceived: "YES", collectedAmount: 1000, invoiceAmount: 1000 }),
       today,
     );
 
-    expect(parts).toEqual({ outstanding: 0, overdue: 0, notYetDue: 0, undated: 0 });
+    expect(partial.outstanding).toBe(25000);
+    expect(partial.overdue).toBe(0);
+    expect(settled).toEqual({ outstanding: 0, overdue: 0, notYetDue: 0, undated: 0 });
   });
 
   it("excludes invoices dated after today and invoices with no invoice date", () => {

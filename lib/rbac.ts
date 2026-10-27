@@ -1,5 +1,6 @@
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { requestCache } from "@/lib/request-cache"
 import { recordSecurityEvent } from "@/lib/security-event"
 
 export type PermissionAction = "view" | "create" | "edit" | "delete"
@@ -13,7 +14,7 @@ export const UNAUTHORIZED_MESSAGE = "Unauthorized"
 
 type PermissionUser = NonNullable<Awaited<ReturnType<typeof loadPermissionUser>>>
 
-export async function getUserPermissions() {
+async function readPermissionUser() {
   const session = await auth()
   const email = session?.user?.email
 
@@ -21,6 +22,8 @@ export async function getUserPermissions() {
 
   return loadPermissionUser(email)
 }
+
+export const getUserPermissions = requestCache(readPermissionUser)
 
 async function loadPermissionUser(email: string) {
   const user = await prisma.user.findUnique({
@@ -85,17 +88,24 @@ export async function requirePermission(
   return { ok: true as const }
 }
 
-export async function getAllowedRoute(route: string) {
-  const canView = await canAccess(route, "view")
-  const canCreate = await canAccess(route, "create")
-  const canEdit = await canAccess(route, "edit")
-  const canDelete = await canAccess(route, "delete")
-
-  if (canView || canCreate || canEdit || canDelete) {
+export function visibleRoute(
+  user: PermissionUser | null | undefined,
+  route: string,
+) {
+  if (
+    userCan(user, route, "view") ||
+    userCan(user, route, "create") ||
+    userCan(user, route, "edit") ||
+    userCan(user, route, "delete")
+  ) {
     return route
   }
 
   return ""
+}
+
+export async function getAllowedRoute(route: string) {
+  return visibleRoute(await getUserPermissions(), route)
 }
 
 function userCan(

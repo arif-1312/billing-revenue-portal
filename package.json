@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "email:worker": "tsx scripts/email-worker.ts"
   },
   "dependencies": {
     "@auth/core": "0.41.3",

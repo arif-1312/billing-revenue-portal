@@ -1,4 +1,4 @@
-import { moneyToNumber } from "@/lib/money";
+import { money, moneyToNumber } from "@/lib/money";
 
 export type DashboardFilters = {
   company: string;
@@ -148,7 +148,8 @@ export function formatPercent(value: number) {
 export const GST_RATE = 0.18;
 
 export function amountWithGst(amount: number) {
-  return Math.round((toNumber(amount) * (1 + GST_RATE) + Number.EPSILON) * 100) / 100;
+  const withRate = money(1).plus(money(GST_RATE));
+  return moneyToNumber(money(toNumber(amount)).times(withRate).toDecimalPlaces(2));
 }
 
 export function percentDelta(current: number, previous: number) {

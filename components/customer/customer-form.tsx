@@ -67,9 +67,6 @@ export default function CustomerForm({ data, update = false }: { data?: Customer
         res = await createCustomer(payload);
       }
 
-      console.log(res);
-      
-
       if (!res?.success) {
         toast.error("Error", {
           description: res?.message,
@@ -82,7 +79,7 @@ export default function CustomerForm({ data, update = false }: { data?: Customer
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit, (error) => console.log(error))} className="space-y-6">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
         <ThemedFormSection
           title="Customer Details"
                  >

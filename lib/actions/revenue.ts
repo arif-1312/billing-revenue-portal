@@ -1,12 +1,11 @@
 "use server";
 
-import { PaymentReceived } from "@prisma/client";
 import {
   getCurrentFinancialYear,
   getFinancialYearRangeToDate,
 } from "@/lib/date-utils";
 import { prisma } from "@/lib/prisma";
-import { billedInvoiceAmount } from "@/lib/invoice-balances";
+import { billedInvoiceAmount, collectedAmountOf, classifyInvoiceReceivable } from "@/lib/invoice-balances";
 import { moneyToNumber } from "@/lib/money";
 import { requirePermission, type PermissionRule } from "@/lib/rbac";
 
@@ -29,21 +28,9 @@ function getInvoiceDate(cycle: {
 
 function getEffectiveCollectedAmount(cycle: {
   collectedAmount?: unknown;
-  invoiceAmount?: unknown;
-  creditNote?: unknown;
-  paymentReceived?: PaymentReceived | null;
+  payments?: { amount?: unknown }[] | null;
 }) {
-  const billed = billedInvoiceAmount(cycle);
-  const collected = moneyToNumber(cycle.collectedAmount);
-
-  if (
-    cycle.paymentReceived === PaymentReceived.YES &&
-    collected <= 0
-  ) {
-    return billed;
-  }
-
-  return collected;
+  return moneyToNumber(collectedAmountOf(cycle));
 }
 
 // ================= REVENUE SUMMARY =================
@@ -88,6 +75,9 @@ export async function getRevenueSummary(
       billingSubmittedDate: true,
       paymentDueDate: true,
       paymentReceived: true,
+      payments: {
+        select: { amount: true },
+      },
     },
   });
 
@@ -105,11 +95,7 @@ export async function getRevenueSummary(
     billed += inv;
     collected += col;
 
-    if (c.paymentDueDate && col < inv) {
-      const due = new Date(c.paymentDueDate);
-      due.setHours(0, 0, 0, 0);
-      if (due < today) overdue += inv - col;
-    }
+    overdue += classifyInvoiceReceivable(c, today).overdue;
   });
 
   return { billed, collected, overdue, outstanding: billed - collected, efficiency: billed ? (collected / billed) * 100 : 0 };
@@ -155,6 +141,9 @@ export async function getRevenueByCompany(
       billingSubmittedDate: true,
       paymentDueDate: true,
       paymentReceived: true,
+      payments: {
+        select: { amount: true },
+      },
       purchaseOrder: {
         select: {
           customer: {
@@ -235,6 +224,9 @@ export async function getRevenueByCustomer(
       billingSubmittedDate: true,
       paymentDueDate: true,
       paymentReceived: true,
+      payments: {
+        select: { amount: true },
+      },
       purchaseOrder: {
         select: { customerId: true },
       },

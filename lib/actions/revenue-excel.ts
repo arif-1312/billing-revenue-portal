@@ -5,9 +5,9 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { persistRevenueImport } from "@/lib/revenue-import-save";
-import { requirePermission } from "@/lib/rbac";
+import { requirePermission, getUserPermissions } from "@/lib/rbac";
 import { auth } from "@/auth";
-import { consumeRateLimit } from "@/lib/action-rate-limit";
+import { consumeActionRateLimit } from "@/lib/action-rate-limit";
 import {
   assessRevenueImport,
   buildRevenueImportContext,
@@ -72,7 +72,7 @@ function emptyImportResult(
 async function withinActionLimit(scope: string) {
   const session = await auth();
   const actor = session?.user?.id || session?.user?.email || "anonymous";
-  return consumeRateLimit(`${scope}:${actor}`, 30, 60_000);
+  return consumeActionRateLimit(`${scope}:${actor}`, 30, 60_000);
 }
 
 function displayName(
@@ -376,7 +376,12 @@ export async function commitRevenueImport(
           before = null;
         }
 
-        const saved = await persistRevenueImport(tx, assessed);
+        const actor = await getUserPermissions();
+        const saved = await persistRevenueImport(tx, assessed, {
+          actorIsSystem: Boolean(
+            actor?.role?.isSystem && actor.role.status === "ACTIVE",
+          ),
+        });
         return { saved, skippedRows: assessed.errors.length, before };
       },
       { timeout: 60000 },

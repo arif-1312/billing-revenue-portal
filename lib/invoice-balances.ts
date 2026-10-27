@@ -1,5 +1,5 @@
 import { calendarDaysBetween } from "@/lib/fiscal-year";
-import { addMoney, money, moneyToNumber, subtractMoney } from "@/lib/money";
+import { addMoney, money, moneyEquals, moneyToNumber, subtractMoney } from "@/lib/money";
 
 type Receipt = {
   amount?: unknown;
@@ -54,7 +54,15 @@ export function billedInvoiceAmount(invoice: {
   return moneyToNumber(netInvoiceAmount(invoice.invoiceAmount, invoice.creditNote));
 }
 
-function collectedAgainstInvoice(invoice: InvoiceReceivableInput) {
+/**
+ * Payment rows are the collection ledger when any exist.
+ * The collectedAmount column is used only when the invoice has no payment rows.
+ * A "payment received" flag does not invent a collection by itself.
+ */
+export function collectedAmountOf(invoice: {
+  collectedAmount?: unknown;
+  payments?: Receipt[] | null;
+}) {
   const payments = invoice.payments ?? [];
   if (payments.length > 0) {
     return payments.reduce((total, payment) => addMoney(total, payment.amount), money(0));
@@ -63,10 +71,21 @@ function collectedAgainstInvoice(invoice: InvoiceReceivableInput) {
   return money(invoice.collectedAmount);
 }
 
+/** True when stored payment rows and the summary column describe different totals. */
+export function collectedAmountDisagrees(invoice: {
+  collectedAmount?: unknown;
+  payments?: Receipt[] | null;
+}) {
+  const payments = invoice.payments ?? [];
+  if (payments.length === 0) return false;
+  return !moneyEquals(invoice.collectedAmount, collectedAmountOf(invoice));
+}
+
 /**
  * Outstanding is the unpaid balance after the invoice date and before the due date.
  * Overdue is that balance on the due date and after it.
- * Payment received status must be No. An invoice is in one of these amounts, not both.
+ * The payment-received flag does not clear a balance that payment rows have not covered.
+ * An invoice is in one of these amounts, not both.
  */
 export function classifyInvoiceReceivable(
   invoice: InvoiceReceivableInput,
@@ -74,11 +93,10 @@ export function classifyInvoiceReceivable(
 ): InvoiceReceivable {
   const invoiceDate = asDate(invoice.invoiceDate);
   if (!invoiceDate || calendarDaysBetween(today, invoiceDate) < 0) return emptyReceivable;
-  if (invoice.paymentReceived !== "NO") return emptyReceivable;
 
   const remaining = subtractMoney(
     netInvoiceAmount(invoice.invoiceAmount, invoice.creditNote),
-    collectedAgainstInvoice(invoice),
+    collectedAmountOf(invoice),
   );
   const balance = moneyToNumber(remaining.isNegative() ? 0 : remaining);
   if (balance <= 0) return emptyReceivable;

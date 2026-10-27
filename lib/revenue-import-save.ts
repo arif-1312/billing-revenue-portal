@@ -6,6 +6,8 @@ import {
 } from "@prisma/client";
 
 import { toBusinessDateValue } from "@/lib/date-utils";
+import { guardRevenueImportWrite } from "@/lib/financial-write";
+import { moneyToNumber } from "@/lib/money";
 import { canonicalCustomerName, normalizeCustomerKey } from "@/lib/customer-names";
 import { canonicalCompanyName, normalizeCompanyKey } from "@/lib/company-names";
 import {
@@ -79,6 +81,7 @@ async function resolveNamedId(
 export async function persistRevenueImport(
   db: ImportDb,
   assessed: AssessedRevenueImport,
+  options: { actorIsSystem: boolean } = { actorIsSystem: false },
 ) {
   for (const row of assessed.inserts) {
     if (!row.purchaseOrder) continue;
@@ -110,6 +113,21 @@ export async function persistRevenueImport(
   }
 
   const draftList = [...drafts.values(), ...purchaseOrderUpdates.values()];
+
+  await guardRevenueImportWrite(
+    db,
+    assessed.inserts.map((row) => ({
+      excelRow: row.excelRow,
+      purchaseOrderId: row.purchaseOrderId,
+      billingCycleId: row.billingCycleId,
+      invoiceNumber: row.invoiceNumber,
+      invoiceAmount: row.invoiceAmount,
+      creditNote: row.creditNote,
+      collectedAmount: row.collectedAmount,
+    })),
+    options.actorIsSystem,
+  );
+
   const customerNames = draftList.map((draft) => draft.customerName);
   const companyNames = draftList.map((draft) => draft.companyName);
   const vendorNames = draftList.map((draft) => draft.vendorName);
@@ -325,7 +343,7 @@ export async function persistRevenueImport(
 
     const cycleData = {
       purchaseOrderId,
-      invoiceNumber: row.invoiceNumber,
+      invoiceNumber: row.invoiceNumber.trim(),
       invoiceAmount: row.invoiceAmount,
       ...(row.creditNote != null
         ? { creditNote: new Prisma.Decimal(row.creditNote) }
@@ -347,16 +365,25 @@ export async function persistRevenueImport(
         })
       : await db.billingCycle.create({ data: cycleData });
 
+    const preservedPayments = row.billingCycleId
+      ? await db.billingCyclePayment.count({
+          where: { billingCycleId: saved.id },
+        })
+      : 0;
+
+    if (preservedPayments > 0) continue;
+
     await db.billingCyclePayment.deleteMany({
       where: { billingCycleId: saved.id },
     });
 
-    if (paymentReceivedDate && Number(row.collectedAmount) !== 0) {
+    const collected = moneyToNumber(row.collectedAmount);
+    if (paymentReceivedDate && collected !== 0) {
       await db.billingCyclePayment.create({
         data: {
           billingCycleId: saved.id,
           receivedDate: paymentReceivedDate,
-          amount: Number(row.collectedAmount),
+          amount: collected,
         },
       });
     }

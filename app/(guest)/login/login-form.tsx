@@ -17,9 +17,10 @@ type LoginActionState = {
 
 export function LoginForm({
   companyName,
+  resetNotice = false,
   className,
   ...props
-}: React.ComponentProps<"div"> & { companyName?: string }) {
+}: React.ComponentProps<"div"> & { companyName?: string; resetNotice?: boolean }) {
   const [data, action] = useActionState<LoginActionState, FormData>(
     loginFormUser,
     null
@@ -67,6 +68,12 @@ export function LoginForm({
                 </p>
               </div>
 
+              {resetNotice ? (
+                <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-center text-sm text-emerald-800">
+                  Your password has been reset successfully. Please log in using your new password.
+                </p>
+              ) : null}
+
               {error && (
                 <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-center text-sm text-red-600">
                   {error}
@@ -110,6 +117,11 @@ export function LoginForm({
                 </div>
               </Field>
               <Field>
+                <div className="flex justify-end">
+                  <a href="/forgot-password" className="text-sm font-medium text-[#1d4ed8] hover:text-[#1e40af]">
+                    Forgot Password?
+                  </a>
+                </div>
                 <Button
                   type="submit"
                   className="h-11 w-full rounded-xl bg-[#1d4ed8] text-white shadow-md transition-colors hover:bg-[#1e40af]"

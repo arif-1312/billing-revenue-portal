@@ -2,6 +2,8 @@ import { Prisma, type PrismaClient } from "@prisma/client"
 
 import { formatKolkataDate } from "@/lib/fiscal-year"
 import { billedInvoiceAmount } from "@/lib/invoice-balances"
+import { enqueueNotificationEmails, scheduleEmailDrain } from "@/lib/email/queue"
+import { shouldDeliverInApp } from "@/lib/email/policy"
 import { prisma } from "@/lib/prisma"
 import { canAccess, getUserPermissions } from "@/lib/rbac"
 
@@ -117,11 +119,31 @@ export async function persistDrafts(drafts: NotificationDraft[]) {
     pending.filter((draft) => draft.kind === "STATE").map((draft) => draft.dedupeKey),
   )
   const freshKeys = new Set(fresh.map((draft) => draft.dedupeKey))
-  const attachIds = stored
-    .filter((row) => freshKeys.has(row.dedupeKey) || stateKeys.has(row.dedupeKey))
-    .map((row) => row.id)
+  const attachRows = stored.filter(
+    (row) => freshKeys.has(row.dedupeKey) || stateKeys.has(row.dedupeKey),
+  )
 
-  await attachReceipts(attachIds)
+  await attachReceipts(attachRows)
+  await enqueueNotificationEmails(
+    stored
+      .filter((row) => freshKeys.has(row.dedupeKey))
+      .map((row) => ({
+        id: row.id,
+        dedupeKey: row.dedupeKey,
+        category: row.category,
+        eventType: row.eventType,
+        priority: row.priority,
+        title: row.title,
+        body: row.body,
+        customerName: row.customerName,
+        companyName: row.companyName,
+        invoiceNumber: row.invoiceNumber,
+        poNumber: row.poNumber,
+        href: row.href,
+        occurredAt: row.occurredAt.toISOString(),
+        emailEligible: row.emailEligible,
+      })),
+  )
 }
 
 export async function syncStateNotificationsIfDue() {
@@ -340,22 +362,44 @@ async function syncQuietly() {
   } catch {
     console.error("Notification sync failed")
   }
+  scheduleEmailDrain()
 }
 
+const storedNotificationSelect = {
+  id: true,
+  dedupeKey: true,
+  category: true,
+  eventType: true,
+  priority: true,
+  title: true,
+  body: true,
+  customerName: true,
+  companyName: true,
+  invoiceNumber: true,
+  poNumber: true,
+  href: true,
+  occurredAt: true,
+  emailEligible: true,
+} satisfies Prisma.NotificationSelect
+
+type StoredNotification = Prisma.NotificationGetPayload<{
+  select: typeof storedNotificationSelect
+}>
+
 async function findByKeys(keys: string[]) {
-  const rows: Array<{ id: string; dedupeKey: string }> = []
+  const rows: StoredNotification[] = []
   for (const group of chunk(keys, 500)) {
     const found = await prisma.notification.findMany({
       where: { dedupeKey: { in: group } },
-      select: { id: true, dedupeKey: true },
+      select: storedNotificationSelect,
     })
     rows.push(...found)
   }
   return rows
 }
 
-async function attachReceipts(notificationIds: string[]) {
-  if (notificationIds.length === 0) return
+async function attachReceipts(notifications: StoredNotification[]) {
+  if (notifications.length === 0) return
 
   const users = await prisma.user.findMany({
     where: { status: "ACTIVE" },
@@ -363,8 +407,29 @@ async function attachReceipts(notificationIds: string[]) {
   })
   if (users.length === 0) return
 
-  const rows = notificationIds.flatMap((notificationId) =>
-    users.map((user) => ({ notificationId, userId: user.id })),
+  const muted = await prisma.notificationPreference.findMany({
+    where: {
+      userId: { in: users.map((user) => user.id) },
+      inAppEnabled: false,
+    },
+    select: { userId: true, category: true },
+  })
+  const mutedKeys = new Set(muted.map((row) => `${row.userId}:${row.category}`))
+
+  const rows = notifications.flatMap((notification) =>
+    users.flatMap((user) => {
+      const enabled = !mutedKeys.has(`${user.id}:${notification.category}`)
+      if (
+        !shouldDeliverInApp({
+          category: notification.category,
+          priority: notification.priority,
+          inAppEnabled: enabled,
+        })
+      ) {
+        return []
+      }
+      return [{ notificationId: notification.id, userId: user.id }]
+    }),
   )
 
   for (const group of chunk(rows, 1000)) {

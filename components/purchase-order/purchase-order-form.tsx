@@ -947,8 +947,7 @@ const POForm = ({
   return (
     <Form {...form}>
       <form
-        onSubmit={form.handleSubmit(onSubmit, (errors) => {
-          console.log("FORM ERRORS:", errors);
+        onSubmit={form.handleSubmit(onSubmit, () => {
           toast.error("Validation failed");
         })}
         className="space-y-6"

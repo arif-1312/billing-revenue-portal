@@ -6,6 +6,7 @@ const UNAUDITED_MODELS = new Set([
   "AuditLog",
   "Notification",
   "NotificationReceipt",
+  "EmailJob",
 ])
 
 const CRITICAL_AUDIT_MODELS = new Set([
@@ -78,6 +79,59 @@ type ChildSnapshot = {
 type BufferState = {
   events: AuditDraft[]
   actor?: Actor
+  reader?: PrismaClient
+}
+
+type FinancialTransaction = <T>(
+  fn: (tx: PrismaClient) => Promise<T>,
+) => Promise<T>
+
+let financialTransaction: FinancialTransaction | null = null
+
+export function registerFinancialTransaction(run: FinancialTransaction) {
+  financialTransaction = run
+}
+
+export function bindAuditReader(reader: PrismaClient | null) {
+  const state = bufferStore.getStore()
+  if (!state) return
+  state.reader = reader ?? undefined
+}
+
+function auditReader(base: PrismaClient) {
+  return bufferStore.getStore()?.reader ?? base
+}
+
+type AuditWriter = {
+  auditLog: {
+    createMany: (args: {
+      data: Prisma.AuditLogCreateManyInput[]
+    }) => Promise<unknown>
+  }
+}
+
+export async function flushAuditEvents(writer: AuditWriter) {
+  const state = bufferStore.getStore()
+  if (!state || state.events.length === 0) return
+
+  const events = state.events.splice(0, state.events.length)
+  await persistEvents(writer, events)
+}
+
+export function stageFinancialAuditForTests() {
+  const state = bufferStore.getStore()
+  if (!state) throw new Error("Audit buffer is not open")
+
+  state.events.push({
+    userId: null,
+    userName: "auditor",
+    action: "UPDATE",
+    model: "PurchaseOrder",
+    recordId: "po-1",
+    before: { status: "LIVE" },
+    after: { status: "CLOSED" },
+    changes: { status: { from: "LIVE", to: "CLOSED" } },
+  })
 }
 
 type ModelDelegate = {
@@ -102,10 +156,15 @@ export async function runInAuditBuffer<T>(
 
   const result = await bufferStore.run(state, fn)
 
+  if (state.events.length === 0) return result
+
   try {
     await persistEvents(base, state.events)
   } catch (error) {
     console.error("Failed to record audit log", error)
+    if (state.events.some((event) => CRITICAL_AUDIT_MODELS.has(event.model))) {
+      throw error
+    }
   }
 
   return result
@@ -128,6 +187,25 @@ export async function auditQuery({
     return query(args)
   }
 
+  if (
+    CRITICAL_AUDIT_MODELS.has(model) &&
+    !bufferStore.getStore() &&
+    financialTransaction
+  ) {
+    return financialTransaction(async (tx) => {
+      const delegates = tx as unknown as Record<
+        string,
+        Record<string, (value: unknown) => Promise<unknown>> | undefined
+      >
+      const delegate = delegates[delegateName(model)]
+      const method = delegate?.[operation]
+      if (!delegate || typeof method !== "function") {
+        throw new Error(`Cannot audit ${model}.${operation} inside a transaction.`)
+      }
+      return method.call(delegate, args)
+    })
+  }
+
   const writeArgs = (args ?? {}) as WriteArgs
   const inBuffer = Boolean(bufferStore.getStore())
   const expandChildren =
@@ -139,17 +217,18 @@ export async function auditQuery({
   let childBefore: ChildSnapshot[] = []
 
   try {
-    beforeRows = await readBefore(base, model, operation, writeArgs)
+    beforeRows = await readBefore(auditReader(base), model, operation, writeArgs)
 
     if (expandChildren) {
       childBefore = await readChildren(
-        base,
+        auditReader(base),
         model,
         recordIdOf(null, writeArgs.where),
       )
     }
   } catch (error) {
     console.error("Failed to snapshot records for audit log", error)
+    if (CRITICAL_AUDIT_MODELS.has(model)) throw error
   }
 
   const result = await query(args)
@@ -160,7 +239,7 @@ export async function auditQuery({
 
     if (expandChildren) {
       childAfter = await readChildren(
-        base,
+        auditReader(base),
         model,
         recordIdOf(result, writeArgs.where),
       )
@@ -543,11 +622,11 @@ async function enqueue(base: PrismaClient, events: AuditDraft[]) {
   await persistEvents(base, events)
 }
 
-async function persistEvents(base: PrismaClient, events: AuditDraft[]) {
+async function persistEvents(writer: AuditWriter, events: AuditDraft[]) {
   const chunkSize = 100
 
   for (let index = 0; index < events.length; index += chunkSize) {
-    await base.auditLog.createMany({
+    await writer.auditLog.createMany({
       data: events.slice(index, index + chunkSize),
     })
   }

@@ -95,7 +95,7 @@ const ModuleForm = ({ data, update = false }: Props) => {
     <Form {...form}>
       <form
         className="space-y-6"
-        onSubmit={form.handleSubmit(onSubmit, (errors) => console.log(errors))}
+        onSubmit={form.handleSubmit(onSubmit)}
       >
         <ThemedFormSection
           title="Module Details"

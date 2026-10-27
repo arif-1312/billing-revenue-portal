@@ -1,5 +1,3 @@
-"use server"
-
 import { notFound, redirect } from "next/navigation"
 import UserForm from "@/components/user/user-form"
 import { getUserById } from "@/lib/actions/users"
