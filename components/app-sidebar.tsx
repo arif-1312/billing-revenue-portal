@@ -47,11 +47,6 @@ const data = {
       url: "/admin/home",
       icon: IconHome,
     },
-    {
-      title: "Notifications",
-      url: "/admin/notifications",
-      icon: IconBell,
-    },
 
     {
       title: "Revenue",
@@ -66,6 +61,12 @@ const data = {
     },
   ],
   settings: [
+    {
+      title: "Notifications",
+      url: "/admin/notifications",
+      icon: IconBell,
+    },
+
     {
       title: "Contract Type",
       url: "/admin/contract-type",
