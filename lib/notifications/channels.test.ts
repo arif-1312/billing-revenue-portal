@@ -3,13 +3,18 @@ import { describe, expect, it } from "vitest"
 import { emailIntentFor } from "./channels"
 
 describe("notification email intent", () => {
-  it("queues an email job for payment events that already exist", () => {
-    const intent = emailIntentFor("PAYMENT_OVERDUE")
+  it("emails purchase-order and P&L events only", () => {
+    const purchaseOrder = emailIntentFor("PO_CREATED")
+    const project = emailIntentFor("PL_UPDATED")
 
-    expect(intent.channel).toBe("EMAIL")
-    expect(intent.emailEligible).toBe(true)
-    expect(intent.emailStatus).toBe("PENDING")
-    expect(intent.emailTemplateKey).toBe("payment_overdue")
+    expect(purchaseOrder.emailEligible).toBe(true)
+    expect(purchaseOrder.emailStatus).toBe("PENDING")
+    expect(project.emailEligible).toBe(true)
+    expect(project.emailTemplateKey).toBe("pl_updated")
+    expect(emailIntentFor("PAYMENT_OVERDUE").emailEligible).toBe(false)
+    expect(emailIntentFor("INVOICE_CREATED").emailEligible).toBe(false)
+    expect(emailIntentFor("CONTRACT_EXPIRED").emailEligible).toBe(false)
+    expect(emailIntentFor("SYSTEM_RECORD_CHANGE").emailEligible).toBe(false)
   })
 
   it("keeps standing payment-pending reminders in the notification centre only", () => {

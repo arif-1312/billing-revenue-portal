@@ -22,6 +22,7 @@ async function main() {
         { name: "Module", route: "/admin/module" },
         { name: "MonthPLs", route: "/admin/monthly-pl" },
         { name: "Revenue", route: "/admin/revenue" },
+        { name: "Credit Note", route: "/admin/credit-note" },
         { name: "Configuration", route: "/admin/configuration" },
         { name: "Activity Log", route: "/admin/activity-log" },
         { name: "Notifications", route: "/admin/notifications" },

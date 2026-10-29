@@ -15,7 +15,6 @@ import {
 import type {
   NotificationBucket,
   NotificationCentreData,
-  NotificationPriority,
   NotificationSort,
 } from "@/lib/notifications/types"
 import { cn } from "@/lib/utils"
@@ -47,7 +46,6 @@ export function NotificationCentre(data: NotificationCentreData) {
   const filters = {
     q: data.q,
     bucket: data.bucket,
-    priority: data.priority,
     sort: data.sort,
   }
 
@@ -142,7 +140,7 @@ export function NotificationCentre(data: NotificationCentreData) {
 
         <div className="min-w-0 flex-1">
           <form
-            key={`${data.q}|${data.priority}|${data.sort}|${data.bucket}`}
+            key={`${data.q}|${data.sort}|${data.bucket}`}
             className="flex flex-col gap-3 border-b border-slate-100 px-4 py-4 sm:px-5 lg:flex-row lg:flex-wrap lg:items-center"
             onSubmit={(event) => {
               event.preventDefault()
@@ -150,7 +148,6 @@ export function NotificationCentre(data: NotificationCentreData) {
               const next = {
                 q: String(form.get("q") ?? ""),
                 bucket: data.bucket,
-                priority: String(form.get("priority") ?? "") as NotificationPriority | "",
                 sort: String(form.get("sort") ?? "newest") as NotificationSort,
                 page: 1,
               }
@@ -164,18 +161,6 @@ export function NotificationCentre(data: NotificationCentreData) {
               aria-label="Search notifications"
               className="max-w-md border-sky-100"
             />
-            <select
-              name="priority"
-              defaultValue={data.priority}
-              aria-label="Priority"
-              className={selectClassName}
-            >
-              <option value="">All priorities</option>
-              <option value="CRITICAL">Critical</option>
-              <option value="HIGH">High</option>
-              <option value="NORMAL">Normal</option>
-              <option value="LOW">Low</option>
-            </select>
             <select
               name="sort"
               defaultValue={data.sort}
@@ -283,7 +268,7 @@ export function NotificationCentreError({ message }: { message: string }) {
 }
 
 function emptyTitle(data: NotificationCentreData) {
-  if (data.q || data.priority) return "No notifications match these filters."
+  if (data.q) return "No notifications match these filters."
   if (data.bucket === "unread") return "No unread notifications."
   if (data.bucket === "read") return "No read notifications."
   if (data.bucket !== "all") return "Nothing in this category."
@@ -293,7 +278,6 @@ function emptyTitle(data: NotificationCentreData) {
 function centreHref(input: {
   q: string
   bucket: NotificationBucket
-  priority: NotificationPriority | ""
   sort: NotificationSort
   page: number
 }) {
@@ -301,7 +285,6 @@ function centreHref(input: {
   const q = input.q.trim()
   if (q) params.set("q", q)
   if (input.bucket !== "all") params.set("bucket", input.bucket)
-  if (input.priority) params.set("priority", input.priority)
   if (input.sort !== "newest") params.set("sort", input.sort)
   if (input.page > 1) params.set("page", String(input.page))
   const query = params.toString()

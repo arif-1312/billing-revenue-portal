@@ -108,7 +108,7 @@ describe("invoice numbers", () => {
     const findMany = vi.fn().mockResolvedValue([])
 
     await expect(assertInvoiceNumbersAvailable(
-      { $queryRaw: query, billingCycle: { findMany } } as never,
+      { $queryRaw: query, $executeRaw: vi.fn(), billingCycle: { findMany } } as never,
       [
         { invoiceNumber: " INV-9 " },
         { invoiceNumber: "inv-9" },
@@ -123,7 +123,7 @@ describe("invoice numbers", () => {
     ])
 
     await expect(assertInvoiceNumbersAvailable(
-      { $queryRaw: query, billingCycle: { findMany } } as never,
+      { $queryRaw: query, $executeRaw: vi.fn(), billingCycle: { findMany } } as never,
       [{ invoiceNumber: "INV-9" }],
     )).rejects.toThrow(/already exists/i)
   })
@@ -136,7 +136,7 @@ describe("invoice numbers", () => {
     ])
 
     await expect(assertInvoiceNumbersAvailable(
-      { $queryRaw: query, billingCycle: { findMany } } as never,
+      { $queryRaw: query, $executeRaw: vi.fn(), billingCycle: { findMany } } as never,
       [{ invoiceNumber: "INV-9", exceptId: "cycle-1" }],
     )).resolves.toBeUndefined()
   })
@@ -149,7 +149,7 @@ describe("invoice numbers", () => {
     ])
 
     await expect(assertInvoiceNumbersAvailable(
-      { $queryRaw: query, billingCycle: { findMany } } as never,
+      { $queryRaw: query, $executeRaw: vi.fn(), billingCycle: { findMany } } as never,
       [
         { invoiceNumber: "INV-2", exceptId: "cycle-a" },
         { invoiceNumber: "INV-1", exceptId: "cycle-b" },

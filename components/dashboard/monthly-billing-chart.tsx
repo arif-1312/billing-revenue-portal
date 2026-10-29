@@ -967,7 +967,7 @@ export function MonthlyBillingChartCard({
                 {detailLoading ? (
                   <tr>
                     <td
-                      colSpan={10}
+                      colSpan={11}
                       className="px-5 py-12 text-center text-sm font-medium text-slate-400"
                     >
                       Loading {chartConfig[selectedMonth.series].label.toLowerCase()} details...
@@ -976,7 +976,7 @@ export function MonthlyBillingChartCard({
                 ) : details.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={10}
+                      colSpan={11}
                       className="px-5 py-12 text-center text-sm font-medium text-slate-400"
                     >
                       No records found for {selectedMonth.label}.

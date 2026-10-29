@@ -10,6 +10,8 @@ import {
   toBusinessDateValue,
 } from "../date-utils";
 import { requirePermission, type PermissionRule } from "@/lib/rbac";
+import { fingerprint } from "@/lib/notifications/model";
+import { safePublishSystem } from "@/lib/notifications/publish";
 
 const dashboardView: PermissionRule[] = [
   { route: "/admin/dashboard", action: "view" },
@@ -18,6 +20,34 @@ const dashboardView: PermissionRule[] = [
 const plEdit: PermissionRule[] = [
   { route: "/admin/pl", action: "edit" },
 ];
+
+async function publishProjectChange(
+  eventType: "PL_CREATED" | "PL_UPDATED" | "PL_DELETED",
+  project: { id: string; projectName: string; companyId: string },
+  fingerprintParts: Array<string | number | null | undefined>,
+) {
+  const company = await prisma.company.findUnique({
+    where: { id: project.companyId },
+    select: { name: true },
+  })
+  const action =
+    eventType === "PL_CREATED"
+      ? "created"
+      : eventType === "PL_UPDATED"
+        ? "updated"
+        : "deleted"
+
+  await safePublishSystem({
+    eventType,
+    entityType: "Project",
+    entityId: project.id,
+    title: `P&L project ${action}`,
+    body: `${project.projectName} was ${action}.`,
+    href: eventType === "PL_DELETED" ? "/admin/pl" : `/admin/pl/view/${project.id}`,
+    companyName: company?.name ?? null,
+    fingerprint: fingerprint([eventType, project.id, ...fingerprintParts]),
+  })
+}
 
 function emptyProjectFilter() {
   return {
@@ -157,6 +187,12 @@ export async function createProject(data: Project) {
 
     createBillingCycle(data.billingCycle, result.id);
 
+    await publishProjectChange("PL_CREATED", {
+      id: result.id,
+      projectName: payload.projectName,
+      companyId: payload.companyId,
+    }, [payload.status, String(payload.poValue ?? "")]);
+
     return {
       success: true,
       message: "Project created successfully",
@@ -225,6 +261,12 @@ export async function updateProject(data: Project, id: string) {
 
     createBillingCycle(data.billingCycle, id);
 
+    await publishProjectChange("PL_UPDATED", {
+      id,
+      projectName: payload.projectName,
+      companyId: payload.companyId,
+    }, [payload.status, String(payload.poValue ?? ""), String(payload.projectedProfit ?? "")]);
+
     return {
       success: true,
       message: "Project updated successfully",
@@ -244,9 +286,18 @@ export async function deleteProject(id: any) {
       return { success: false, message: access.message };
     }
 
+    const existing = await prisma.project.findUnique({
+      where: { id },
+      select: { id: true, projectName: true, companyId: true },
+    });
+
     await prisma.project.delete({
       where: { id },
     });
+
+    if (existing) {
+      await publishProjectChange("PL_DELETED", existing, [existing.projectName]);
+    }
 
     return {
       success: true,

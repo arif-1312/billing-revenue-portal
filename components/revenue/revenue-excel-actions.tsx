@@ -7,7 +7,6 @@ import { toast } from "sonner";
 
 import {
   commitRevenueImport,
-  previewRevenueImport,
   exportRevenueWorkbook,
   type RevenueImportResult,
 } from "@/lib/actions/revenue-excel";
@@ -81,30 +80,6 @@ export function RevenueExcelActions({
             ? `Exported ${result.rowCount} billing row${result.rowCount === 1 ? "" : "s"}.`
             : emptyMessage,
       });
-    });
-  };
-
-  const validateFile = () => {
-    if (!file) {
-      toast.error("Error", { description: "Choose an .xlsx file." });
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append("file", file);
-
-    startImport(async () => {
-      const result = await previewRevenueImport(formData);
-
-      if (!result.success && result.columnErrors.length === 0 && result.errors.length === 0) {
-        toast.error("Error", {
-          description: result.message || "Could not read the Excel file.",
-        });
-        setPreview(null);
-        return;
-      }
-
-      setPreview(result);
     });
   };
 
@@ -253,7 +228,7 @@ export function RevenueExcelActions({
                             <th className="px-3 py-2">Customer PO Number</th>
                             <th className="px-3 py-2">Invoice Date</th>
                             <th className="px-3 py-2">Invoice Amount</th>
-                            <th className="px-3 py-2">Credit Note</th>
+                            <th className="px-3 py-2">Credit Note Amount</th>
                             <th className="px-3 py-2">TDS</th>
                             <th className="px-3 py-2">Payment Received</th>
                           </tr>
@@ -290,15 +265,6 @@ export function RevenueExcelActions({
           </div>
 
           <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={validateFile}
-              disabled
-              title="Validation is turned off for now"
-            >
-              Validate
-            </Button>
             <Button
               type="button"
               className="bg-teal-600 text-white hover:bg-teal-700"

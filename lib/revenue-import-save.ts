@@ -347,7 +347,9 @@ export async function persistRevenueImport(
       invoiceAmount: row.invoiceAmount,
       ...(row.creditNote != null
         ? { creditNote: new Prisma.Decimal(row.creditNote) }
-        : {}),
+        : row.billingCycleId
+          ? {}
+          : { creditNote: new Prisma.Decimal(0) }),
       collectedAmount: row.collectedAmount,
       invoiceDate,
       billingSubmittedDate,

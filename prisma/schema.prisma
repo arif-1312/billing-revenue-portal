@@ -509,6 +509,20 @@ enum AuditAction {
   DELETE
 }
 
+model CreditNote {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  particulars String
+  date        DateTime
+  vchType     String
+  vchNo       String
+  amount      Decimal  @db.Decimal(14, 2)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([date])
+  @@index([vchType, vchNo])
+}
+
 model RateLimitBucket {
   key      String   @id
   count    Int

@@ -11,6 +11,7 @@ import {
   IconMail,
   IconPackage,
   IconReceipt,
+  IconReceiptRefund,
   IconTrendingUp,
   IconTypeface,
   IconUser,
@@ -83,6 +84,12 @@ const data = {
       title: "Billing Plan",
       url: "/admin/billing-plan",
       icon: IconReceipt,
+    },
+
+    {
+      title: "Credit Note",
+      url: "/admin/credit-note",
+      icon: IconReceiptRefund,
     },
 
     {

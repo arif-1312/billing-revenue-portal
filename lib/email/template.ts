@@ -43,6 +43,9 @@ const SUBJECTS: Record<string, string> = {
   PAYMENT_PARTIAL: "Partial Payment Received",
   CONTRACT_EXPIRING_SOON: "Contract Expiring Soon",
   CONTRACT_EXPIRED: "Contract Expired",
+  PL_CREATED: "P&L Project Created",
+  PL_UPDATED: "P&L Project Updated",
+  PL_DELETED: "P&L Project Deleted",
 }
 
 export function emailSubject(input: {
@@ -62,6 +65,7 @@ export function actionLabel(category: string, href: string) {
     if (category === "PAYMENT" || category === "INVOICE") return "View invoice"
     return "View purchase order"
   }
+  if (href.startsWith("/admin/pl")) return "View P&L project"
   if (href.startsWith("/admin/users")) return "View users"
   if (href.startsWith("/admin/email")) return "Open email settings"
   return "View in portal"

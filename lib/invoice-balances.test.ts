@@ -15,16 +15,14 @@ function invoice(overrides: Parameters<typeof classifyInvoiceReceivable>[0]) {
   };
 }
 
-describe("credit notes", () => {
-  it("subtracts a positive credit note once and ignores blank or zero notes", () => {
-    expect(billedInvoiceAmount({ invoiceAmount: 50000, creditNote: 5000 })).toBe(45000);
+describe("invoice billed amount", () => {
+  it("uses the invoice amount and does not reduce it by a credit note", () => {
+    expect(billedInvoiceAmount({ invoiceAmount: 50000, creditNote: 5000 })).toBe(50000);
     expect(billedInvoiceAmount({ invoiceAmount: 50000, creditNote: 0 })).toBe(50000);
-    expect(billedInvoiceAmount({ invoiceAmount: 50000, creditNote: "" })).toBe(50000);
     expect(billedInvoiceAmount({ invoiceAmount: 50000 })).toBe(50000);
-    expect(billedInvoiceAmount({ invoiceAmount: 1000, creditNote: 1000 })).toBe(0);
   });
 
-  it("uses the reduced invoice amount for the outstanding balance", () => {
+  it("keeps the full invoice amount in the outstanding balance", () => {
     const parts = classifyInvoiceReceivable(
       invoice({
         invoiceAmount: 50000,
@@ -34,7 +32,7 @@ describe("credit notes", () => {
       today,
     );
 
-    expect(parts.outstanding).toBe(45000);
+    expect(parts.outstanding).toBe(50000);
     expect(parts.overdue).toBe(0);
   });
 });
@@ -79,7 +77,6 @@ describe("invoice receivable balances", () => {
         paymentReceived: "YES",
         collectedAmount: 20000,
         invoiceAmount: 50000,
-        creditNote: 5000,
         paymentDueDate: new Date("2026-11-01T00:00:00.000Z"),
       }),
       today,
@@ -89,7 +86,7 @@ describe("invoice receivable balances", () => {
       today,
     );
 
-    expect(partial.outstanding).toBe(25000);
+    expect(partial.outstanding).toBe(30000);
     expect(partial.overdue).toBe(0);
     expect(settled).toEqual({ outstanding: 0, overdue: 0, notYetDue: 0, undated: 0 });
   });

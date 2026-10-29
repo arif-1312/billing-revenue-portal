@@ -19,7 +19,6 @@ export default async function NotificationsPage({
   const result = await getNotificationCentre({
     q: firstParam(params.q),
     bucket: firstParam(params.bucket),
-    priority: firstParam(params.priority),
     sort: firstParam(params.sort),
     page: firstParam(params.page),
   })

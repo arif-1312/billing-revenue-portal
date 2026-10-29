@@ -8,7 +8,7 @@ import { buildMimeMessage } from "./mime"
 import { deliveryOutcome, summarizeEmailJobs } from "./outcome"
 import { dedupePlannedJobs, planEmailJobs, type EmailNotificationSource } from "./plan"
 import { normalizeCategoryEmailInput, normalizePreferenceInput } from "./preference-input"
-import { emailIsMandatory, requiredViewRoute, shouldDeliverInApp } from "./policy"
+import { requiredViewRoute, shouldDeliverInApp } from "./policy"
 import { renderNotificationEmail } from "./template"
 
 const now = new Date("2026-10-27T08:00:00.000Z")
@@ -98,7 +98,7 @@ describe("email planning", () => {
     expect(paused).toHaveLength(0)
   })
 
-  it("still emails a mandatory security alert when the user turns email off", () => {
+  it("does not email system, invoice, or payment alerts", () => {
     const jobs = planEmailJobs({
       notifications: [{
         ...purchaseOrder,
@@ -112,15 +112,38 @@ describe("email planning", () => {
         customerName: null,
         companyName: null,
         href: "/admin/users",
+        emailEligible: false,
       }],
       users: [{ ...revenueUser, viewRoutes: ["/admin/users"] }],
-      preferences: [{ userId: revenueUser.id, category: "SYSTEM", emailEnabled: false }],
-      categoryEnabled: { SYSTEM: false },
+      preferences: [],
+      categoryEnabled: {},
     })
 
-    expect(emailIsMandatory({ category: "SYSTEM", priority: "HIGH" })).toBe(true)
+    expect(jobs).toHaveLength(0)
+  })
+
+  it("emails a P&L change to someone who can view P&L", () => {
+    const jobs = planEmailJobs({
+      notifications: [{
+        ...purchaseOrder,
+        id: "55555555-5555-4555-8555-555555555555",
+        category: "SYSTEM",
+        eventType: "PL_CREATED",
+        title: "P&L project created",
+        body: "Northwind was created.",
+        poNumber: null,
+        customerName: null,
+        companyName: "Northwind",
+        href: "/admin/pl/view/project-1",
+      }],
+      users: [{ ...revenueUser, viewRoutes: ["/admin/pl"] }],
+      preferences: [],
+      categoryEnabled: {},
+    })
+
     expect(jobs).toHaveLength(1)
-    expect(jobs[0]?.subject).toBe("User account deactivated")
+    expect(jobs[0]?.subject).toBe("P&L Project Created")
+    expect(jobs[0]?.payload.href).toBe("/admin/pl/view/project-1")
   })
 
   it("keeps critical in-app alerts even when the category is muted", () => {

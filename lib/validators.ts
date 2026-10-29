@@ -176,17 +176,33 @@ export const billingCycleSchema = z.object({
 
   createdAt: z.date().nullable().optional(),
   updatedAt: z.date().nullable().optional(),
-}).superRefine((cycle, ctx) => {
-  const invoiceAmount = cycle.invoiceAmount ?? 0;
-  const creditNote = cycle.creditNote ?? 0;
+});
 
-  if (creditNote > invoiceAmount) {
-    ctx.addIssue({
-      code: "custom",
-      message: "Credit Note cannot exceed the invoice amount",
-      path: ["creditNote"],
-    });
-  }
+export const creditNoteSchema = z.object({
+  particulars: z
+    .string()
+    .trim()
+    .min(1, "Particulars is required")
+    .max(300, "Particulars is too long"),
+  date: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid date"),
+  vchType: z
+    .string()
+    .trim()
+    .min(1, "Vch Type is required")
+    .max(80, "Vch Type is too long"),
+  vchNo: z
+    .string()
+    .trim()
+    .min(1, "Vch No. is required")
+    .max(80, "Vch No. is too long"),
+  amount: z
+    .number()
+    .gt(0, "Amount must be greater than 0")
+    .max(MONEY_MAX, moneyMessage)
+    .refine((value) => Number.isFinite(value), { message: moneyMessage }),
 });
 
 const optionalTrimmedString = z.preprocess((val) => {

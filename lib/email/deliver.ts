@@ -1,7 +1,4 @@
 import { prisma } from "@/lib/prisma"
-import { singleLine } from "./html"
-import { systemNotificationDraft } from "@/lib/notifications/model"
-import { persistDrafts } from "@/lib/notifications/store"
 
 import { attemptDelivery, type MailTransport } from "./attempt"
 import { readSmtpConfig } from "./config"
@@ -104,21 +101,6 @@ async function deliverOne(job: ClaimedEmailJob, transport: MailTransport, now: D
   return recorded ? outcome.status : null
 }
 
-async function notifyPermanentFailure(jobId: string, subject: string, attempts: number) {
-  try {
-    await persistDrafts([
-      systemNotificationDraft({
-        eventType: "SYSTEM_EMAIL_FAILURE",
-        entityType: "EmailJob",
-        entityId: jobId,
-        title: "Email delivery failed",
-        body: `An email could not be delivered after ${attempts} attempts. Subject: ${singleLine(subject).slice(0, 120)}.`,
-        href: "/admin/email?status=FAILED",
-        fingerprint: jobId,
-        priority: "HIGH",
-      }),
-    ])
-  } catch {
-    console.error("Email failure alert could not be stored")
-  }
+async function notifyPermanentFailure(_jobId: string, _subject: string, attempts: number) {
+  console.error(`Email delivery failed after ${attempts} attempts`)
 }

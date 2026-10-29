@@ -54,8 +54,7 @@ export function NotificationPreferences({ items }: { items: PreferenceRow[] }) {
       <header className="border-b border-sky-100 px-4 py-5 sm:px-5">
         <h2 className="text-lg font-semibold tracking-tight text-slate-900">Notification preferences</h2>
         <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
-          Choose which categories appear in the notification centre and which ones are also emailed.
-          Security alerts and critical notices stay on.
+          Choose which categories appear in the notification centre. Purchase order and P&L changes are also emailed.
         </p>
       </header>
       <div className="divide-y divide-sky-100">

@@ -61,6 +61,9 @@ export type SystemNotificationInput = {
     | "SYSTEM_USER_ACTIVITY"
     | "SYSTEM_RECORD_CHANGE"
     | "SYSTEM_EMAIL_FAILURE"
+    | "PL_CREATED"
+    | "PL_UPDATED"
+    | "PL_DELETED"
   entityType: string
   entityId: string
   title: string

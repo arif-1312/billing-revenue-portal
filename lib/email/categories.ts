@@ -7,26 +7,26 @@ export const EMAIL_CATEGORY_COPY: Record<
   PURCHASE_ORDER: {
     label: "Purchase order notifications",
     description:
-      "Created, updated, closed, and expiring purchase orders. Critical alerts still appear in the notification centre.",
+      "Created, updated, closed, and expiring purchase orders. These are emailed.",
   },
   INVOICE: {
     label: "Invoice notifications",
     description:
-      "Invoice creation, updates, and payment completion. Critical alerts still appear in the notification centre.",
+      "Invoice creation, updates, and payment completion. These stay in the notification centre.",
   },
   PAYMENT: {
     label: "Payment notifications",
     description:
-      "Due reminders, overdue balances, and payments received. Critical alerts still appear in the notification centre.",
+      "Due reminders, overdue balances, and payments received. These stay in the notification centre.",
   },
   CONTRACT: {
     label: "Contract notifications",
     description:
-      "Contracts that are expiring or have ended. Critical alerts still appear in the notification centre.",
+      "Contracts that are expiring or have ended. These stay in the notification centre.",
   },
   SYSTEM: {
     label: "System notifications",
     description:
-      "Account, role, and administrative alerts. Security and critical administrative notices stay on.",
+      "Account and administrative alerts stay in the notification centre. P&L project changes are emailed.",
   },
 }

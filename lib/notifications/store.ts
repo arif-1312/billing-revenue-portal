@@ -167,7 +167,7 @@ export async function getUnreadNotificationCount() {
   try {
     await syncQuietly()
     const unreadCount = await prisma.notificationReceipt.count({
-      where: { userId: access.user.id, deletedAt: null, readAt: null },
+      where: visibleReceiptWhere(access.user.id, { readAt: null }),
     })
     return { ok: true as const, unreadCount }
   } catch {
@@ -194,7 +194,7 @@ export async function getNotificationPreview(scope: "all" | "unread") {
         take: NOTIFICATION_PREVIEW_LIMIT,
       }),
       prisma.notificationReceipt.count({
-        where: { userId: access.user.id, deletedAt: null, readAt: null },
+        where: visibleReceiptWhere(access.user.id, { readAt: null }),
       }),
     ])
 
@@ -416,8 +416,10 @@ async function attachReceipts(notifications: StoredNotification[]) {
   })
   const mutedKeys = new Set(muted.map((row) => `${row.userId}:${row.category}`))
 
-  const rows = notifications.flatMap((notification) =>
-    users.flatMap((user) => {
+  const rows = notifications.flatMap((notification) => {
+    if (notification.eventType === "SYSTEM_EMAIL_FAILURE") return []
+
+    return users.flatMap((user) => {
       const enabled = !mutedKeys.has(`${user.id}:${notification.category}`)
       if (
         !shouldDeliverInApp({
@@ -429,8 +431,8 @@ async function attachReceipts(notifications: StoredNotification[]) {
         return []
       }
       return [{ notificationId: notification.id, userId: user.id }]
-    }),
-  )
+    })
+  })
 
   for (const group of chunk(rows, 1000)) {
     await prisma.notificationReceipt.createMany({
@@ -441,7 +443,7 @@ async function attachReceipts(notifications: StoredNotification[]) {
 }
 
 async function bucketCounts(userId: string) {
-  const base = { userId, deletedAt: null }
+  const base = visibleReceiptWhere(userId)
   const [all, unread, read, payment, invoice, purchaseOrder, contract, system] =
     await Promise.all([
       prisma.notificationReceipt.count({ where: base }),
@@ -450,19 +452,19 @@ async function bucketCounts(userId: string) {
         where: { ...base, readAt: { not: null } },
       }),
       prisma.notificationReceipt.count({
-        where: { ...base, notification: { category: "PAYMENT" } },
+        where: visibleReceiptWhere(userId, {}, { category: "PAYMENT" }),
       }),
       prisma.notificationReceipt.count({
-        where: { ...base, notification: { category: "INVOICE" } },
+        where: visibleReceiptWhere(userId, {}, { category: "INVOICE" }),
       }),
       prisma.notificationReceipt.count({
-        where: { ...base, notification: { category: "PURCHASE_ORDER" } },
+        where: visibleReceiptWhere(userId, {}, { category: "PURCHASE_ORDER" }),
       }),
       prisma.notificationReceipt.count({
-        where: { ...base, notification: { category: "CONTRACT" } },
+        where: visibleReceiptWhere(userId, {}, { category: "CONTRACT" }),
       }),
       prisma.notificationReceipt.count({
-        where: { ...base, notification: { category: "SYSTEM" } },
+        where: visibleReceiptWhere(userId, {}, { category: "SYSTEM" }),
       }),
     ])
 
@@ -509,8 +511,33 @@ function receiptWhere(
     ]
   }
 
-  if (Object.keys(notification).length > 0) where.notification = notification
+  where.notification = visibleNotification(notification)
   return where
+}
+
+function visibleReceiptWhere(
+  userId: string,
+  extra: Prisma.NotificationReceiptWhereInput = {},
+  notification: Prisma.NotificationWhereInput = {},
+): Prisma.NotificationReceiptWhereInput {
+  return {
+    userId,
+    deletedAt: null,
+    ...extra,
+    notification: visibleNotification(notification),
+  }
+}
+
+function visibleNotification(
+  notification: Prisma.NotificationWhereInput = {},
+): Prisma.NotificationWhereInput {
+  return {
+    AND: [
+      notification,
+      { eventType: { not: "SYSTEM_EMAIL_FAILURE" } },
+      { entityType: { not: "EmailJob" } },
+    ],
+  }
 }
 
 function orderBy(

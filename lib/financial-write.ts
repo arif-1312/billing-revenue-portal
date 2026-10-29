@@ -61,7 +61,7 @@ export async function assertInvoiceNumbersAvailable(
     left.key.localeCompare(right.key),
   )
   for (const claim of lockOrder) {
-    await db.$queryRaw`
+    await db.$executeRaw`
       SELECT pg_advisory_xact_lock(hashtext(${claim.key}))
     `
   }

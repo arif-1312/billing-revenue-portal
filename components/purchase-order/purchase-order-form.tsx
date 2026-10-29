@@ -241,6 +241,70 @@ const paymentDrafts = (cycle?: {
   return [];
 };
 
+const formatPurchaseOrderFormValues = (
+  data?: PurchaseOrderFormData,
+): PurchaseOrderFormValues => {
+  if (!data) return defaultPurchaseOrderValues;
+
+  const billingCycles = (data.billingCycles ?? []).map((cycle) => ({
+    id: cycle.id,
+    invoiceNumber: cycle.invoiceNumber ?? "",
+    invoiceAmount: Number(cycle.invoiceAmount ?? 0),
+    creditNote: Number(cycle.creditNote ?? 0),
+    collectedAmount: Number(cycle.collectedAmount ?? 0),
+    invoiceDate: cycle.invoiceDate
+      ? new Date(cycle.invoiceDate)
+      : cycle.billingSubmittedDate
+        ? new Date(cycle.billingSubmittedDate)
+        : undefined,
+    billingSubmittedDate: cycle.invoiceDate
+      ? new Date(cycle.invoiceDate)
+      : cycle.billingSubmittedDate
+        ? new Date(cycle.billingSubmittedDate)
+        : undefined,
+    paymentReceivedDate: cycle.paymentReceivedDate
+      ? new Date(cycle.paymentReceivedDate)
+      : undefined,
+    payments: paymentDrafts(cycle),
+    paymentDueDate:
+      getDefaultPaymentDueDate({
+        billingSubmittedDate: cycle.billingSubmittedDate
+          ? new Date(cycle.billingSubmittedDate)
+          : undefined,
+        invoiceDate: cycle.invoiceDate ? new Date(cycle.invoiceDate) : undefined,
+        paymentDueDate: cycle.paymentDueDate
+          ? new Date(cycle.paymentDueDate)
+          : undefined,
+      }) ?? undefined,
+    paymentReceived: cycle.paymentReceived,
+    billingRemark: cycle.billingRemark ?? "",
+    tds: Number(cycle.tds ?? 0),
+  }));
+
+  return {
+    ...defaultPurchaseOrderValues,
+    customerPONumber: data.customerPONumber ?? "",
+    poAmount: Number(data.poAmount ?? 0),
+    serviceTypeId: String(data.serviceTypeId ?? ""),
+    contractDurationId: String(data.contractDurationId ?? ""),
+    companyId: String(data.companyId ?? ""),
+    contractId: String(data.contractId ?? ""),
+    billingPlanId: String(data.billingPlanId ?? ""),
+    customerId: String(data.customerId ?? ""),
+    vendorId: String(data.vendorId ?? ""),
+    paymentTerms: data.paymentTerms ?? "",
+    poOwner: data.poOwner ?? "",
+    status: data.status ?? defaultPurchaseOrderValues.status,
+    purchaseOrderType: normalizePurchaseOrderType(data.purchaseOrderType),
+    startFrom: data.startFrom ? new Date(data.startFrom) : undefined,
+    endDate: data.endDate ? new Date(data.endDate) : undefined,
+    ageingDays: Number(data.ageingDays ?? 0),
+    remark: data.remark ?? "",
+    scope: data.scope ?? "",
+    billingCycles,
+  };
+};
+
 const getBillingSubmittedDate = (
   cycle?: Partial<PurchaseOrderBillingCycle> | null,
   anchorDate?: Date | null,
@@ -339,10 +403,7 @@ const POForm = ({
   // ---------------- FORM ----------------
   const form = useForm<PurchaseOrderFormValues>({
     resolver: zodResolver(purchaseOrderSchema) as Resolver<PurchaseOrderFormValues>,
-    defaultValues: {
-      ...(data ?? defaultPurchaseOrderValues),
-      purchaseOrderType: normalizePurchaseOrderType(data?.purchaseOrderType),
-    } as PurchaseOrderFormValues,
+    defaultValues: formatPurchaseOrderFormValues(data),
   });
 
   const { fields, append, remove, replace } = useFieldArray({
@@ -849,75 +910,10 @@ const POForm = ({
     didHydratePurchaseOrderRef.current = true;
     skipInitialAutoGenerationRef.current = true;
 
-    const formattedCycles = (data.billingCycles ?? []).map((bc) => {
-      return {
-        id: bc.id,
-        invoiceNumber: bc.invoiceNumber ?? "",
-        invoiceAmount: Number(bc.invoiceAmount ?? 0),
-        creditNote: Number(bc.creditNote ?? 0),
-        collectedAmount: Number(bc.collectedAmount ?? 0),
+    const values = formatPurchaseOrderFormValues(data);
 
-        invoiceDate: bc.invoiceDate
-          ? new Date(bc.invoiceDate)
-          : bc.billingSubmittedDate
-            ? new Date(bc.billingSubmittedDate)
-            : undefined,
-        billingSubmittedDate: bc.invoiceDate
-          ? new Date(bc.invoiceDate)
-          : bc.billingSubmittedDate
-            ? new Date(bc.billingSubmittedDate)
-            : undefined,
-        paymentReceivedDate: bc.paymentReceivedDate
-          ? new Date(bc.paymentReceivedDate)
-          : undefined,
-        payments: paymentDrafts(bc),
-        paymentDueDate: getDefaultPaymentDueDate({
-          billingSubmittedDate: bc.billingSubmittedDate
-            ? new Date(bc.billingSubmittedDate)
-            : undefined,
-          invoiceDate: bc.invoiceDate
-            ? new Date(bc.invoiceDate)
-            : undefined,
-          paymentDueDate: bc.paymentDueDate
-            ? new Date(bc.paymentDueDate)
-            : undefined,
-        }) ?? undefined,
-        paymentReceived: bc.paymentReceived,
-        billingRemark: bc.billingRemark ?? "",
-        tds: Number(bc.tds ?? 0),
-      };
-    });
-
-    form.reset({
-      ...defaultPurchaseOrderValues,
-
-      customerPONumber: data.customerPONumber ?? "",
-      poAmount: Number(data.poAmount ?? 0),
-
-      serviceTypeId: String(data.serviceTypeId ?? ""),
-      contractDurationId: String(data.contractDurationId ?? ""),
-      companyId: String(data.companyId ?? ""),
-      contractId: String(data.contractId ?? ""),
-      billingPlanId: String(data.billingPlanId ?? ""),
-      customerId: String(data.customerId ?? ""),
-      vendorId: String(data.vendorId ?? ""),
-
-      paymentTerms: data.paymentTerms ?? "",
-      poOwner: data.poOwner ?? "",
-      status: data.status,
-      purchaseOrderType: normalizePurchaseOrderType(data.purchaseOrderType),
-
-      startFrom: data.startFrom ? new Date(data.startFrom) : undefined,
-      endDate: data.endDate ? new Date(data.endDate) : undefined,
-      ageingDays: Number(data.ageingDays ?? 0),
-
-      remark: data.remark ?? "",
-      scope: data.scope ?? "",
-
-      billingCycles: formattedCycles ?? [],
-    });
-
-    replace(formattedCycles);
+    form.reset(values);
+    replace(values.billingCycles ?? []);
   }, [data, update, form, replace]);
 
   if (!isMounted) {
@@ -1041,6 +1037,7 @@ const POForm = ({
                         placeholder="Enter Customer PO Number"
                         className={themedInputClassName}
                         {...field}
+                        value={field.value ?? ""}
                       />
                     </FormControl>
                     <FormMessage />
@@ -1096,6 +1093,7 @@ const POForm = ({
                         placeholder="Enter PO Amount"
                         className={themedInputClassName}
                         {...field}
+                        value={field.value ?? ""}
                       />
                     </FormControl>
                     <FormMessage />
@@ -1293,7 +1291,11 @@ const POForm = ({
                   <FormItem className={themedFieldClassName}>
                     <FormLabel className={themedLabelClassName}>Scope Of Work</FormLabel>
                     <FormControl>
-                      <Input className={themedInputClassName} {...field} />
+                      <Input
+                        className={themedInputClassName}
+                        {...field}
+                        value={field.value ?? ""}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -1328,7 +1330,12 @@ const POForm = ({
                   <FormItem className={themedFieldClassName}>
                     <FormLabel className={themedLabelClassName}>Payment Terms</FormLabel>
                     <FormControl>
-                      <Input className={themedInputClassName} placeholder="Enter Payment Terms" {...field} />
+                      <Input
+                        className={themedInputClassName}
+                        placeholder="Enter Payment Terms"
+                        {...field}
+                        value={field.value ?? ""}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -1343,7 +1350,12 @@ const POForm = ({
                   <FormItem className={themedFieldClassName}>
                     <FormLabel className={themedLabelClassName}>PO Owner</FormLabel>
                     <FormControl>
-                      <Input className={themedInputClassName} placeholder="Enter PO Owner" {...field} />
+                      <Input
+                        className={themedInputClassName}
+                        placeholder="Enter PO Owner"
+                        {...field}
+                        value={field.value ?? ""}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -1498,6 +1510,7 @@ const POForm = ({
                         placeholder="Additional notes"
                         className={themedTextareaClassName}
                         {...field}
+                        value={field.value ?? ""}
                       />
                     </FormControl>
                     <FormMessage />

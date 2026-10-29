@@ -9,7 +9,6 @@ import { billedInvoiceAmount } from "@/lib/invoice-balances";
 
 type BillingCycleRow = {
   invoiceAmount?: number | null;
-  creditNote?: number | null;
   collectedAmount?: number | null;
   invoiceDate?: string | Date | null;
   billingSubmittedDate?: string | Date | null;

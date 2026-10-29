@@ -384,7 +384,7 @@ export async function commitRevenueImport(
         });
         return { saved, skippedRows: assessed.errors.length, before };
       },
-      { timeout: 60000 },
+      { timeout: 120000 },
     );
 
     const { saved, skippedRows, before } = importedCount;
@@ -427,10 +427,16 @@ export async function commitRevenueImport(
     };
   } catch (error) {
     if (error instanceof ImportRejected) {
+      const assessed = error.assessed;
+      const rowError = assessed.errors[0];
       return {
-        ...toImportResult(error.assessed),
+        ...toImportResult(assessed),
         success: false,
-        message: "Import was not saved because no rows could be read from the file.",
+        message:
+          assessed.columnErrors[0] ||
+          (rowError
+            ? `Row ${rowError.row}: ${rowError.messages[0]}`
+            : "Import was not saved because no rows could be read from the file."),
       };
     }
 

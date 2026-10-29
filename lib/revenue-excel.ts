@@ -4,8 +4,9 @@ import { formatStoredDate } from "@/lib/date-utils";
 import { isAllowedMoneyAmount } from "@/lib/validators";
 
 const MAX_IMPORT_ROWS = 1000;
-const MAX_IMPORT_SHEETS = 3;
-const MAX_IMPORT_COLUMNS = 40;
+const MAX_SHEETS_TO_SCAN = 12;
+const MAX_COLUMNS_TO_READ = 80;
+const HEADER_SCAN_ROWS = 40;
 const MIN_DATE_YEAR = 1990;
 const MAX_DATE_YEAR = 2100;
 
@@ -20,11 +21,11 @@ type RevenueColumn = {
 };
 
 export const REVENUE_EXCEL_COLUMNS: RevenueColumn[] = [
-  { header: "Invoice Number", key: "invoiceNumber", required: true, kind: "text" },
+  { header: "Invoice Number", key: "invoiceNumber", required: false, kind: "text" },
   {
     header: "Customer PO Number",
     key: "customerPONumber",
-    required: true,
+    required: false,
     kind: "text",
     aliases: ["PO Number"],
   },
@@ -37,15 +38,21 @@ export const REVENUE_EXCEL_COLUMNS: RevenueColumn[] = [
   },
   { header: "Company", key: "companyName", required: false, kind: "text" },
   { header: "Vendor", key: "vendorName", required: false, kind: "text" },
-  { header: "Invoice Date", key: "invoiceDate", required: true, kind: "date" },
-  { header: "Invoice Amount", key: "invoiceAmount", required: true, kind: "number" },
-  { header: "Credit Note", key: "creditNote", required: false, kind: "number" },
+  { header: "Invoice Date", key: "invoiceDate", required: false, kind: "date" },
+  { header: "Invoice Amount", key: "invoiceAmount", required: false, kind: "number" },
+  {
+    header: "Credit Note Amount",
+    key: "creditNote",
+    required: false,
+    kind: "number",
+    aliases: ["Credit Note"],
+  },
   { header: "Collected Amount", key: "collectedAmount", required: false, kind: "number" },
   { header: "TDS", key: "tds", required: false, kind: "number" },
   {
     header: "Payment Received",
     key: "paymentReceived",
-    required: true,
+    required: false,
     kind: "payment",
     aliases: ["Payment Status"],
   },
@@ -65,8 +72,27 @@ export const REVENUE_EXCEL_COLUMNS: RevenueColumn[] = [
   { header: "Purchase Order Type", key: "purchaseOrderType", required: false, kind: "text" },
   { header: "Start Date", key: "startFrom", required: false, kind: "date" },
   { header: "End Date", key: "endDate", required: false, kind: "date" },
-  { header: "Remark", key: "remark", required: false, kind: "text" },
+  {
+    header: "Remark",
+    key: "remark",
+    required: false,
+    kind: "text",
+    aliases: ["Remarks"],
+  },
 ];
+
+// Recognized on import only. Kept out of the export template.
+const EXTRA_IMPORT_COLUMNS: RevenueColumn[] = [
+  {
+    header: "Invoice Value (With Tax)",
+    key: "invoiceValueWithTax",
+    required: false,
+    kind: "number",
+    aliases: ["Invoice Value With Tax"],
+  },
+];
+
+const HEADER_COLUMNS = [...REVENUE_EXCEL_COLUMNS, ...EXTRA_IMPORT_COLUMNS];
 
 const IMPORT_KEYS = [
   "invoiceNumber",
@@ -224,22 +250,73 @@ export type AssessedRevenueImport = {
 };
 
 function normalizeHeader(value: string) {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
+  return value
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/\u00A0/g, " ")
+    .replace(/\*+/g, "")
+    .replace(/\s*\(\s*/g, " (")
+    .replace(/\s*\)\s*/g, ") ")
+    .replace(/[:：]+\s*$/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 }
 
 export function normalizeRevenueKey(value: string) {
   return value.trim().toLowerCase();
 }
 
+function compactHeader(value: string) {
+  return normalizeHeader(value).replace(/[^a-z0-9]/g, "");
+}
+
+function columnNames(column: RevenueColumn) {
+  return [column.header, ...(column.aliases ?? [])];
+}
+
 function columnByHeader(header: string) {
   const normalized = normalizeHeader(header);
+  const compact = compactHeader(header);
+  if (!compact) return undefined;
 
-  return REVENUE_EXCEL_COLUMNS.find((column) => {
-    if (normalizeHeader(column.header) === normalized) return true;
-    return column.aliases?.some(
-      (alias) => normalizeHeader(alias) === normalized,
-    );
-  });
+  const invoiceAmount = HEADER_COLUMNS.find((column) => column.key === "invoiceAmount");
+  const invoiceWithTax = HEADER_COLUMNS.find(
+    (column) => column.key === "invoiceValueWithTax",
+  );
+
+  if (
+    invoiceWithTax &&
+    /withtax|includingtax|inclusiveoftax/.test(compact) &&
+    !/withouttax|excludingtax|extax|beforetax/.test(compact)
+  ) {
+    return invoiceWithTax;
+  }
+
+  if (
+    invoiceAmount &&
+    /withouttax|excludingtax|extax|beforetax|taxablevalue/.test(compact)
+  ) {
+    return invoiceAmount;
+  }
+
+  for (const column of HEADER_COLUMNS) {
+    for (const name of columnNames(column)) {
+      if (normalizeHeader(name) === normalized || compactHeader(name) === compact) {
+        return column;
+      }
+    }
+  }
+
+  const contained = HEADER_COLUMNS.filter((column) =>
+    columnNames(column).some((name) => {
+      const nameCompact = compactHeader(name);
+      if (nameCompact.length < 6 || compact.length < 6) return false;
+      return compact.includes(nameCompact) || nameCompact.includes(compact);
+    }),
+  );
+
+  if (contained.length === 1) return contained[0];
+  return undefined;
 }
 
 export function revenueCellText(value: unknown) {
@@ -252,6 +329,7 @@ export function revenueCellText(value: unknown) {
 }
 
 function isEmptyCell(value: unknown) {
+  if (value instanceof Date) return Number.isNaN(value.getTime());
   return revenueCellText(value) === "";
 }
 
@@ -363,123 +441,179 @@ function roundMoney(value: number) {
   return Math.round(value * 100) / 100;
 }
 
+function cellText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value == null) return "";
+  if (Array.isArray(value)) return value.map((part) => cellText(part)).join("");
+  if (typeof value === "object" && "text" in value) {
+    return cellText((value as { text?: unknown }).text);
+  }
+  return "";
+}
+
 function cellValue(value: ExcelJS.CellValue): unknown {
   if (value == null) return null;
-  if (value instanceof Date) return value;
-  if (typeof value === "object" && "result" in value) {
+  if (value instanceof Date || typeof value !== "object") return value;
+
+  if ("result" in value && value.result !== undefined) {
     return cellValue(value.result as ExcelJS.CellValue);
   }
-  if (typeof value === "object" && "text" in value && typeof value.text === "string") {
-    return value.text;
+
+  if ("richText" in value) {
+    return cellText(value.richText);
   }
-  if (typeof value === "object" && "richText" in value && Array.isArray(value.richText)) {
-    return value.richText.map((part) => part.text).join("");
+
+  if ("text" in value) {
+    return cellText(value.text);
   }
+
   return value;
 }
 
-export async function readRevenueWorkbookMatrix(buffer: Buffer) {
+type PositionedRow = {
+  excelRow: number;
+  cells: unknown[];
+};
+
+const HEADER_MISSING =
+  "No revenue column headers were found. The header row needs names such as Invoice Number, Customer PO Number, Customer, and Invoice Amount.";
+
+function sheetRowCells(row: ExcelJS.Row) {
+  const cells: unknown[] = [];
+  row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+    if (colNumber > MAX_COLUMNS_TO_READ) return;
+    cells[colNumber - 1] = cellValue(cell.value);
+  });
+  return cells;
+}
+
+function readSheetRows(sheet: ExcelJS.Worksheet) {
+  const rows: PositionedRow[] = [];
+  let exceeded = false;
+
+  sheet.eachRow((row) => {
+    if (rows.length >= MAX_IMPORT_ROWS + HEADER_SCAN_ROWS) {
+      exceeded = true;
+      return;
+    }
+    rows.push({ excelRow: row.number, cells: sheetRowCells(row) });
+  });
+
+  return { rows, exceeded };
+}
+
+function headerMatchCount(rows: PositionedRow[]) {
+  let best = 0;
+  for (const row of rows.slice(0, HEADER_SCAN_ROWS)) {
+    best = Math.max(best, indexesForHeader(row.cells).size);
+  }
+  return best;
+}
+
+async function readBestRevenueSheet(buffer: Buffer): Promise<{
+  rows: PositionedRow[];
+  error: string | null;
+}> {
   if (
     !Buffer.isBuffer(buffer) ||
     buffer.length < 4 ||
     buffer[0] !== 0x50 ||
     buffer[1] !== 0x4b
   ) {
-    return {
-      matrix: [] as unknown[][],
-      error: "Choose a .xlsx Excel file.",
-    };
+    return { rows: [], error: "Choose a .xlsx Excel file." };
   }
 
   try {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
-    if (workbook.worksheets.length > MAX_IMPORT_SHEETS) {
+    const sheets = workbook.worksheets.slice(0, MAX_SHEETS_TO_SCAN);
+
+    if (sheets.length === 0) {
+      return { rows: [], error: "The workbook has no sheets." };
+    }
+
+    let best: { rows: PositionedRow[]; score: number; exceeded: boolean } | null =
+      null;
+
+    for (const sheet of sheets) {
+      const read = readSheetRows(sheet);
+      const score = headerMatchCount(read.rows);
+      const richer =
+        !best ||
+        score > best.score ||
+        (score === best.score && read.rows.length > best.rows.length);
+      if (richer) {
+        best = { rows: read.rows, score, exceeded: read.exceeded };
+      }
+    }
+
+    if (!best || best.rows.length === 0) {
+      return { rows: [], error: "The workbook has no data rows." };
+    }
+
+    if (best.exceeded) {
       return {
-        matrix: [] as unknown[][],
-        error: "The workbook has too many sheets.",
+        rows: [],
+        error: `The workbook has more than ${MAX_IMPORT_ROWS} data rows.`,
       };
     }
-    const sheet = workbook.worksheets[0];
 
-    if (!sheet) {
-      return { matrix: [] as unknown[][], error: "The workbook has no sheets." };
-    }
-
-    if (sheet.columnCount > MAX_IMPORT_COLUMNS) {
-      return {
-        matrix: [] as unknown[][],
-        error: "The worksheet has too many columns.",
-      };
-    }
-
-    const matrix: unknown[][] = [];
-    sheet.eachRow({ includeEmpty: true }, (row) => {
-      const values = Array.isArray(row.values) ? row.values.slice(1) : [];
-      matrix.push(values.map((value) => cellValue(value as ExcelJS.CellValue)));
-    });
-
-    return { matrix, error: null };
+    return { rows: best.rows, error: null };
   } catch {
-    return {
-      matrix: [] as unknown[][],
-      error: "Could not read the Excel file.",
-    };
+    return { rows: [], error: "Could not read the Excel file." };
   }
 }
 
-export function parseRevenueMatrix(matrix: unknown[][]): ParsedRevenueWorkbook {
-  const headerRow = matrix[0] ?? [];
-  const columnErrors: string[] = [];
-  const indexes = new Map<string, number>();
-
-  headerRow.forEach((cell, index) => {
-    const header = revenueCellText(cell);
-    if (!header) return;
-
-    const column = columnByHeader(header);
-    if (!column) return;
-
-    if (indexes.has(column.key)) {
-      columnErrors.push(`Duplicate column: ${column.header}`);
-      return;
-    }
-
-    indexes.set(column.key, index);
-  });
-
-  if (indexes.size === 0 && columnErrors.length === 0) {
-    columnErrors.push("The first row must contain the revenue column headers.");
+export async function readRevenueWorkbookMatrix(buffer: Buffer) {
+  const read = await readBestRevenueSheet(buffer);
+  if (read.error) {
+    return { matrix: [] as unknown[][], error: read.error };
   }
 
-  for (const column of REVENUE_EXCEL_COLUMNS) {
-    if (column.required && !indexes.has(column.key)) {
-      columnErrors.push(`Missing required column: ${column.header}`);
-    }
+  const matrix: unknown[][] = [];
+  for (const row of read.rows) {
+    if (row.excelRow > MAX_IMPORT_ROWS + HEADER_SCAN_ROWS) continue;
+    matrix[row.excelRow - 1] = row.cells;
   }
 
-  if (columnErrors.length > 0) {
-    return { columnErrors, candidates: [] };
+  return { matrix, error: null };
+}
+
+function parsePositionedRows(rows: PositionedRow[]): ParsedRevenueWorkbook {
+  const located = locateRevenueHeader(rows);
+
+  if (located.columnErrors.length > 0) {
+    return { columnErrors: located.columnErrors, candidates: [] };
   }
 
   const candidates: RevenueImportCandidate[] = [];
+  const taxIndex = located.indexes.get("invoiceValueWithTax");
+  const headerCells =
+    rows.find((row) => row.excelRow === located.headerRow)?.cells ?? [];
+  const withoutTaxIndex = withoutTaxColumn(headerCells);
 
-  matrix.slice(1).forEach((row, index) => {
-    const cells = Array.isArray(row) ? row : [];
-    if (isBlankRow(cells)) return;
+  for (const row of rows) {
+    if (row.excelRow <= located.headerRow) continue;
+    if (isBlankRow(row.cells)) continue;
 
-    const candidate = {
-      excelRow: index + 2,
-    } as RevenueImportCandidate;
+    const candidate = { excelRow: row.excelRow } as RevenueImportCandidate;
 
     for (const key of IMPORT_KEYS) {
-      const columnIndex = indexes.get(key);
+      const columnIndex = located.indexes.get(key);
       candidate[key] =
-        columnIndex == null ? null : (cells[columnIndex] ?? null);
+        columnIndex == null ? null : (row.cells[columnIndex] ?? null);
+    }
+
+    if (withoutTaxIndex != null && isEmptyCell(candidate.invoiceAmount)) {
+      candidate.invoiceAmount = row.cells[withoutTaxIndex] ?? null;
+    }
+
+    if (taxIndex != null && isEmptyCell(candidate.invoiceAmount)) {
+      candidate.invoiceAmount = row.cells[taxIndex] ?? null;
     }
 
     candidates.push(candidate);
-  });
+  }
 
   if (candidates.length === 0) {
     return {
@@ -500,15 +634,96 @@ export function parseRevenueMatrix(matrix: unknown[][]): ParsedRevenueWorkbook {
   return { columnErrors: [], candidates };
 }
 
+export function parseRevenueMatrix(matrix: unknown[][]): ParsedRevenueWorkbook {
+  const rows: PositionedRow[] = [];
+  matrix.forEach((row, index) => {
+    rows.push({
+      excelRow: index + 1,
+      cells: Array.isArray(row) ? row : [],
+    });
+  });
+  return parsePositionedRows(rows);
+}
+
+function locateRevenueHeader(rows: PositionedRow[]) {
+  let indexes = new Map<string, number>();
+  let headerRow = 0;
+
+  for (const row of rows.slice(0, HEADER_SCAN_ROWS)) {
+    const found = indexesForHeader(row.cells);
+    if (found.size > indexes.size) {
+      indexes = found;
+      headerRow = row.excelRow;
+    }
+  }
+
+  if (indexes.size === 0) {
+    const header = rows[0];
+    if (!header) {
+      return {
+        columnErrors: [HEADER_MISSING],
+        indexes,
+        headerRow: 0,
+      };
+    }
+
+    HEADER_COLUMNS.forEach((column, index) => {
+      if (column.key === "invoiceValueWithTax") return;
+      if (index >= header.cells.length) return;
+      if (!indexes.has(column.key)) indexes.set(column.key, index);
+    });
+    headerRow = header.excelRow;
+  }
+
+  if (indexes.size === 0) {
+    return {
+      columnErrors: [HEADER_MISSING],
+      indexes,
+      headerRow: 0,
+    };
+  }
+
+  return { columnErrors: [] as string[], indexes, headerRow };
+}
+
+function withoutTaxColumn(headerRow: unknown[]) {
+  let found: number | null = null;
+
+  headerRow.forEach((cell, index) => {
+    const compact = compactHeader(revenueCellText(cell));
+    if (/withouttax|excludingtax|extax|beforetax|taxablevalue/.test(compact)) {
+      found = index;
+    }
+  });
+
+  return found;
+}
+
+function indexesForHeader(headerRow: unknown[]) {
+  const indexes = new Map<string, number>();
+
+  headerRow.forEach((cell, index) => {
+    const header = revenueCellText(cell);
+    if (!header) return;
+
+    const column = columnByHeader(header);
+    if (!column || indexes.has(column.key)) return;
+
+    indexes.set(column.key, index);
+  });
+
+  return indexes;
+}
+
 export async function parseRevenueWorkbook(buffer: Buffer): Promise<ParsedRevenueWorkbook & {
   fileError?: string;
 }> {
-  const read = await readRevenueWorkbookMatrix(buffer);
+  const read = await readBestRevenueSheet(buffer);
   if (read.error) {
     return { columnErrors: [read.error], candidates: [], fileError: read.error };
   }
 
-  return parseRevenueMatrix(read.matrix);
+  return parsePositionedRows(read.rows);
 }
 
 export function buildRevenueImportContext(
@@ -813,13 +1028,31 @@ export function assessRevenueImport(
     });
   }
 
+  const savedRows = keepLatestInvoiceRows(inserts);
+
   return {
     columnErrors: [],
     errors,
     rows,
-    inserts,
-    canCommit: inserts.length > 0,
+    inserts: savedRows,
+    canCommit: savedRows.length > 0,
   };
+}
+
+function keepLatestInvoiceRows(inserts: RevenueImportInsert[]) {
+  const lastIndexByInvoice = new Map<string, number>();
+
+  inserts.forEach((row, index) => {
+    const key = normalizeRevenueKey(row.invoiceNumber);
+    if (!key) return;
+    lastIndexByInvoice.set(key, index);
+  });
+
+  return inserts.filter((row, index) => {
+    const key = normalizeRevenueKey(row.invoiceNumber);
+    if (!key) return true;
+    return lastIndexByInvoice.get(key) === index;
+  });
 }
 
 const FORMULA_PREFIX = /^[=+\-@\t\r]/;
@@ -868,7 +1101,7 @@ function flattenExportRows(purchaseOrders: RevenueExportPurchaseOrder[]) {
           "Invoice Number": "",
           "Invoice Date": "",
           "Invoice Amount": "",
-          "Credit Note": "",
+          "Credit Note Amount": "",
           "Collected Amount": "",
           TDS: "",
           "Payment Received": "",
@@ -885,7 +1118,7 @@ function flattenExportRows(purchaseOrders: RevenueExportPurchaseOrder[]) {
       "Invoice Number": cycle.invoiceNumber ?? "",
       "Invoice Date": exportDate(cycle.invoiceDate),
       "Invoice Amount": exportAmount(cycle.invoiceAmount, true),
-      "Credit Note": exportAmount(cycle.creditNote, true),
+      "Credit Note Amount": exportAmount(cycle.creditNote, true),
       "Collected Amount": exportAmount(cycle.collectedAmount, true),
       TDS: exportAmount(cycle.tds, true),
       "Payment Received": cycle.paymentReceived ?? "",

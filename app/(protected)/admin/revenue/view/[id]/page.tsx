@@ -8,7 +8,6 @@ import { redirect } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { formatStoredDate } from "@/lib/date-utils";
-import { billedInvoiceAmount } from "@/lib/invoice-balances";
 import { canAccess } from "@/lib/rbac";
 
 interface Props {
@@ -18,7 +17,6 @@ interface Props {
 type BillingCycleView = {
   id: string;
   invoiceAmount?: number | null;
-  creditNote?: number | null;
   collectedAmount?: number | null;
   invoiceDate?: Date | string | null;
   paymentReceivedDate?: Date | string | null;
@@ -270,8 +268,6 @@ export default async function PurchaseOrderViewPage({ params }: Props) {
                     <th className="p-3 text-left font-semibold">Month</th>
                     <th className="p-3 text-left font-semibold">Invoice</th>
                     <th className="p-3 text-right font-semibold">Invoice Amount</th>
-                    <th className="p-3 text-right font-semibold">Credit Note</th>
-                    <th className="p-3 text-right font-semibold">Final Amount</th>
                     <th className="p-3 text-right font-semibold">Collected amount without GST</th>
                     <th className="p-3 text-right font-semibold">Pending</th>
                     <th className="p-3 text-left font-semibold">Invoice Date</th>
@@ -282,9 +278,9 @@ export default async function PurchaseOrderViewPage({ params }: Props) {
                 </thead>
                 <tbody className="divide-y divide-zinc-100 bg-white">
                   {billingCycles.map((bc, index) => {
-                    const finalInvoiceAmount = billedInvoiceAmount(bc);
+                    const invoiceAmount = Number(bc.invoiceAmount || 0);
                     const pendingAmount =
-                      finalInvoiceAmount - Number(bc.collectedAmount || 0);
+                      invoiceAmount - Number(bc.collectedAmount || 0);
 
                     return (
                       <tr key={bc.id} className="transition-colors hover:bg-teal-50/45">
@@ -297,15 +293,7 @@ export default async function PurchaseOrderViewPage({ params }: Props) {
                         <td className="p-3 text-zinc-700">{bc.invoiceNumber || "-"}</td>
                         <td className="p-3 text-right font-medium text-zinc-900">
                           {rupee}
-                          {formatCurrency(Number(bc.invoiceAmount || 0))}
-                        </td>
-                        <td className="p-3 text-right font-medium text-zinc-700">
-                          {rupee}
-                          {formatCurrency(Number(bc.creditNote || 0))}
-                        </td>
-                        <td className="p-3 text-right font-medium text-zinc-900">
-                          {rupee}
-                          {formatCurrency(finalInvoiceAmount)}
+                          {formatCurrency(invoiceAmount)}
                         </td>
                         <td className="p-3 text-right font-medium text-emerald-700">
                           {rupee}

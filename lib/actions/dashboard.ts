@@ -178,6 +178,7 @@ export type RevenueMonthDetail = {
   scope: string;
   invoiceNumber: string;
   billedAmount: number;
+  creditNote: number;
   paymentReceived: number;
   pendingAmount: number;
 };
@@ -466,6 +467,10 @@ function collectedByReceiptDate(
   return paymentReceipts(cycle)
     .filter((receipt) => normalizeDate(receipt.receivedDate) <= asOfDate)
     .reduce((total, receipt) => total + receipt.amount, 0);
+}
+
+function hasPartyFilter(filters?: BillingStatusFilters) {
+  return Boolean(idFilter(filters?.company) || idFilter(filters?.customer));
 }
 
 function idFilter(value?: string) {
@@ -770,6 +775,32 @@ export async function getMonthlyBillingData(
     }
   }
 
+  if (!hasPartyFilter(filters)) {
+    const notes = await prisma.creditNote.findMany({
+      select: { date: true, amount: true },
+    });
+
+    for (const note of notes) {
+      const normalizedNoteDate = filters?.timeZone === "Asia/Kolkata"
+        ? note.date
+        : normalizeDate(note.date);
+      const fyMonth = fiscalMonthInZone(normalizedNoteDate, filters);
+      const isFutureMonth = year === currentFY && fyMonth > currentFYMonth;
+      const matchesPeriod =
+        (filters?.timeZone === "Asia/Kolkata"
+          ? inFinancialYear(note.date, year, filters)
+          : normalizedNoteDate >= start && normalizedNoteDate <= end) &&
+        isWithinFilterDateRange(normalizedNoteDate, filters) &&
+        matchesFilterMonth(normalizedNoteDate, filters);
+
+      if (!isFutureMonth && matchesPeriod) {
+        data[fyMonth].billing = roundMoney(
+          data[fyMonth].billing - moneyToNumber(note.amount),
+        );
+      }
+    }
+  }
+
   if (year === currentFY) {
     data.forEach((item) => {
       if (item.index > currentFYMonth) {
@@ -914,6 +945,27 @@ export async function getRevenueDashboardSummary(
     }
 
     dueForBillingTillNow += billedInvoiceAmount(cycle);
+  }
+
+  if (!hasPartyFilter(filters)) {
+    const notes = await prisma.creditNote.findMany({
+      select: { date: true, amount: true },
+    });
+
+    for (const note of notes) {
+      const normalizedNoteDate = filters?.timeZone === "Asia/Kolkata"
+        ? note.date
+        : normalizeDate(note.date);
+
+      if (!matchesSelectedFinancialYears(note.date, year, filters)) continue;
+      if (!isWithinFilterDateRange(normalizedNoteDate, filters)) continue;
+      if (!matchesFilterMonth(normalizedNoteDate, filters)) continue;
+      if (normalizedNoteDate > asOfDate) continue;
+
+      totalRevenueTillNow -= moneyToNumber(note.amount);
+    }
+
+    totalRevenueTillNow = roundMoney(totalRevenueTillNow);
   }
 
   aging.supported =
@@ -1280,6 +1332,8 @@ export async function getRevenueDetailsByMonth(
         invoiceNumber: cycle.invoiceNumber || "-",
 
         billedAmount,
+
+        creditNote: roundMoney(moneyToNumber(cycle.creditNote)),
 
         paymentReceived,
 

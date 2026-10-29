@@ -37,7 +37,7 @@ import {
 import { ChartCard } from "./chart-card";
 import { FyBadge } from "./fy-badge";
 import { DataTable } from "./data-table";
-import { KpiCard } from "./kpi-card";
+import { HoverAmount, KpiCard } from "./kpi-card";
 import { StatusBadge } from "./status-badge";
 
 const chartConfig = {
@@ -122,7 +122,6 @@ export function OverviewView({
     scope: string;
     serviceType: string;
     billed: number;
-    creditNote: number;
     collected: number;
     outstanding: number;
     status: string;
@@ -142,12 +141,10 @@ export function OverviewView({
   const mrrRows = mrrMonths.map((point) => ({
     month: point.month,
     MRR: billedByMonth.get(point.month) ?? 0,
-    creditNote: point.creditNote ?? 0,
   }));
   const monthRows = monthly.map((point) => ({
     month: point.month,
     "Billed amount without GST": point.billing,
-    "Credit note": point.creditNote ?? 0,
     "Collected amount without GST": point.payment,
   }));
   const companies = topParties(groupByParty(recordRows, "companyName"), "billed", 8);
@@ -155,14 +152,12 @@ export function OverviewView({
   const companyRows = companies.map((row) => ({
     Company: displayPartyName(row.name),
     "Billed amount without GST": row.billed,
-    "Credit note": row.creditNote,
     "Collected amount without GST": row.collected,
   }));
   const customerRows = customers.map((row) => ({
     Customer: displayPartyName(row.name),
     Outstanding: row.due,
     Overdue: row.pastDue,
-    "Credit note": row.creditNote,
     "Collected amount without GST": row.collected,
   }));
 
@@ -172,8 +167,8 @@ export function OverviewView({
         <KpiCard
           label="Billed amount without GST"
           value={billed}
-          support="Invoice amount before 18% GST"
-          hint="Billed invoice amount before GST for the selected period."
+          support="After credit notes, before 18% GST"
+          hint="Invoice amount before GST for the selected period, minus credit notes dated in that period."
           accent="#1F6FB5"
           deltaText={deltas.billed.text}
           deltaTone={deltas.billed.tone}
@@ -255,7 +250,6 @@ export function OverviewView({
             Scope: line.scope,
             "Service type": line.serviceType,
             "Billed amount without GST": line.billed,
-            "Credit note": line.creditNote,
             "Collected amount without GST": line.collected,
             Outstanding: line.outstanding,
             Status: line.status,
@@ -303,7 +297,7 @@ export function OverviewView({
                     <span className="size-2 rounded-sm" style={{ background: sliceColor[slice.name] ?? "#98A2B3" }} />
                     {slice.name}
                   </span>
-                  <span className="font-mono text-[#1c2430] tabular-nums" title={formatInr(slice.value)}>{formatInr(slice.value, true)}</span>
+                  <HoverAmount value={slice.value} className="font-mono text-[#1c2430] tabular-nums" />
                 </li>
               ))}
             </ul>
@@ -364,7 +358,7 @@ export function OverviewView({
           title="MRR"
           description="Invoiced amount for the months, companies, customers, and billing statuses in the current filters."
           filename="mrr.csv"
-          rows={mrrRows.map((row) => ({ Month: row.month, MRR: row.MRR, "Credit note": row.creditNote }))}
+          rows={mrrRows.map((row) => ({ Month: row.month, MRR: row.MRR }))}
           loading={loading}
           error={error}
           empty={mrrRows.every((row) => row.MRR === 0)}
@@ -431,7 +425,6 @@ export function PartyView({
           rows={ranked.map((row) => ({
             Name: displayPartyName(row.name),
             Amount: purpose === "customer" ? row.due : row.billed,
-            "Credit note": row.creditNote,
             "Collected amount without GST": row.collected,
           }))}
           data={ranked}
@@ -447,7 +440,6 @@ export function PartyView({
           rows={ranked.map((row) => ({
             Name: displayPartyName(row.name),
             "Billed amount without GST": row.billed,
-            "Credit note": row.creditNote,
             "Collected amount without GST": row.collected,
             Outstanding: row.due,
             Overdue: row.pastDue,
@@ -558,11 +550,11 @@ export function AgingView({
             <dl className="mt-3 space-y-2">
               <div className="flex items-center justify-between gap-3">
                 <dt className="text-[#667085]">Not yet due</dt>
-                <dd className="font-mono tabular-nums" title={formatInr(aging.notYetDueAmount)}>{formatInr(aging.notYetDueAmount, true)}</dd>
+                <dd className="font-mono tabular-nums"><HoverAmount value={aging.notYetDueAmount} /></dd>
               </div>
               <div className="flex items-center justify-between gap-3">
                 <dt className="text-[#667085]">No due date</dt>
-                <dd className="font-mono tabular-nums" title={formatInr(aging.missingDueDateAmount)}>{formatInr(aging.missingDueDateAmount, true)}</dd>
+                <dd className="font-mono tabular-nums"><HoverAmount value={aging.missingDueDateAmount} /></dd>
               </div>
             </dl>
           </article>
@@ -612,17 +604,16 @@ export function ForecastView({
     month: point.month,
     Projected: point.projected ?? point.billing,
     "Billed amount without GST": point.billing,
-    "Credit note": point.creditNote ?? 0,
   }));
 
   return (
     <div className="space-y-3">
       <p className="rounded-md border border-[#d5e4f2] bg-[#f4f9fd] px-3 py-2 text-sm text-[#1c2430]">
-        Projected is the amount that should be billed for the month, including later months in the financial year. Billed amount without GST is the invoice amount, shown in the month of the invoice. Later months stay at zero until they are billed.
+        Projected is the amount that should be billed for the month, including later months in the financial year. Billed amount without GST is the invoice amount minus credit notes dated in that month. Later months stay at zero until they are billed.
       </p>
       <ChartCard
         title="Projected vs billed"
-        description="Projected is how much should be billed. Billed amount without GST is the invoice amount."
+        description="Projected is how much should be billed. Billed amount without GST is the invoice amount minus credit notes."
         filename="forecast.csv"
         rows={series}
         empty={series.every((row) => row.Projected === 0 && row["Billed amount without GST"] === 0)}
@@ -641,7 +632,7 @@ export function ForecastView({
       </ChartCard>
       <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
         <SecondaryStat label="Total revenue projected" value={projected} hint="Amount that should be billed in the selected financial year, including later months." />
-        <SecondaryStat label="Billed amount without GST" value={billed} hint="Invoice amount before GST in the selected period." />
+        <SecondaryStat label="Billed amount without GST" value={billed} hint="Invoice amount before GST, minus credit notes dated in the selected period." />
         <SecondaryStat label="Collected amount without GST" value={collected} hint="Amount collected in the selected period. The period comparison uses this amount." />
       </div>
     </div>
@@ -690,7 +681,7 @@ function RankChart({
 
 function SecondaryStat({ label, value, hint }: { label: string; value: number; hint: string }) {
   return (
-    <article className="flex items-center justify-between gap-3 rounded-md border border-[#e4e8ee] bg-white px-3 py-2" title={hint}>
+    <article className="flex items-center justify-between gap-3 rounded-md border border-[#e4e8ee] bg-white px-3 py-2">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-1">
           <p className="text-[11px] font-medium text-[#667085]">{label}</p>
@@ -698,18 +689,14 @@ function SecondaryStat({ label, value, hint }: { label: string; value: number; h
         </div>
         <p className="truncate text-[11px] text-[#98a2b3]">{hint}</p>
       </div>
-      <p className="shrink-0 font-mono text-sm font-semibold text-[#1c2430] tabular-nums" title={formatInr(value)}>
-        {formatInr(value, true)}
-      </p>
+      <HoverAmount value={value} className="shrink-0 font-mono text-sm font-semibold text-[#1c2430] tabular-nums" />
     </article>
   );
 }
 
 function Money({ value }: { value: number }) {
   return (
-    <span className="font-mono tabular-nums" title={formatInr(value)}>
-      {formatInr(value, true)}
-    </span>
+    <HoverAmount value={value} className="font-mono tabular-nums" />
   );
 }
 

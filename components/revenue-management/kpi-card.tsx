@@ -12,6 +12,35 @@ const toneClass: Record<TrendTone, string> = {
   neutral: "text-[#667085]",
 };
 
+export function HoverAmount({
+  value,
+  className,
+}: {
+  value: number;
+  className?: string;
+}) {
+  const exact = formatInr(value);
+  const display = formatInr(value, true);
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        type="button"
+        className={cn(
+          "cursor-default border-0 bg-transparent p-0 text-inherit",
+          className,
+        )}
+        aria-label={exact}
+      >
+        {display}
+      </TooltipTrigger>
+      <TooltipContent side="top" sideOffset={6} className="font-mono text-sm font-semibold tabular-nums">
+        {exact}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 export function KpiCard({
   label,
   value,
@@ -37,6 +66,7 @@ export function KpiCard({
     mode === "percent" ? `${value.toFixed(2)}%` : mode === "number" ? formatCount(value) : formatInr(value);
   const display =
     mode === "percent" ? `${value.toFixed(2)}%` : mode === "number" ? formatCount(value) : formatInr(value, true);
+  const amountLabel = unavailable ? "Unavailable" : exact;
 
   return (
     <article
@@ -62,15 +92,22 @@ export function KpiCard({
               <Info className="size-3.5" />
             </button>
           </TooltipTrigger>
-          <TooltipContent className="max-w-64">{hint}</TooltipContent>
+          <TooltipContent side="top" sideOffset={6} className="max-w-72">
+            <span className="block font-mono text-sm font-semibold tabular-nums">{amountLabel}</span>
+            <span className="mt-1 block opacity-80">{hint}</span>
+          </TooltipContent>
         </Tooltip>
       </div>
-      <p
-        className="mt-1 truncate font-mono text-[22px] leading-7 font-semibold tracking-tight text-[#1c2430] tabular-nums"
-        title={unavailable ? "Unavailable" : exact}
-      >
-        {unavailable ? "—" : display}
-      </p>
+      {unavailable || mode !== "currency" ? (
+        <p className="mt-1 truncate font-mono text-[22px] leading-7 font-semibold tracking-tight text-[#1c2430] tabular-nums">
+          {unavailable ? "—" : display}
+        </p>
+      ) : (
+        <HoverAmount
+          value={value}
+          className="mt-1 block w-full truncate text-left font-mono text-[22px] leading-7 font-semibold tracking-tight text-[#1c2430] tabular-nums"
+        />
+      )}
       <p className={cn("mt-1 truncate text-[11px] font-medium tabular-nums", toneClass[deltaTone])}>{deltaText}</p>
       <p className="truncate text-[11px] leading-4 text-[#667085]">{support}</p>
     </article>
