@@ -18,6 +18,8 @@ const CANONICAL_CUSTOMER_NAMES: Record<string, string> = {
   acument: "Acumant Technologies Private Limited",
   "acumant technologies private limited": "Acumant Technologies Private Limited",
   exato: "Exato",
+  "exato technologies private limited": "Exato",
+  "exato technologies pvt ltd": "Exato",
   "exato-sy": "Exato",
   "exato- sy": "Exato",
   "exato- technosysy": "Exato",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { format } from "date-fns";
 import { ArrowLeft, RefreshCw } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { periodMode } from "@/lib/dashboard-presets";
 import { getFiscalYear } from "@/lib/fiscal-year";
-import type { BillingInvoiceLine, RevenueDashboardSummary, RevenuePeriodComparison } from "@/lib/actions/dashboard";
+import type { BillingInvoiceLine, CreditNoteDashboardSummary, RevenueDashboardSummary, RevenuePeriodComparison } from "@/lib/actions/dashboard";
 import {
   applyRecordFilters,
   filterTokens,
@@ -80,10 +80,15 @@ export function ManagementReport({
   customers,
   years,
   filters,
+  status,
+  onStatus: setStatus,
+  crossFilter,
+  onCrossFilter: setCrossFilter,
   onChange,
   onPreset,
   onReset,
   summary,
+  creditNotes,
   comparison,
   records,
   lines,
@@ -98,10 +103,15 @@ export function ManagementReport({
   customers: Array<{ id: string; name: string }>;
   years: number[];
   filters: DashboardFilters;
+  status: string;
+  onStatus: (status: string) => void;
+  crossFilter: CrossFilter | null;
+  onCrossFilter: (filter: CrossFilter | null) => void;
   onChange: <K extends keyof DashboardFilters>(key: K, value: DashboardFilters[K]) => void;
   onPreset: (preset: "month" | "quarter" | "fy" | "last-fy") => void;
   onReset: () => void;
   summary: RevenueDashboardSummary | null;
+  creditNotes: CreditNoteDashboardSummary | null;
   comparison: RevenuePeriodComparison | null;
   records: RevenueRecord[];
   lines: BillingInvoiceLine[];
@@ -117,8 +127,6 @@ export function ManagementReport({
   const params = useSearchParams();
   const requested = params.get("view");
   const view: DashboardView = isDashboardView(requested) ? requested : "overview";
-  const [status, setStatus] = useState("all");
-  const [crossFilter, setCrossFilter] = useState<CrossFilter | null>(null);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -126,7 +134,7 @@ export function ManagementReport({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [setCrossFilter]);
 
   const setView = (next: DashboardView) => {
     const query = new URLSearchParams(params.toString());
@@ -146,7 +154,7 @@ export function ManagementReport({
   });
   const totals = sumRecords(filtered);
   const usingRows = selectedStatuses.length > 0 || (crossFilter != null && crossFilter.kind !== "month");
-  const billed = usingRows ? totals.billed : summary?.totalRevenueTillNow ?? 0;
+  const billed = summary?.totalRevenueTillNow ?? 0;
   const collected = usingRows ? totals.collected : summary?.collectedAmountTillNow ?? 0;
   const outstanding = usingRows ? totals.due : summary?.pendingCollectionTillNow ?? 0;
   const undated = usingRows ? totals.undated : summary?.aging.missingDueDateAmount ?? 0;
@@ -186,7 +194,6 @@ export function ManagementReport({
     overdue: overdueComparable && previous
       ? moneyDelta(overdue ?? 0, previous.summary.overdueAmountTillNow, comparisonLabel, "lower-is-better")
       : { text: "Comparison unavailable", tone: "neutral" as const },
-    records: { text: "Comparison unavailable", tone: "neutral" as const },
   };
   const overdueNote = overdue == null
     ? "Due dates are missing, so overdue cannot be calculated."
@@ -314,8 +321,8 @@ export function ManagementReport({
         ) : null}
         <FyLabelProvider label={fyLabel}>
         <div role="tabpanel" id={`panel-${view}`} aria-labelledby={`tab-${view}`} className="flex min-h-0 flex-1 flex-col">
-          {!summary ? (
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+          {!summary && loading ? (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
               {Array.from({ length: 6 }).map((_, index) => (
                 <div key={index} className="h-24 animate-pulse rounded-md bg-white motion-reduce:animate-none" />
               ))}
@@ -327,7 +334,9 @@ export function ManagementReport({
               collected={collected}
               outstanding={outstanding}
               overdue={overdue}
-              records={filtered.length}
+              creditNotes={creditNotes}
+              creditNotesLoading={loading}
+              creditNotesError={Boolean(error)}
               partial={partial}
               projected={summary.totalRevenueProjected}
               dueForBilling={summary.dueForBillingTillNow}

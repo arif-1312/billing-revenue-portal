@@ -8,6 +8,8 @@ import {
 } from "@/lib/login-rate-limit"
 import { recordSecurityEvent } from "@/lib/security-event"
 import { passwordFingerprint } from "@/lib/password"
+import { claimActiveLogin } from "@/lib/active-login"
+import { AccountAlreadySignedIn } from "@/lib/login-errors"
 
 type Credentials = {
   username?: unknown
@@ -59,7 +61,22 @@ export async function authorizeCredentials(
     return null
   }
 
+  // A failure may have reached the threshold while bcrypt was running.
+  if (await loginIsLimited(username, ip)) return null
+
   await clearSharedLoginFailures(username, ip)
+  const credentialVersion = passwordFingerprint(user.password)
+  const sessionId = await claimActiveLogin(user.id, credentialVersion)
+  if (!sessionId) {
+    await recordSecurityEvent({
+      event: "LOGIN_FAILURE",
+      username: user.username,
+      userId: user.id,
+      result: "failure",
+    })
+    throw new AccountAlreadySignedIn()
+  }
+
   await recordSecurityEvent({
     event: "LOGIN_SUCCESS",
     username: user.username,
@@ -74,6 +91,7 @@ export async function authorizeCredentials(
     lastName: user.lastName ?? "",
     email: user.email ?? "",
     role: user.role?.name ?? "USER",
-    credentialVersion: passwordFingerprint(user.password),
+    credentialVersion,
+    sessionId,
   }
 }

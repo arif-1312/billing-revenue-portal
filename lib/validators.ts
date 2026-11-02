@@ -179,11 +179,11 @@ export const billingCycleSchema = z.object({
 });
 
 export const creditNoteSchema = z.object({
-  particulars: z
+  customerName: z
     .string()
     .trim()
-    .min(1, "Particulars is required")
-    .max(300, "Particulars is too long"),
+    .min(1, "Customer name is required")
+    .max(300, "Customer name is too long"),
   date: z
     .string()
     .trim()

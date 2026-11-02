@@ -9,7 +9,7 @@ const MIN_YEAR = 1990;
 const MAX_YEAR = 2100;
 
 export const CREDIT_NOTE_HEADERS = [
-  "Particulars",
+  "Customer Name",
   "Date",
   "Vch Type",
   "Vch No.",
@@ -17,8 +17,11 @@ export const CREDIT_NOTE_HEADERS = [
 ] as const;
 
 const HEADER_ALIASES: Record<string, (typeof CREDIT_NOTE_HEADERS)[number]> = {
-  particulars: "Particulars",
-  particular: "Particulars",
+  "customer name": "Customer Name",
+  customername: "Customer Name",
+  customer: "Customer Name",
+  particulars: "Customer Name",
+  particular: "Customer Name",
   date: "Date",
   "vch date": "Date",
   "voucher date": "Date",
@@ -39,7 +42,7 @@ const HEADER_ALIASES: Record<string, (typeof CREDIT_NOTE_HEADERS)[number]> = {
 
 export type CreditNoteImportRow = {
   excelRow: number;
-  particulars: string;
+  customerName: string;
   date: string;
   vchType: string;
   vchNo: string;
@@ -52,7 +55,7 @@ export type CreditNoteImportError = {
 };
 
 export type CreditNoteWorkbookRow = {
-  particulars: string;
+  customerName: string;
   date: string;
   vchType: string;
   vchNo: string;
@@ -213,7 +216,7 @@ async function readCreditNoteWorkbook(buffer: Buffer): Promise<{
     return {
       rows: [],
       errors: [],
-      error: "The sheet needs columns Particulars, Date, Vch Type, Vch No., and Amount.",
+      error: "The sheet needs columns Customer Name, Date, Vch Type, Vch No., and Amount.",
     };
   }
 
@@ -227,12 +230,12 @@ async function readCreditNoteWorkbook(buffer: Buffer): Promise<{
     const read = (header: (typeof CREDIT_NOTE_HEADERS)[number]) =>
       readCell(row.getCell(columns.get(header) ?? 1).value);
 
-    const particulars = cellText(read("Particulars"));
+    const customerName = cellText(read("Customer Name"));
     const dateValue = read("Date");
     const vchType = cellText(read("Vch Type"));
     const vchNo = cellText(read("Vch No."));
     const amountValue = read("Amount");
-    const blank = !particulars && !cellText(dateValue) && !vchType && !vchNo && !cellText(amountValue);
+    const blank = !customerName && !cellText(dateValue) && !vchType && !vchNo && !cellText(amountValue);
     if (blank) continue;
 
     dataRows += 1;
@@ -245,8 +248,8 @@ async function readCreditNoteWorkbook(buffer: Buffer): Promise<{
     }
 
     const messages: string[] = [];
-    if (!particulars) messages.push("Particulars is required.");
-    if (particulars.length > 300) messages.push("Particulars is too long.");
+    if (!customerName) messages.push("Customer name is required.");
+    if (customerName.length > 300) messages.push("Customer name is too long.");
     if (!vchType) messages.push("Vch Type is required.");
     if (vchType.length > 80) messages.push("Vch Type is too long.");
     if (!vchNo) messages.push("Vch No. is required.");
@@ -288,7 +291,7 @@ async function readCreditNoteWorkbook(buffer: Buffer): Promise<{
 
     rows.push({
       excelRow: rowNumber,
-      particulars,
+      customerName,
       date,
       vchType,
       vchNo,
@@ -318,7 +321,7 @@ export async function buildCreditNoteWorkbook(rows: CreditNoteWorkbookRow[]) {
 
   for (const row of rows) {
     sheet.addRow([
-      safeText(row.particulars),
+      safeText(row.customerName),
       row.date,
       safeText(row.vchType),
       safeText(row.vchNo),

@@ -45,7 +45,7 @@ const CreditNoteForm = ({
   const form = useForm<z.infer<typeof creditNoteSchema>>({
     resolver: zodResolver(creditNoteSchema),
     defaultValues: data ?? {
-      particulars: "",
+      customerName: "",
       date: formatKolkataDate(new Date()),
       vchType: "Credit Note",
       vchNo: "",
@@ -83,12 +83,12 @@ const CreditNoteForm = ({
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <FormField
               control={form.control}
-              name="particulars"
+              name="customerName"
               render={({ field }) => (
                 <FormItem className={themedFieldClassName}>
-                  <FormLabel className={themedLabelClassName}>Particulars</FormLabel>
+                  <FormLabel className={themedLabelClassName}>Customer Name</FormLabel>
                   <FormControl>
-                    <Input className={themedInputClassName} placeholder="Enter particulars" {...field} />
+                    <Input className={themedInputClassName} placeholder="Enter customer name" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

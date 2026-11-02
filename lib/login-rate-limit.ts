@@ -3,10 +3,18 @@ import {
   loginKeys,
   MemoryRateLimitStore,
   type RateLimitStore,
+  type RateLimitState,
 } from "@/lib/rate-limit-store"
 
 const LIMIT = 5
 const WINDOW_MS = 15 * 60 * 1000
+const LOCK_MS = 30 * 60 * 1000
+
+export type LoginLimitState = {
+  locked: boolean
+  attemptsRemaining: number
+  retryAfterSeconds: number
+}
 
 const memoryStore = new MemoryRateLimitStore()
 let store: RateLimitStore = memoryStore
@@ -72,6 +80,35 @@ function databaseStore(): RateLimitStore {
     },
     count: databaseCount,
     increment: databaseIncrement,
+    async state(key, now = Date.now()) {
+      const rows = await prisma.$queryRaw<Array<{ count: number; resetAt: Date }>>`
+        SELECT "count", "resetAt" FROM "RateLimitBucket"
+        WHERE "key" = ${key} AND "resetAt" > ${new Date(now)}
+      `
+      return rows[0] ? { count: rows[0].count, resetAt: rows[0].resetAt.getTime() } : null
+    },
+    async failure(key, limit, windowMs, lockMs, now = Date.now()) {
+      await purgeExpiredBuckets(now)
+      const at = new Date(now)
+      const windowEnd = new Date(now + windowMs)
+      const lockEnd = new Date(now + lockMs)
+      const rows = await prisma.$queryRaw<Array<{ count: number; resetAt: Date }>>`
+        INSERT INTO "RateLimitBucket" ("key", "count", "resetAt")
+        VALUES (${key}, 1, ${windowEnd})
+        ON CONFLICT ("key") DO UPDATE SET
+          "count" = CASE
+            WHEN "RateLimitBucket"."resetAt" <= ${at} THEN 1
+            WHEN "RateLimitBucket"."count" >= ${limit} THEN "RateLimitBucket"."count"
+            ELSE "RateLimitBucket"."count" + 1 END,
+          "resetAt" = CASE
+            WHEN "RateLimitBucket"."resetAt" <= ${at} THEN ${windowEnd}
+            WHEN "RateLimitBucket"."count" = ${limit - 1} THEN ${lockEnd}
+            ELSE "RateLimitBucket"."resetAt" END
+        RETURNING "count", "resetAt"
+      `
+      if (!rows[0]) throw new Error("Login limit could not be recorded")
+      return { count: rows[0].count, resetAt: rows[0].resetAt.getTime() }
+    },
   }
 }
 
@@ -94,14 +131,29 @@ export async function reserveSharedRateLimit(
 }
 
 export async function loginIsLimited(username: string, ip: string, now = Date.now()) {
+  return (await loginLimitState(username, ip, now)).locked
+}
+
+function limitState(buckets: Array<RateLimitState | null>, now: number): LoginLimitState {
+  const count = Math.max(0, ...buckets.map((bucket) => bucket?.count ?? 0))
+  const lockedUntil = Math.max(0, ...buckets.map((bucket) =>
+    bucket && bucket.count >= LIMIT ? bucket.resetAt : 0,
+  ))
+  return {
+    locked: lockedUntil > now,
+    attemptsRemaining: Math.max(0, LIMIT - count),
+    retryAfterSeconds: Math.max(0, Math.ceil((lockedUntil - now) / 1000)),
+  }
+}
+
+export async function loginLimitState(username: string, ip: string, now = Date.now()): Promise<LoginLimitState> {
   const keys = loginKeys(username, ip)
   const limiter = await activeStore()
-  const account = await limiter.count(keys.account, now)
-  if (account >= LIMIT) return true
-  if (!ip.trim()) return false
-
-  const source = await limiter.count(keys.source, now)
-  return source >= LIMIT
+  const buckets = await Promise.all([
+    limiter.state(keys.account, now),
+    ...(ip.trim() ? [limiter.state(keys.source, now)] : []),
+  ])
+  return limitState(buckets, now)
 }
 
 export async function recordSharedLoginFailure(
@@ -111,9 +163,9 @@ export async function recordSharedLoginFailure(
 ) {
   const keys = loginKeys(username, ip)
   const limiter = await activeStore()
-  const writes = [limiter.increment(keys.account, WINDOW_MS, now)]
-  if (ip.trim()) writes.push(limiter.increment(keys.source, WINDOW_MS, now))
-  await Promise.all(writes)
+  const writes = [limiter.failure(keys.account, LIMIT, WINDOW_MS, LOCK_MS, now)]
+  if (ip.trim()) writes.push(limiter.failure(keys.source, LIMIT, WINDOW_MS, LOCK_MS, now))
+  return limitState(await Promise.all(writes), now)
 }
 
 export async function clearSharedLoginFailures(username: string, ip: string) {

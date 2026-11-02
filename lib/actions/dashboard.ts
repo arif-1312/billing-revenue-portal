@@ -1,7 +1,7 @@
 "use server";
 
 import { format } from "date-fns";
-import { PaymentReceived, Prisma } from "@prisma/client";
+import { PaymentReceived, POStatus, Prisma } from "@prisma/client";
 
 import { formatFilterDate, parseFilterDate, previousPeriod } from "@/lib/dashboard-presets";
 import {
@@ -19,6 +19,10 @@ import {
 } from "@/lib/revenue-metrics";
 import { billedInvoiceAmount, classifyInvoiceReceivable, collectedAmountOf } from "@/lib/invoice-balances";
 import { moneyToNumber } from "@/lib/money";
+import { canonicalCustomerName, normalizeCustomerKey } from "@/lib/customer-names";
+import { canonicalCompanyName, normalizeCompanyKey } from "@/lib/company-names";
+import { money } from "@/lib/money";
+import type { CrossFilter } from "@/lib/revenue-metrics";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/rbac";
 
@@ -76,6 +80,9 @@ export type RevenuePeriodComparison = {
 interface BillingStatusFilters {
   company?: string;
   customer?: string;
+  status?: string;
+  crossFilter?: CrossFilter | null;
+  purchaseOrderIds?: string[];
   startDate?: Date | string;
   endDate?: Date | string;
   month?: string;
@@ -87,12 +94,22 @@ interface BillingStatusFilters {
 export type RevenueDashboardQuery = {
   company?: string;
   customer?: string;
+  status?: string;
+  crossFilter?: CrossFilter | null;
   startDate?: string;
   endDate?: string;
   month?: string;
   quarter?: string;
   year?: string;
   monthlyYear: number;
+};
+
+export type CreditNoteDashboardQuery = RevenueDashboardQuery;
+
+export type CreditNoteDashboardSummary = {
+  amount: number;
+  count: number;
+  comparison: { amount: number; count: number; label: string } | null;
 };
 
 export type BillingInvoiceLine = {
@@ -469,10 +486,6 @@ function collectedByReceiptDate(
     .reduce((total, receipt) => total + receipt.amount, 0);
 }
 
-function hasPartyFilter(filters?: BillingStatusFilters) {
-  return Boolean(idFilter(filters?.company) || idFilter(filters?.customer));
-}
-
 function idFilter(value?: string) {
   const ids = filterTokens(value);
   if (ids.length === 0) return undefined;
@@ -499,19 +512,29 @@ function matchesCustomerFilter(
 }
 
 function getPurchaseOrderFilter(filters?: BillingStatusFilters) {
-  const purchaseOrderFilter: {
-    companyId?: string | { in: string[] };
-    customerId?: string | { in: string[] };
-  } = {};
+  const purchaseOrderFilter: Prisma.PurchaseOrderWhereInput = {};
   const companyId = idFilter(filters?.company);
   const customerId = idFilter(filters?.customer);
 
   if (companyId) purchaseOrderFilter.companyId = companyId;
   if (customerId) purchaseOrderFilter.customerId = customerId;
+  const statuses = dashboardStatuses(filters);
+  if (statuses) purchaseOrderFilter.status = { in: statuses };
+  if (filters?.purchaseOrderIds) purchaseOrderFilter.id = { in: filters.purchaseOrderIds };
 
   return Object.keys(purchaseOrderFilter).length > 0
     ? purchaseOrderFilter
     : undefined;
+}
+
+function dashboardStatuses(query?: Pick<RevenueDashboardQuery, "status" | "crossFilter">) {
+  const statuses = filterTokens(query?.status);
+  const cross = query?.crossFilter;
+  const selected = cross?.kind === "status"
+    ? statuses.length ? statuses.filter((status) => status === cross.value) : [cross.value]
+    : statuses;
+  if (!statuses.length && cross?.kind !== "status") return undefined;
+  return selected.filter((status): status is POStatus => Object.values(POStatus).includes(status as POStatus));
 }
 
 const FINANCIAL_QUARTER_MONTHS: number[][] = [
@@ -529,6 +552,7 @@ function selectedNumbers(value?: string) {
 
 function matchesFilterMonth(date: Date, filters?: BillingStatusFilters) {
   const financialMonth = fiscalMonthInZone(date, filters);
+  if (filters?.crossFilter?.kind === "month" && MONTHS[financialMonth] !== filters.crossFilter.value) return false;
   const months = selectedNumbers(filters?.month);
   const quarters = selectedNumbers(filters?.quarter);
 
@@ -603,7 +627,7 @@ function inFinancialYear(date: Date, year: number, filters?: BillingStatusFilter
   return normalized >= start && normalized <= end;
 }
 
-function getCustomerDisplayName(customer?: CustomerRecord | null) {
+function getCustomerDisplayName(customer?: Pick<NonNullable<CustomerRecord>, "companyName" | "firstName" | "lastName" | "customerCode"> | null) {
   if (!customer) return "-";
 
   if (customer.companyName?.trim()) {
@@ -775,29 +799,24 @@ export async function getMonthlyBillingData(
     }
   }
 
-  if (!hasPartyFilter(filters)) {
-    const notes = await prisma.creditNote.findMany({
-      select: { date: true, amount: true },
-    });
+  const notes = await dashboardCreditNotes(filters);
+  for (const note of notes) {
+    const normalizedNoteDate = filters?.timeZone === "Asia/Kolkata"
+      ? note.date
+      : normalizeDate(note.date);
+    const fyMonth = fiscalMonthInZone(normalizedNoteDate, filters);
+    const isFutureMonth = year === currentFY && fyMonth > currentFYMonth;
+    const matchesPeriod =
+      (filters?.timeZone === "Asia/Kolkata"
+        ? inFinancialYear(note.date, year, filters)
+        : normalizedNoteDate >= start && normalizedNoteDate <= end) &&
+      isWithinFilterDateRange(normalizedNoteDate, filters) &&
+      matchesFilterMonth(normalizedNoteDate, filters);
 
-    for (const note of notes) {
-      const normalizedNoteDate = filters?.timeZone === "Asia/Kolkata"
-        ? note.date
-        : normalizeDate(note.date);
-      const fyMonth = fiscalMonthInZone(normalizedNoteDate, filters);
-      const isFutureMonth = year === currentFY && fyMonth > currentFYMonth;
-      const matchesPeriod =
-        (filters?.timeZone === "Asia/Kolkata"
-          ? inFinancialYear(note.date, year, filters)
-          : normalizedNoteDate >= start && normalizedNoteDate <= end) &&
-        isWithinFilterDateRange(normalizedNoteDate, filters) &&
-        matchesFilterMonth(normalizedNoteDate, filters);
-
-      if (!isFutureMonth && matchesPeriod) {
-        data[fyMonth].billing = roundMoney(
-          data[fyMonth].billing - moneyToNumber(note.amount),
-        );
-      }
+    if (!isFutureMonth && matchesPeriod) {
+      data[fyMonth].billing = roundMoney(
+        data[fyMonth].billing - moneyToNumber(note.amount),
+      );
     }
   }
 
@@ -947,26 +966,27 @@ export async function getRevenueDashboardSummary(
     dueForBillingTillNow += billedInvoiceAmount(cycle);
   }
 
-  if (!hasPartyFilter(filters)) {
-    const notes = await prisma.creditNote.findMany({
-      select: { date: true, amount: true },
-    });
+  const notes = await dashboardCreditNotes(filters);
+  let projectedCreditNotes = money(0);
+  let billedCreditNotes = money(0);
+  for (const note of notes) {
+    if (!matchesSelectedFinancialYears(note.date, year, filters)) continue;
 
-    for (const note of notes) {
-      const normalizedNoteDate = filters?.timeZone === "Asia/Kolkata"
-        ? note.date
-        : normalizeDate(note.date);
+    // Projected revenue covers the whole selected financial year, including
+    // credit notes outside the month, quarter, or custom date selection.
+    projectedCreditNotes = projectedCreditNotes.plus(note.amount);
 
-      if (!matchesSelectedFinancialYears(note.date, year, filters)) continue;
-      if (!isWithinFilterDateRange(normalizedNoteDate, filters)) continue;
-      if (!matchesFilterMonth(normalizedNoteDate, filters)) continue;
-      if (normalizedNoteDate > asOfDate) continue;
+    const normalizedNoteDate = filters?.timeZone === "Asia/Kolkata"
+      ? note.date
+      : normalizeDate(note.date);
+    if (!isWithinFilterDateRange(normalizedNoteDate, filters)) continue;
+    if (!matchesFilterMonth(normalizedNoteDate, filters)) continue;
+    if (normalizedNoteDate > asOfDate) continue;
 
-      totalRevenueTillNow -= moneyToNumber(note.amount);
-    }
-
-    totalRevenueTillNow = roundMoney(totalRevenueTillNow);
+    billedCreditNotes = billedCreditNotes.plus(note.amount);
   }
+  totalRevenueProjected = moneyToNumber(money(totalRevenueProjected).minus(projectedCreditNotes));
+  totalRevenueTillNow = moneyToNumber(money(totalRevenueTillNow).minus(billedCreditNotes));
 
   aging.supported =
     aging.notYetDueCount > 0 || aging.buckets.some((bucket) => bucket.count > 0);
@@ -1342,24 +1362,16 @@ export async function getRevenueDetailsByMonth(
     });
 }
 
-export async function getRevenueDashboard(query: RevenueDashboardQuery) {
-  const access = await requirePermission("/admin/dashboard", "view");
-  if (!access.ok) {
-    return {
-      summary: emptyDashboardSummary(),
-      comparison: null,
-      records: [],
-      lines: [],
-      monthly: [],
-    };
-  }
-
+function dashboardPeriods(query: RevenueDashboardQuery) {
+  if (query.startDate || query.endDate) query = { ...query, month: "all", quarter: "all" };
   const selectedYears = filterTokens(query.year)
     .map(Number)
     .filter((value) => Number.isInteger(value));
   const filters: BillingStatusFilters = {
     company: query.company,
     customer: query.customer,
+    status: query.status,
+    crossFilter: query.crossFilter,
     startDate: query.startDate,
     endDate: query.endDate,
     month: query.month,
@@ -1382,6 +1394,8 @@ export async function getRevenueDashboard(query: RevenueDashboardQuery) {
     ? {
         company: query.company,
         customer: query.customer,
+        status: query.status,
+        crossFilter: query.crossFilter,
         startDate: earlier.startDate ? formatFilterDate(earlier.startDate) : undefined,
         endDate: earlier.endDate ? formatFilterDate(earlier.endDate) : undefined,
         month: earlier.month,
@@ -1390,14 +1404,158 @@ export async function getRevenueDashboard(query: RevenueDashboardQuery) {
       }
     : null;
   const comparisonYear = earlier ? Number(earlier.year) : undefined;
+  return { selectedYears, filters, year, earlier, comparisonFilters, comparisonYear };
+}
+
+// Credit notes contain a free-text customer name. Match the existing customer
+// aliases and common legal suffixes without fuzzy or substring matching.
+function creditNoteCustomerKey(name: string) {
+  return normalizeCustomerKey(canonicalCustomerName(name))
+    .replace(/\bprivate\b/g, "pvt")
+    .replace(/\blimited\b/g, "ltd")
+    .replace(/\./g, "")
+    .replace(/\s+/g, " ");
+}
+
+async function dashboardPartyScope(query?: Pick<CreditNoteDashboardQuery, "company" | "customer" | "status" | "crossFilter">) {
+  const customerId = idFilter(query?.customer);
+  const companyId = idFilter(query?.company);
+  const cross = query?.crossFilter;
+  const validStatuses = dashboardStatuses(query);
+  if (validStatuses?.length === 0) {
+    return { customerKeys: new Set<string>(), purchaseOrderIds: [] };
+  }
+  const companyName = cross?.kind === "company" ? cross.value : undefined;
+  const customerName = cross?.kind === "customer" ? cross.value : undefined;
+  const needsPurchaseOrder = Boolean(companyId || companyName || validStatuses?.length);
+  if (!customerId && !customerName && !needsPurchaseOrder) return { customerKeys: null };
+
+  const purchaseOrderWhere: Prisma.PurchaseOrderWhereInput = {
+    ...(companyId ? { companyId } : {}),
+    ...(validStatuses?.length ? { status: { in: validStatuses } } : {}),
+  };
+  const customers = await prisma.customer.findMany({
+    where: {
+      ...(customerId ? { id: customerId } : {}),
+      ...(needsPurchaseOrder ? { purchaseOrders: { some: purchaseOrderWhere } } : {}),
+    },
+    select: {
+      companyName: true,
+      firstName: true,
+      lastName: true,
+      customerCode: true,
+      purchaseOrders: {
+        where: purchaseOrderWhere,
+        select: { id: true, company: { select: { name: true } } },
+      },
+    },
+  });
+  const customerKeys = new Set<string>();
+  const purchaseOrderIds: string[] = [];
+  for (const customer of customers) {
+    const key = creditNoteCustomerKey(getCustomerDisplayName(customer));
+    if (customerName && key !== creditNoteCustomerKey(customerName)) continue;
+    const orders = customer.purchaseOrders.filter((order) => !companyName ||
+      (order.company?.name ?? "-") === companyName ||
+      (order.company && normalizeCompanyKey(canonicalCompanyName(order.company.name)) ===
+        normalizeCompanyKey(canonicalCompanyName(companyName))),
+    );
+    if (companyName && !orders.length) continue;
+    if (key) customerKeys.add(key);
+    purchaseOrderIds.push(...orders.map((order) => order.id));
+  }
+  return { customerKeys, purchaseOrderIds };
+}
+
+async function dashboardCreditNotes(filters?: BillingStatusFilters) {
+  const { customerKeys } = await dashboardPartyScope(filters);
+  if (customerKeys?.size === 0) return [];
+  const notes = await prisma.creditNote.findMany({
+    select: { customerName: true, date: true, amount: true },
+  });
+  return customerKeys ? notes.filter((note) => customerKeys.has(creditNoteCustomerKey(note.customerName))) : notes;
+}
+
+export async function getCreditNoteDashboardSummary(
+  query: CreditNoteDashboardQuery,
+): Promise<CreditNoteDashboardSummary> {
+  const access = await requirePermission("/admin/dashboard", "view");
+  if (!access.ok) throw new Error(access.message);
+
+  const { year, filters, earlier, comparisonFilters, comparisonYear } = dashboardPeriods(query);
+  const { customerKeys } = await dashboardPartyScope(query);
+  const summarize = (notes: Array<{ date: Date; amount: Prisma.Decimal }>, periodYear: number | undefined, periodFilters: BillingStatusFilters) => {
+    let total = money(0);
+    let count = 0;
+    for (const note of notes) {
+      if (!matchesSelectedFinancialYears(note.date, periodYear, periodFilters)) continue;
+      if (!isWithinFilterDateRange(note.date, periodFilters)) continue;
+      if (!matchesFilterMonth(note.date, periodFilters)) continue;
+      total = total.plus(note.amount);
+      count += 1;
+    }
+    return { amount: moneyToNumber(total), count };
+  };
+
+  // Bound the read to the current and comparison fiscal years/date windows.
+  const dateWindow = (periodYear: number | undefined, periodFilters: BillingStatusFilters): Prisma.CreditNoteWhereInput => {
+    const years = selectedFinancialYears(periodYear, periodFilters);
+    let start = years.length ? parseKolkataDate(`${Math.min(...years)}-04-01`) : undefined;
+    let end = years.length ? parseKolkataDate(`${Math.max(...years) + 1}-03-31`, true) : undefined;
+    if (typeof periodFilters.startDate === "string") {
+      const from = parseKolkataDate(periodFilters.startDate);
+      if (!start || from > start) start = from;
+    }
+    if (typeof periodFilters.endDate === "string") {
+      const to = parseKolkataDate(periodFilters.endDate, true);
+      if (!end || to < end) end = to;
+    }
+    return start || end ? { date: { gte: start, lte: end } } : {};
+  };
+  const windows = [dateWindow(year, filters)];
+  if (comparisonFilters) windows.push(dateWindow(comparisonYear, comparisonFilters));
+  const notes = customerKeys?.size === 0 ? [] : await prisma.creditNote.findMany({
+    where: { OR: windows },
+    select: { customerName: true, date: true, amount: true },
+  });
+  const matchingNotes = customerKeys
+    ? notes.filter((note) => customerKeys.has(creditNoteCustomerKey(note.customerName)))
+    : notes;
+  return {
+    ...summarize(matchingNotes, year, filters),
+    comparison: earlier && comparisonFilters
+      ? { ...summarize(matchingNotes, comparisonYear, comparisonFilters), label: earlier.label }
+      : null,
+  };
+}
+
+export async function getRevenueDashboard(query: RevenueDashboardQuery) {
+  const access = await requirePermission("/admin/dashboard", "view");
+  if (!access.ok) {
+    return {
+      summary: emptyDashboardSummary(),
+      comparison: null,
+      records: [],
+      lines: [],
+      monthly: [],
+      creditNotes: null,
+    };
+  }
+  const { selectedYears, filters, year, earlier, comparisonFilters, comparisonYear } = dashboardPeriods(query);
+  if (query.crossFilter?.kind === "company" || query.crossFilter?.kind === "customer") {
+    const { purchaseOrderIds } = await dashboardPartyScope(query);
+    filters.purchaseOrderIds = purchaseOrderIds ?? [];
+    if (comparisonFilters) comparisonFilters.purchaseOrderIds = filters.purchaseOrderIds;
+  }
   const monthlyYears = selectedYears.length > 0 ? selectedYears : [query.monthlyYear];
-  const [summary, billingDetails, monthlySeries, comparisonSummary] = await Promise.all([
+  const [summary, billingDetails, monthlySeries, comparisonSummary, creditNotes] = await Promise.all([
     getRevenueDashboardSummary(year, filters),
     getBillingStatusDetails(year, filters),
     Promise.all(monthlyYears.map((item) => getMonthlyBillingData(item, filters))),
     comparisonFilters
       ? getRevenueDashboardSummary(comparisonYear, comparisonFilters)
       : Promise.resolve(null),
+    getCreditNoteDashboardSummary(query),
   ]);
   const monthly = monthlySeries[0]?.map((point, index) => ({
     month: point.month,
@@ -1419,5 +1577,6 @@ export async function getRevenueDashboard(query: RevenueDashboardQuery) {
     records: billingDetails.records,
     lines: billingDetails.lines,
     monthly,
+    creditNotes,
   };
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
@@ -15,7 +16,7 @@ import {
   type DashboardPreset,
 } from "@/lib/dashboard-presets";
 import { FIRST_FISCAL_YEAR } from "@/lib/fiscal-year";
-import { filterTokens, type DashboardFilters } from "@/lib/revenue-metrics";
+import { filterTokens, type CrossFilter, type DashboardFilters } from "@/lib/revenue-metrics";
 
 type CompanyOption = { id: string; name: string };
 type CustomerOption = { id: string; name: string };
@@ -45,6 +46,8 @@ export function RevenueDashboard({
   const pathname = usePathname();
   const params = useSearchParams();
   const filters = filtersFromSearchParams(params, defaultYear);
+  const [status, setStatus] = useState("all");
+  const [crossFilter, setCrossFilter] = useState<CrossFilter | null>(null);
   const years = Array.from(
     { length: defaultYear - FIRST_FISCAL_YEAR + 1 },
     (_, index) => defaultYear - index,
@@ -61,6 +64,8 @@ export function RevenueDashboard({
   const payload = {
     company: effective.company,
     customer: effective.customer,
+    status,
+    crossFilter,
     month: effective.month,
     quarter: effective.quarter,
     year: effective.year,
@@ -81,12 +86,17 @@ export function RevenueDashboard({
       customers={customers}
       years={years}
       filters={filters}
+      status={status}
+      onStatus={setStatus}
+      crossFilter={crossFilter}
+      onCrossFilter={setCrossFilter}
       onChange={(key, value) => commit(applyFilterChange(filters, key, value))}
       onPreset={(preset: DashboardPreset) =>
         commit({ ...filters, ...presetPatch(preset, new Date()) })
       }
       onReset={() => commit(defaultFilters(defaultYear))}
       summary={report.data?.summary ?? null}
+      creditNotes={report.data?.creditNotes ?? null}
       comparison={report.data?.comparison ?? null}
       records={report.data?.records ?? []}
       lines={report.data?.lines ?? []}

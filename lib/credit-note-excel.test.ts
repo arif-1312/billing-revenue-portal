@@ -1,23 +1,23 @@
 import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
 
-import { parseCreditNoteWorkbook } from "./credit-note-excel";
+import { buildCreditNoteWorkbook, parseCreditNoteWorkbook } from "./credit-note-excel";
 
-async function workbookBuffer(rows: Array<Array<string | number>>) {
+async function workbookBuffer(rows: Array<Array<string | number>>, customerHeader = "Customer Name") {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Credit Notes");
-  sheet.addRow(["Particulars", "Date", "Vch Type", "Vch No.", "Amount"]);
+  sheet.addRow([customerHeader, "Date", "Vch Type", "Vch No.", "Amount"]);
   for (const row of rows) sheet.addRow(row);
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
 
 describe("credit note excel import", () => {
-  it("reads particulars, date, voucher type, voucher number, and amount", async () => {
+  it.each(["Customer Name", "Particulars"])("reads customer names from the %s column", async (customerHeader) => {
     const parsed = await parseCreditNoteWorkbook(
       await workbookBuffer([
         ["Acme Pvt Ltd", "2026-04-15", "Credit Note", "CN-12", 2500.5],
         ["Northwind", "15/05/2026", "Credit Note", "CN-13", "1,200.00"],
-      ]),
+      ], customerHeader),
     );
 
     expect(parsed.error).toBeUndefined();
@@ -25,7 +25,7 @@ describe("credit note excel import", () => {
     expect(parsed.rows).toEqual([
       {
         excelRow: 2,
-        particulars: "Acme Pvt Ltd",
+        customerName: "Acme Pvt Ltd",
         date: "2026-04-15",
         vchType: "Credit Note",
         vchNo: "CN-12",
@@ -33,13 +33,32 @@ describe("credit note excel import", () => {
       },
       {
         excelRow: 3,
-        particulars: "Northwind",
+        customerName: "Northwind",
         date: "2026-05-15",
         vchType: "Credit Note",
         vchNo: "CN-13",
         amount: 1200,
       },
     ]);
+  });
+
+  it("exports Customer Name and preserves the customer when imported again", async () => {
+    const note = {
+      customerName: "Acme Pvt Ltd",
+      date: "2026-04-15",
+      vchType: "Credit Note",
+      vchNo: "CN-12",
+      amount: 2500.5,
+    };
+    const buffer = await buildCreditNoteWorkbook([note]);
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
+
+    expect(workbook.worksheets[0].getCell("A1").value).toBe("Customer Name");
+    const parsed = await parseCreditNoteWorkbook(buffer);
+    expect(parsed.error).toBeUndefined();
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.rows).toEqual([{ excelRow: 2, ...note }]);
   });
 
   it("rejects a bad amount and a repeated voucher on the same date", async () => {

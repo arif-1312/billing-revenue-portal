@@ -1,5 +1,7 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { prisma } from "../prisma";
 import { purchaseOrderSchema } from "../validators";
 import { formatError } from "../utils";
@@ -287,22 +289,25 @@ export async function createPurchaseOrder(data: PurchaseOrder) {
         : {}),
     };
 
-    const created = await prisma.purchaseOrder.create({
-      data: purchaseOrderData,
-      select: { id: true },
-    });
+    const created = await prisma.$transaction(async (tx) => {
+      const order = await tx.purchaseOrder.create({
+        data: purchaseOrderData,
+        select: { id: true },
+      });
 
-    if (generatedCycles.length === 0) {
-      await prisma.$transaction((tx) =>
-        createBillingCycles(
+      if (generatedCycles.length === 0) {
+        await createBillingCycles(
           tx,
-          created.id,
+          order.id,
           validated.billingCycles.map((bc) => billingCycleCreateData(bc)),
-        ),
-      );
-    }
+        );
+      }
 
-    await safeNotify(() => publishPurchaseOrderChange(null, created.id));
+      return order;
+    }, { timeout: 30_000 });
+
+    revalidatePath("/admin/revenue");
+    after(() => safeNotify(() => publishPurchaseOrderChange(null, created.id)));
 
     return { success: true, message: "Purchase Order created successfully" };
   } catch (error) {

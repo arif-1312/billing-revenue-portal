@@ -3,9 +3,10 @@ import CredentialsProvider from "next-auth/providers/credentials"
 import { authorizeCredentials } from "./lib/credentials"
 import { clientAddress } from "./lib/client-address"
 import { readSessionDecision } from "./lib/session-revocation"
-import { IDLE_TIMEOUT_MS, idleExpired } from "./lib/session-decision"
+import { IDLE_TIMEOUT_MS, SESSION_MAX_AGE_SECONDS, idleExpired } from "./lib/session-decision"
+import { releaseActiveLogin } from "./lib/active-login"
 
-const TWELVE_HOURS = 12 * 60 * 60
+const TWELVE_HOURS = SESSION_MAX_AGE_SECONDS
 const secureCookies = process.env.NODE_ENV === "production"
 
 function text(value: unknown) {
@@ -47,6 +48,16 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             }
         })
     ],
+    events: {
+        async signOut(message) {
+            if ("token" in message && message.token) {
+                await releaseActiveLogin(
+                    text(message.token.id) || text(message.token.sub),
+                    text(message.token.sessionId),
+                )
+            }
+        },
+    },
     callbacks: {
         async session({ session, token }) {
             if (token.invalid) {
@@ -71,6 +82,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                 token.email = typeof user.email === "string" ? user.email : null
                 token.username = text(user.username)
                 token.credentialVersion = text(user.credentialVersion)
+                token.sessionId = text(user.sessionId)
                 token.lastActive = Date.now()
                 token.invalid = false
                 return token
@@ -84,7 +96,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
             const issuedAt = Number(token.iat)
             const userId = token.id || token.sub
-            if (!userId || !Number.isFinite(issuedAt)) {
+            if (!userId || !Number.isFinite(issuedAt) || !token.sessionId) {
                 token.invalid = true
                 return token
             }
@@ -97,6 +109,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                         typeof token.credentialVersion === "string"
                             ? token.credentialVersion
                             : undefined,
+                    sessionId: text(token.sessionId),
                 })
                 token.invalid = decision !== "valid"
             } catch {

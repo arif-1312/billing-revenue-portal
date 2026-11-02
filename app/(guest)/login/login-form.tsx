@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useState } from "react";
 import { cn } from "@/lib/utils";
 import { loginFormUser } from "@/lib/actions/users";
 import { Button } from "@/components/ui/button";
@@ -21,21 +21,17 @@ export function LoginForm({
   className,
   ...props
 }: React.ComponentProps<"div"> & { companyName?: string; resetNotice?: boolean }) {
-  const [data, action] = useActionState<LoginActionState, FormData>(
+  const [data, action, isPending] = useActionState<LoginActionState, FormData>(
     loginFormUser,
     null
   );
 
-  const [error, setError] = useState("");
+  const [validationError, setValidationError] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
-  useEffect(() => {
-    if (data?.success === false && data.message) {
-      setError(data.message);
-    }
-  }, [data]);
+  const error = validationError || (!isPending && data?.success === false ? data.message : "");
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
 
@@ -44,11 +40,11 @@ export function LoginForm({
 
     if (!user || !pass) {
       event.preventDefault();
-      setError("Username and password are required.");
+      setValidationError("Username and password are required.");
       return;
     }
 
-    setError("");
+    setValidationError("");
   };
 
 
@@ -75,7 +71,7 @@ export function LoginForm({
               ) : null}
 
               {error && (
-                <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-center text-sm text-red-600">
+                <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-center text-sm text-red-600">
                   {error}
                 </p>
               )}
@@ -124,9 +120,10 @@ export function LoginForm({
                 </div>
                 <Button
                   type="submit"
+                  disabled={isPending}
                   className="h-11 w-full rounded-xl bg-[#1d4ed8] text-white shadow-md transition-colors hover:bg-[#1e40af]"
                 >
-                  Sign In
+                  {isPending ? "Signing in…" : "Sign In"}
                 </Button>
               </Field>
             </FieldGroup>

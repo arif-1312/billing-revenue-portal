@@ -238,6 +238,7 @@ describe("revenue import identity", () => {
       },
       {
         purchaseOrdersByNumber: new Map(),
+        purchaseOrdersByCustomerAndNumber: new Map(),
         existingInvoices: new Map([
           ["inv-1", [
             { id: "cycle-1", purchaseOrderId: "po-1" },

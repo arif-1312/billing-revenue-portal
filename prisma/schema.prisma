@@ -78,6 +78,19 @@ model User {
   notificationPreferences NotificationPreference[]
   emailJobs               EmailJob[]
   passwordResetTokens     PasswordResetToken[]
+  activeLogin             ActiveLogin?
+}
+
+model ActiveLogin {
+  userId            String   @id @db.Uuid
+  sessionHash       String   @unique
+  credentialVersion String
+  createdAt         DateTime @default(now())
+  lastActiveAt      DateTime
+  expiresAt         DateTime
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
 }
 
 model Module {
@@ -510,14 +523,14 @@ enum AuditAction {
 }
 
 model CreditNote {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  particulars String
-  date        DateTime
-  vchType     String
-  vchNo       String
-  amount      Decimal  @db.Decimal(14, 2)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerName String   @map("particulars")
+  date         DateTime
+  vchType      String
+  vchNo        String
+  amount       Decimal  @db.Decimal(14, 2)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@index([date])
   @@index([vchType, vchNo])

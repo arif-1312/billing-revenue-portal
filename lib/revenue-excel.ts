@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs";
 
+import { canonicalCustomerName } from "@/lib/customer-names";
 import { formatStoredDate } from "@/lib/date-utils";
 import { isAllowedMoneyAmount } from "@/lib/validators";
 
@@ -194,10 +195,12 @@ export type RevenueImportInsert = {
 export type RevenueExistingInvoice = {
   id: string;
   purchaseOrderId: string;
+  purchaseOrderKey?: string;
 };
 
 export type RevenueImportContext = {
   purchaseOrdersByNumber: Map<string, string[]>;
+  purchaseOrdersByCustomerAndNumber: Map<string, string[]>;
   existingInvoices: Map<string, RevenueExistingInvoice[]>;
 };
 
@@ -264,6 +267,13 @@ function normalizeHeader(value: string) {
 
 export function normalizeRevenueKey(value: string) {
   return value.trim().toLowerCase();
+}
+
+export function revenuePurchaseOrderKey(customerPONumber: string, customerName: string) {
+  return JSON.stringify([
+    normalizeRevenueKey(customerPONumber),
+    normalizeRevenueKey(canonicalCustomerName(customerName)),
+  ]);
 }
 
 function compactHeader(value: string) {
@@ -727,7 +737,11 @@ export async function parseRevenueWorkbook(buffer: Buffer): Promise<ParsedRevenu
 }
 
 export function buildRevenueImportContext(
-  purchaseOrders: { id: string; customerPONumber?: string | null }[],
+  purchaseOrders: {
+    id: string;
+    customerPONumber?: string | null;
+    customerName?: string | null;
+  }[],
   billingCycles: {
     id: string;
     purchaseOrderId: string;
@@ -750,14 +764,26 @@ export function buildRevenueImportContext(
       .filter(Boolean),
   );
   const purchaseOrdersByNumber = new Map<string, string[]>();
+  const purchaseOrdersByCustomerAndNumber = new Map<string, string[]>();
+  const purchaseOrderKeysById = new Map<string, string>();
 
   for (const purchaseOrder of purchaseOrders) {
     const key = normalizeRevenueKey(purchaseOrder.customerPONumber ?? "");
+    const customerAndNumberKey = revenuePurchaseOrderKey(
+      purchaseOrder.customerPONumber ?? "",
+      purchaseOrder.customerName ?? "",
+    );
+    purchaseOrderKeysById.set(purchaseOrder.id, customerAndNumberKey);
     if (!key || !wantedPurchaseOrders.has(key)) continue;
 
     const matches = purchaseOrdersByNumber.get(key) ?? [];
     matches.push(purchaseOrder.id);
     purchaseOrdersByNumber.set(key, matches);
+
+    const customerMatches =
+      purchaseOrdersByCustomerAndNumber.get(customerAndNumberKey) ?? [];
+    customerMatches.push(purchaseOrder.id);
+    purchaseOrdersByCustomerAndNumber.set(customerAndNumberKey, customerMatches);
   }
 
   const existingInvoices = new Map<string, RevenueExistingInvoice[]>();
@@ -767,11 +793,19 @@ export function buildRevenueImportContext(
     if (!key || !wantedInvoices.has(key)) continue;
 
     const matches = existingInvoices.get(key) ?? [];
-    matches.push({ id: cycle.id, purchaseOrderId: cycle.purchaseOrderId });
+    matches.push({
+      id: cycle.id,
+      purchaseOrderId: cycle.purchaseOrderId,
+      purchaseOrderKey: purchaseOrderKeysById.get(cycle.purchaseOrderId),
+    });
     existingInvoices.set(key, matches);
   }
 
-  return { purchaseOrdersByNumber, existingInvoices };
+  return {
+    purchaseOrdersByNumber,
+    purchaseOrdersByCustomerAndNumber,
+    existingInvoices,
+  };
 }
 
 function parsePoStatus(value: unknown): "LIVE" | "CLOSED" | "invalid" | null {
@@ -934,9 +968,11 @@ export function assessRevenueImport(
 
     let purchaseOrderId = "";
     let billingCycleId = "";
-    const matches =
-      context.purchaseOrdersByNumber.get(normalizeRevenueKey(customerPONumber)) ??
-      [];
+    const customerNameKey = normalizeRevenueKey(customerName);
+    const poKey = revenuePurchaseOrderKey(customerPONumber, customerName);
+    const matches = customerNameKey
+      ? context.purchaseOrdersByCustomerAndNumber.get(poKey) ?? []
+      : context.purchaseOrdersByNumber.get(normalizeRevenueKey(customerPONumber)) ?? [];
 
     if (matches.length > 1) {
       errors.push({
@@ -949,7 +985,7 @@ export function assessRevenueImport(
     if (matches.length === 1) purchaseOrderId = matches[0];
 
     const draft = readPurchaseOrderDraft(candidate, customerPONumber);
-    const key = normalizeRevenueKey(customerPONumber);
+    const key = poKey;
     const current = purchaseOrderDrafts.get(key);
     if (!current) {
       purchaseOrderDrafts.set(key, draft);
@@ -970,6 +1006,28 @@ export function assessRevenueImport(
       }
 
       if (existing.length === 1) {
+        const existingPurchaseOrderKey = existing[0].purchaseOrderKey;
+        const existingPurchaseOrderMatches =
+          existingPurchaseOrderKey === poKey ||
+          (!customerNameKey &&
+            existingPurchaseOrderKey ===
+              revenuePurchaseOrderKey(customerPONumber, ""));
+
+        if (
+          (purchaseOrderId && existing[0].purchaseOrderId !== purchaseOrderId) ||
+          (!purchaseOrderId &&
+            existingPurchaseOrderKey &&
+            !existingPurchaseOrderMatches)
+        ) {
+          errors.push({
+            row,
+            messages: [
+              "This invoice number already belongs to a different purchase order or customer.",
+            ],
+          });
+          continue;
+        }
+
         billingCycleId = existing[0].id;
         if (!purchaseOrderId) purchaseOrderId = existing[0].purchaseOrderId;
       }
@@ -988,7 +1046,7 @@ export function assessRevenueImport(
       excelRow: row,
       invoiceNumber,
       customerPONumber,
-      customerName,
+      customerName: canonicalCustomerName(customerName),
       invoiceDate: resolvedInvoiceDate
         ? formatImportDate(resolvedInvoiceDate)
         : "",

@@ -45,7 +45,7 @@ import {
 import BillingCycleForm from "./billing-cycle-form";
 import { Calendar } from "../ui/calendar";
 import { Loader2, ArrowRight, CalendarIcon, Plus } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatError } from "@/lib/utils";
 import {
   themedFieldClassName,
   themedInputClassName,
@@ -530,6 +530,7 @@ const POForm = ({
   ]);
 
   const [isPending, startTransition] = React.useTransition();
+  const submissionInFlightRef = React.useRef(false);
   const skipInitialAutoGenerationRef = React.useRef(update);
   const lastGeneratedInvoiceAmountsRef = React.useRef(new Map<string, number>());
 
@@ -683,16 +684,26 @@ const POForm = ({
 
   // ---------------- SUBMIT ----------------
   const onSubmit: SubmitHandler<PurchaseOrderFormValues> = (values) => {
+    if (submissionInFlightRef.current) return;
+    submissionInFlightRef.current = true;
     startTransition(async () => {
-      const res =
-        update && id
-          ? await updatePurchaseOrder(values, id)
-          : await createPurchaseOrder(values);
+      try {
+        const res =
+          update && id
+            ? await updatePurchaseOrder(values, id)
+            : await createPurchaseOrder(values);
 
-      if (!res?.success) {
-        toast.error("Error", { description: res?.message });
-      } else {
+        if (!res?.success) {
+          toast.error("Error", { description: res?.message });
+          return;
+        }
+
+        toast.success(res.message);
         router.push("/admin/revenue");
+      } catch (error) {
+        toast.error("Error", { description: formatError(error) });
+      } finally {
+        submissionInFlightRef.current = false;
       }
     });
   };
@@ -942,12 +953,30 @@ const POForm = ({
 
   return (
     <Form {...form}>
-      <form
+      {/* <form
         onSubmit={form.handleSubmit(onSubmit, () => {
           toast.error("Validation failed");
         })}
         className="space-y-6"
-      >
+      > */}
+
+<form
+  onSubmit={(event) => {
+    console.log("[PO DEBUG] Native form submit event", {
+      timestamp: new Date().toISOString(),
+      submitter: (event.nativeEvent as SubmitEvent).submitter,
+    });
+
+    return form.handleSubmit(
+      onSubmit,
+      (errors) => {
+        console.error("[PO DEBUG] Validation failed", errors);
+        toast.error("Validation failed");
+      }
+    )(event);
+  }}
+  className="space-y-6"
+>
         <Tabs defaultValue="general" className="w-full">
           <TabsList
             className="

@@ -110,7 +110,7 @@ export function CreditNoteExcelActions({ canCreate }: { canCreate: boolean }) {
           <DialogHeader>
             <DialogTitle>Import credit notes</DialogTitle>
             <DialogDescription>
-              Use columns Particulars, Date, Vch Type, Vch No., and Amount. A matching voucher number and date updates the existing row.
+              Use columns Customer Name, Date, Vch Type, Vch No., and Amount. A matching voucher number and date updates the existing row.
             </DialogDescription>
           </DialogHeader>
           <Input

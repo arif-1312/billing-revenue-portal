@@ -25,6 +25,12 @@ import {
 } from "@/lib/privilege";
 import { fingerprint } from "@/lib/notifications/model";
 import { safePublishSystem } from "@/lib/notifications/publish";
+import { CredentialsSignin } from "@auth/core/errors";
+import { headers } from "next/headers";
+import { clientAddress } from "@/lib/client-address";
+import { loginLimitState } from "@/lib/login-rate-limit";
+import { loginFailureFeedback } from "@/lib/login-feedback";
+import { AccountAlreadySignedIn } from "@/lib/login-errors";
 
 const userPublicSelect = {
   id: true,
@@ -546,6 +552,21 @@ export async function loginFormUser(prevState: unknown, formData: FormData) {
   } catch (error) {
     if (isRedirectError(error)) {
       throw error;
+    }
+
+    if (error instanceof AccountAlreadySignedIn) {
+      return {
+        success: false,
+        message: "This account is already signed in on another device. Sign out there before signing in here.",
+      };
+    }
+    if (error instanceof CredentialsSignin) {
+      try {
+        const state = await loginLimitState(user.username, clientAddress(await headers()));
+        return loginFailureFeedback(state);
+      } catch {
+        return { success: false, message: "Login could not be completed. Please try again." };
+      }
     }
 
     return {

@@ -5,12 +5,14 @@ import {
   assessRevenueImport,
   buildRevenueWorkbook,
   parseRevenueWorkbook,
+  revenuePurchaseOrderKey,
   type RevenueExportPurchaseOrder,
   type RevenueImportCandidate,
 } from "./revenue-excel";
 
 const context = {
   purchaseOrdersByNumber: new Map<string, string[]>(),
+  purchaseOrdersByCustomerAndNumber: new Map<string, string[]>(),
   existingInvoices: new Map<string, { id: string; purchaseOrderId: string }[]>(),
 };
 
@@ -96,6 +98,67 @@ describe("revenue spreadsheet safety", () => {
     expect(assessed.errors).toHaveLength(0);
     expect(assessed.inserts).toHaveLength(1);
     expect(assessed.inserts[0]?.invoiceAmount).toBe(500);
+  });
+
+  it("keeps the same PO number separate for different customers", () => {
+    const hitachi = {
+      ...candidate(100),
+      invoiceNumber: "HIT-INV-1",
+      customerName: "Hitachi",
+      excelRow: 2,
+    };
+    const cognitbotz = {
+      ...candidate(200),
+      invoiceNumber: "COG-INV-1",
+      customerName: "Cognitbotz Solutions Private Limited",
+      excelRow: 3,
+    };
+    const assessed = assessRevenueImport(
+      { columnErrors: [], candidates: [hitachi, cognitbotz] },
+      context,
+    );
+
+    expect(assessed.inserts).toHaveLength(2);
+    expect(assessed.inserts.map((row) => row.purchaseOrder?.customerName)).toEqual([
+      "Hitachi",
+      "Cognitbotz Solutions Private Limited",
+    ]);
+  });
+
+  it("does not move an existing invoice to a different customer", () => {
+    const assessed = assessRevenueImport(
+      {
+        columnErrors: [],
+        candidates: [{ ...candidate(100), customerName: "Hitachi" }],
+      },
+      {
+        purchaseOrdersByNumber: new Map([["po-1", ["po-cognitbotz"]]]),
+        purchaseOrdersByCustomerAndNumber: new Map([
+          [
+            revenuePurchaseOrderKey("PO-1", "Cognitbotz Solutions Private Limited"),
+            ["po-cognitbotz"],
+          ],
+        ]),
+        existingInvoices: new Map([
+          [
+            "inv-1",
+            [{
+              id: "cycle-cognitbotz",
+              purchaseOrderId: "po-cognitbotz",
+              purchaseOrderKey: revenuePurchaseOrderKey(
+                "PO-1",
+                "Cognitbotz Solutions Private Limited",
+              ),
+            }],
+          ],
+        ]),
+      },
+    );
+
+    expect(assessed.inserts).toHaveLength(0);
+    expect(assessed.errors[0]?.messages.join(" ")).toContain(
+      "different purchase order or customer",
+    );
   });
 
   it("prefixes formula-like text and keeps invoice amounts numeric", async () => {

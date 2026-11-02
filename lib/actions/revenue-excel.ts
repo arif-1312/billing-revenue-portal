@@ -119,8 +119,13 @@ async function loadRevenueImportContext(
 ): Promise<RevenueImportContext> {
   const [purchaseOrders, billingCycles] = await Promise.all([
     db.purchaseOrder.findMany({
-      where: { customerPONumber: { not: null } },
-      select: { id: true, customerPONumber: true },
+      select: {
+        id: true,
+        customerPONumber: true,
+        customer: {
+          select: { companyName: true, firstName: true, lastName: true },
+        },
+      },
     }),
     db.billingCycle.findMany({
       select: { id: true, purchaseOrderId: true, invoiceNumber: true },
@@ -128,7 +133,19 @@ async function loadRevenueImportContext(
   ]);
 
   return buildRevenueImportContext(
-    purchaseOrders,
+    purchaseOrders.map((purchaseOrder) => ({
+      id: purchaseOrder.id,
+      customerPONumber: purchaseOrder.customerPONumber,
+      customerName:
+        purchaseOrder.customer?.companyName ||
+        [
+          purchaseOrder.customer?.firstName,
+          purchaseOrder.customer?.lastName,
+        ]
+          .filter(Boolean)
+          .join(" ") ||
+        "",
+    })),
     billingCycles,
     candidates,
   );
@@ -193,6 +210,7 @@ async function assessUpload(buffer: Buffer, db: ImportDb = prisma) {
       ? await loadRevenueImportContext(db, parsed.candidates)
       : {
           purchaseOrdersByNumber: new Map(),
+          purchaseOrdersByCustomerAndNumber: new Map(),
           existingInvoices: new Map(),
         },
   );

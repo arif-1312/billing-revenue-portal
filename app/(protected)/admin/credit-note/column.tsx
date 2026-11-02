@@ -31,8 +31,8 @@ export const getCreditNoteColumns = ({
 }): ColumnDef<CreditNoteRecord>[] => {
   const columns: ColumnDef<CreditNoteRecord>[] = [
     {
-      accessorKey: "particulars",
-      header: "Particulars",
+      accessorKey: "customerName",
+      header: "Customer Name",
     },
     {
       accessorKey: "date",

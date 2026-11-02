@@ -1,6 +1,7 @@
 export type SessionDecision = "valid" | "invalid"
 
 export const IDLE_TIMEOUT_MS = 2 * 60 * 60 * 1000
+export const SESSION_MAX_AGE_SECONDS = 12 * 60 * 60
 
 export function idleExpired(
   lastActive: unknown,

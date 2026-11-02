@@ -20,6 +20,7 @@ import {
 
 import { ChartContainer, type ChartConfig } from "@/components/ui/chart";
 import type { AgingSummary } from "@/lib/revenue-metrics";
+import type { CreditNoteDashboardSummary } from "@/lib/actions/dashboard";
 import {
   amountWithGst,
   formatCount,
@@ -84,7 +85,9 @@ export function OverviewView({
   collected,
   outstanding,
   overdue,
-  records,
+  creditNotes,
+  creditNotesLoading,
+  creditNotesError,
   partial,
   projected,
   dueForBilling,
@@ -104,12 +107,14 @@ export function OverviewView({
   collected: number;
   outstanding: number;
   overdue: number | null;
-  records: number;
+  creditNotes: CreditNoteDashboardSummary | null;
+  creditNotesLoading: boolean;
+  creditNotesError: boolean;
   partial: number;
   projected: number;
   dueForBilling: number;
   overdueNote: string | null;
-  deltas: Record<"billed" | "collected" | "outstanding" | "overdue" | "records", Delta>;
+  deltas: Record<"billed" | "collected" | "outstanding" | "overdue", Delta>;
   slices: Array<{ name: string; value: number }>;
   monthly: MonthPoint[];
   recordRows: RevenueRecord[];
@@ -163,7 +168,7 @@ export function OverviewView({
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
         <KpiCard
           label="Billed amount without GST"
           value={billed}
@@ -211,22 +216,29 @@ export function OverviewView({
           deltaTone={deltas.overdue.tone}
         />
         <KpiCard
-          label="Billing records"
-          value={records}
-          mode="number"
-          support="Rows matching these filters"
-          hint="Grouped billing rows in the current selection. This is not compared with the prior period."
-          accent="#667085"
-          deltaText={deltas.records.text}
-          deltaTone={deltas.records.tone}
+          label="Credit Notes"
+          value={creditNotes?.amount ?? 0}
+          unavailable={!creditNotes || creditNotesError}
+          support={creditNotesError
+            ? "Credit notes could not be loaded. Refresh to retry."
+            : creditNotesLoading
+              ? "Loading credit notes…"
+              : `${formatCount(creditNotes?.count ?? 0)} Credit Note${creditNotes?.count === 1 ? "" : "s"} Issued`}
+          hint="Credit notes dated in the selected period. Customer names are matched to customer records; company and billing status selections use those customers' purchase orders. Each note is counted once, even when several orders match."
+          accent="#7E22CE"
+          deltaText={creditNotesError || !creditNotes
+            ? "Comparison unavailable"
+            : creditNotes.comparison
+              ? `Previous period: ${formatInr(creditNotes.comparison.amount)} (${creditNotes.comparison.label})`
+              : "Comparison unavailable"}
         />
       </div>
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <SecondaryStat
-          label="Total revenue projected"
+          label="Total revenue projected without GST"
           value={projected}
-          hint="All invoiced amounts in the selected financial year. Month, quarter, and date filters do not reduce this total."
+          hint="All invoiced amounts before GST, minus credit notes dated in the selected financial year. Month, quarter, and date filters do not reduce this total."
         />
         <SecondaryStat
           label="Due for billing till now"
@@ -631,7 +643,7 @@ export function ForecastView({
         </ChartContainer>
       </ChartCard>
       <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-        <SecondaryStat label="Total revenue projected" value={projected} hint="Amount that should be billed in the selected financial year, including later months." />
+        <SecondaryStat label="Total revenue projected without GST" value={projected} hint="Amount before GST for the selected financial year, including later months, minus credit notes dated in that financial year." />
         <SecondaryStat label="Billed amount without GST" value={billed} hint="Invoice amount before GST, minus credit notes dated in the selected period." />
         <SecondaryStat label="Collected amount without GST" value={collected} hint="Amount collected in the selected period. The period comparison uses this amount." />
       </div>

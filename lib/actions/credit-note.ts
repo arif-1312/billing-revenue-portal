@@ -22,7 +22,7 @@ const MAX_FILE_BYTES = 1024 * 1024;
 
 export type CreditNoteRecord = {
   id: string;
-  particulars: string;
+  customerName: string;
   date: string;
   vchType: string;
   vchNo: string;
@@ -37,7 +37,7 @@ function revalidateCreditNotes() {
 
 function toRecord(note: {
   id: string;
-  particulars: string;
+  customerName: string;
   date: Date;
   vchType: string;
   vchNo: string;
@@ -45,7 +45,7 @@ function toRecord(note: {
 }): CreditNoteRecord {
   return {
     id: note.id,
-    particulars: note.particulars,
+    customerName: note.customerName,
     date: formatKolkataDate(note.date),
     vchType: note.vchType,
     vchNo: note.vchNo,
@@ -98,7 +98,7 @@ export async function createCreditNote(data: unknown) {
     const note = creditNoteSchema.parse(data);
     await prisma.creditNote.create({
       data: {
-        particulars: note.particulars,
+        customerName: note.customerName,
         date: parseKolkataDate(note.date),
         vchType: note.vchType,
         vchNo: note.vchNo,
@@ -122,7 +122,7 @@ export async function updateCreditNote(data: unknown, id: string) {
     await prisma.creditNote.update({
       where: { id },
       data: {
-        particulars: note.particulars,
+        customerName: note.customerName,
         date: parseKolkataDate(note.date),
         vchType: note.vchType,
         vchNo: note.vchNo,
@@ -237,7 +237,7 @@ export async function importCreditNoteWorkbook(
 
       for (const row of parsed.rows) {
         const data = {
-          particulars: row.particulars,
+          customerName: row.customerName,
           date: parseKolkataDate(row.date),
           vchType: row.vchType,
           vchNo: row.vchNo,

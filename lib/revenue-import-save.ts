@@ -12,6 +12,7 @@ import { canonicalCustomerName, normalizeCustomerKey } from "@/lib/customer-name
 import { canonicalCompanyName, normalizeCompanyKey } from "@/lib/company-names";
 import {
   normalizeRevenueKey,
+  revenuePurchaseOrderKey,
   type AssessedRevenueImport,
   type RevenuePurchaseOrderDraft,
 } from "@/lib/revenue-excel";
@@ -107,7 +108,10 @@ export async function persistRevenueImport(
       continue;
     }
     drafts.set(
-      normalizeRevenueKey(row.purchaseOrder.customerPONumber),
+      revenuePurchaseOrderKey(
+        row.purchaseOrder.customerPONumber,
+        row.purchaseOrder.customerName,
+      ),
       row.purchaseOrder,
     );
   }
@@ -138,7 +142,13 @@ export async function persistRevenueImport(
 
   const [customers, vendors] = await Promise.all([
     db.customer.findMany({
-      select: { id: true, customerCode: true, companyName: true, firstName: true },
+      select: {
+        id: true,
+        customerCode: true,
+        companyName: true,
+        firstName: true,
+        lastName: true,
+      },
     }),
     db.vendor.findMany({
       select: { id: true, vendorCode: true, companyName: true, firstName: true },
@@ -148,15 +158,17 @@ export async function persistRevenueImport(
   const customerIds = new Map<string, string>();
   const customerCodes = customers.map((customer) => customer.customerCode);
   for (const customer of customers) {
-    for (const name of [customer.companyName, customer.firstName]) {
-      const canonical = canonicalCustomerName(name ?? "");
-      const key = normalizeRevenueKey(canonical);
-      if (!key) continue;
-      const alreadyCanonical =
-        normalizeCustomerKey(name ?? "") === normalizeCustomerKey(canonical);
-      if (!customerIds.has(key) || alreadyCanonical) {
-        customerIds.set(key, customer.id);
-      }
+    const name =
+      customer.companyName?.trim() ||
+      [customer.firstName, customer.lastName].filter(Boolean).join(" ").trim();
+    const canonical = canonicalCustomerName(name);
+    const key = normalizeRevenueKey(canonical);
+    if (!key) continue;
+
+    const alreadyCanonical =
+      normalizeCustomerKey(name) === normalizeCustomerKey(canonical);
+    if (!customerIds.has(key) || alreadyCanonical) {
+      customerIds.set(key, customer.id);
     }
   }
 
@@ -270,7 +282,10 @@ export async function persistRevenueImport(
   for (const row of assessed.inserts) {
     if (!row.purchaseOrderId) continue;
     purchaseOrderIds.set(
-      normalizeRevenueKey(row.purchaseOrder?.customerPONumber ?? ""),
+      revenuePurchaseOrderKey(
+        row.purchaseOrder?.customerPONumber ?? "",
+        row.purchaseOrder?.customerName ?? "",
+      ),
       row.purchaseOrderId,
     );
   }
@@ -316,13 +331,21 @@ export async function persistRevenueImport(
       where: { id },
       data: purchaseOrderData(draft),
     });
-    purchaseOrderIds.set(normalizeRevenueKey(draft.customerPONumber), id);
+    purchaseOrderIds.set(
+      revenuePurchaseOrderKey(draft.customerPONumber, draft.customerName),
+      id,
+    );
   }
 
   for (const row of assessed.inserts) {
     const purchaseOrderId =
       row.purchaseOrderId ||
-      purchaseOrderIds.get(normalizeRevenueKey(row.purchaseOrder?.customerPONumber ?? ""));
+      purchaseOrderIds.get(
+        revenuePurchaseOrderKey(
+          row.purchaseOrder?.customerPONumber ?? "",
+          row.purchaseOrder?.customerName ?? "",
+        ),
+      );
 
     if (!purchaseOrderId) {
       throw new Error(`Row ${row.excelRow} has no revenue record to update`);
