@@ -1,11 +1,12 @@
 import { Prisma } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { requirePermission, findNotes, findCustomers, findCycles } = vi.hoisted(() => ({
+const { requirePermission, findNotes, findCustomers, findCycles, findPurchaseOrders } = vi.hoisted(() => ({
   requirePermission: vi.fn(),
   findNotes: vi.fn(),
   findCustomers: vi.fn(),
   findCycles: vi.fn(),
+  findPurchaseOrders: vi.fn(),
 }));
 
 vi.mock("@/lib/rbac", () => ({ requirePermission }));
@@ -14,6 +15,7 @@ vi.mock("@/lib/prisma", () => ({
     creditNote: { findMany: findNotes },
     customer: { findMany: findCustomers },
     billingCycle: { findMany: findCycles },
+    purchaseOrder: { findMany: findPurchaseOrders },
   },
 }));
 
@@ -38,6 +40,7 @@ beforeEach(() => {
   requirePermission.mockResolvedValue({ ok: true });
   findCustomers.mockResolvedValue([]);
   findCycles.mockResolvedValue([]);
+  findPurchaseOrders.mockResolvedValue([]);
   findNotes.mockResolvedValue([
     note("Hitachi systems India Pvt Ltd", "2025-04-01", "100"),
     note("Exato Technologies Private Limited", "2025-05-15", "200"),

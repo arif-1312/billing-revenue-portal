@@ -7,6 +7,7 @@ import { formatError, incrementCode } from "../utils";
 import { requirePermission, type PermissionRule } from "@/lib/rbac";
 import { fingerprint } from "@/lib/notifications/model";
 import { safePublishSystem } from "@/lib/notifications/publish";
+import { canonicalCompanyName, isAllowedCompanyName } from "@/lib/company-names";
 
 const companyReaders: PermissionRule[] = [
   { route: "/admin/revenue", action: "view" },
@@ -24,9 +25,12 @@ function normalizeCompanyPayload(company: Company) {
   if (!name) {
     throw new Error("Company name is required");
   }
+  if (!isAllowedCompanyName(name)) {
+    throw new Error("Only SY Associates and Technosys are allowed as company names.");
+  }
 
   return {
-    name,
+    name: canonicalCompanyName(name),
     email: company.email?.trim() || null,
     phone: company.phone?.trim() || null,
     alternatePhone: company.alternatePhone?.trim() || null,

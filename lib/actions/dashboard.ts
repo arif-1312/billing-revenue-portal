@@ -12,16 +12,18 @@ import {
 } from "@/lib/fiscal-year";
 import {
   agingBucketForDaysPastDue,
+  amountWithGst,
   emptyAging,
   filterTokens,
+  GST_RATE,
   type AgingSummary,
   type DashboardFilters,
 } from "@/lib/revenue-metrics";
 import { billedInvoiceAmount, classifyInvoiceReceivable, collectedAmountOf } from "@/lib/invoice-balances";
-import { moneyToNumber } from "@/lib/money";
+import { generateBillingCycleSchedule, resolveBillingPlanInterval } from "@/lib/billing-cycle-utils";
+import { moneyToNumber, money, splitMoney } from "@/lib/money";
 import { canonicalCustomerName, normalizeCustomerKey } from "@/lib/customer-names";
 import { canonicalCompanyName, normalizeCompanyKey } from "@/lib/company-names";
-import { money } from "@/lib/money";
 import type { CrossFilter } from "@/lib/revenue-metrics";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/rbac";
@@ -71,6 +73,16 @@ export interface RevenueDashboardSummary {
   collectionEfficiency: number;
   aging: AgingSummary;
 }
+
+export type BillingOverviewMetrics = {
+  plannedBilling: number | null;
+  billingDoneWithGst: number | null;
+  billingDoneWithoutGst: number | null;
+  upcomingBilling: number | null;
+  billingAchievement: number | null;
+  billingAchievementAbovePlan: boolean;
+  gstRate: number;
+};
 
 export type RevenuePeriodComparison = {
   label: string;
@@ -1529,6 +1541,251 @@ export async function getCreditNoteDashboardSummary(
   };
 }
 
+type BillingOverviewPurchaseOrder = Prisma.PurchaseOrderGetPayload<{
+  select: {
+    id: true;
+    status: true;
+    poAmount: true;
+    startFrom: true;
+    endDate: true;
+    companyId: true;
+    customerId: true;
+    billingPlan: { select: { name: true; totalBillingCycles: true; billingCycleType: true; status: true } };
+    contractDuration: { select: { totalNumberOfMonths: true } };
+    billingCycles: {
+      select: {
+        invoiceNumber: true;
+        invoiceDate: true;
+        billingSubmittedDate: true;
+        invoiceAmount: true;
+      };
+    };
+  };
+}>;
+
+function addMonthsMinusOneDay(date: Date, months: number) {
+  const result = new Date(date);
+  const day = result.getDate();
+  result.setDate(1);
+  result.setMonth(result.getMonth() + months);
+  const lastDay = new Date(result.getFullYear(), result.getMonth() + 1, 0).getDate();
+  result.setDate(Math.min(day, lastDay));
+  result.setDate(result.getDate() - 1);
+  return result;
+}
+
+function effectivePurchaseOrderEnd(order: BillingOverviewPurchaseOrder) {
+  if (order.endDate) return order.endDate;
+  if (!order.startFrom) return null;
+  const duration = order.contractDuration?.totalNumberOfMonths ?? 0;
+  return duration > 0 ? addMonthsMinusOneDay(order.startFrom, duration) : null;
+}
+
+function billingDatesForDerivation(order: BillingOverviewPurchaseOrder) {
+  if (!order.startFrom || !order.poAmount || !order.billingPlan) {
+    return null;
+  }
+
+  const plan = order.billingPlan;
+  const interval = resolveBillingPlanInterval(plan.totalBillingCycles, plan.name);
+  if (!interval.autoGenerate) return null;
+
+  let endDate = order.endDate;
+  if (!endDate) {
+    const configuredDuration = order.contractDuration?.totalNumberOfMonths ?? 0;
+    const inferredDuration = interval.singleCycle
+      ? 1
+      : interval.intervalMonths * Math.max(0, Math.floor(plan.totalBillingCycles));
+    const duration = configuredDuration > 0 ? configuredDuration : inferredDuration;
+    if (duration <= 0) return null;
+    endDate = addMonthsMinusOneDay(order.startFrom, duration);
+  }
+  if (endDate < order.startFrom) return null;
+
+  return generateBillingCycleSchedule({
+    startDate: order.startFrom,
+    endDate,
+    totalBillingCycles: plan.totalBillingCycles,
+    planName: plan.name,
+    type: plan.billingCycleType,
+  });
+}
+
+function poMayMatchPeriod(order: BillingOverviewPurchaseOrder, filters: BillingStatusFilters) {
+  const years = selectedFinancialYears(undefined, filters);
+  const poStart = order.startFrom;
+  const poEnd = effectivePurchaseOrderEnd(order);
+  if (!poStart) return true;
+
+  const yearWindows = years.length > 0
+    ? years.map((selectedYear) => ({
+        start: parseKolkataDate(`${selectedYear}-04-01`),
+        end: parseKolkataDate(`${selectedYear + 1}-03-31`, true),
+      }))
+    : [{ start: null, end: null }];
+
+  return yearWindows.some(({ start: yearStart, end: yearEnd }) => {
+    const start = typeof filters.startDate === "string"
+      ? parseKolkataDate(filters.startDate)
+      : null;
+    const end = typeof filters.endDate === "string"
+      ? parseKolkataDate(filters.endDate, true)
+      : null;
+    const lower = [yearStart, start].filter((item): item is Date => item != null)
+      .reduce<Date | null>((value, item) => !value || item > value ? item : value, null);
+    const upper = [yearEnd, end].filter((item): item is Date => item != null)
+      .reduce<Date | null>((value, item) => !value || item < value ? item : value, null);
+    return (!upper || poStart <= upper) && (!lower || !poEnd || poEnd >= lower);
+  });
+}
+
+function billingDateMatches(date: Date, year: number | undefined, filters: BillingStatusFilters) {
+  return matchesSelectedFinancialYears(date, year, filters) &&
+    isWithinFilterDateRange(date, filters) &&
+    matchesFilterMonth(date, filters);
+}
+
+async function getBillingOverviewMetrics(
+  year: number | undefined,
+  filters: BillingStatusFilters,
+): Promise<BillingOverviewMetrics> {
+  const orders = await prisma.purchaseOrder.findMany({
+    where: getPurchaseOrderFilter(filters),
+    select: {
+      id: true,
+      status: true,
+      poAmount: true,
+      startFrom: true,
+      endDate: true,
+      companyId: true,
+      customerId: true,
+      billingPlan: {
+        select: {
+          name: true,
+          totalBillingCycles: true,
+          billingCycleType: true,
+          status: true,
+        },
+      },
+      contractDuration: { select: { totalNumberOfMonths: true } },
+      billingCycles: {
+        select: {
+          invoiceNumber: true,
+          invoiceDate: true,
+          billingSubmittedDate: true,
+          invoiceAmount: true,
+        },
+      },
+    },
+  });
+
+  const asOfDate = getSummaryAsOfDate(year, filters);
+  let planned = money(0);
+  let plannedAvailable = true;
+  let upcoming = money(0);
+  let upcomingAvailable = true;
+  let invoicedWithoutGst = money(0);
+  let invoicedWithGst = money(0);
+  let invoicesAvailable = true;
+  const invoices = new Map<string, string>();
+
+  for (const order of orders) {
+    const orderOverlaps = poMayMatchPeriod(order, filters);
+    const derivedSchedule = order.billingCycles.length === 0 && orderOverlaps
+      ? billingDatesForDerivation(order)
+      : null;
+
+    if (order.billingCycles.length > 0) {
+      for (const cycle of order.billingCycles) {
+        const scheduledDate = cycle.billingSubmittedDate ?? cycle.invoiceDate;
+        if (!scheduledDate) {
+          if (orderOverlaps) {
+            plannedAvailable = false;
+            if (order.status === POStatus.LIVE) upcomingAvailable = false;
+          }
+          continue;
+        }
+
+        if (billingDateMatches(scheduledDate, year, filters)) {
+          if (cycle.invoiceAmount == null) plannedAvailable = false;
+          else planned = planned.plus(cycle.invoiceAmount);
+        }
+
+        const invoiceNumber = cycle.invoiceNumber.trim();
+        if (!invoiceNumber && order.status === POStatus.LIVE &&
+            scheduledDate > asOfDate && billingDateMatches(scheduledDate, year, filters)) {
+          if (cycle.invoiceAmount == null) upcomingAvailable = false;
+          else upcoming = upcoming.plus(cycle.invoiceAmount);
+        }
+
+        if (!invoiceNumber) continue;
+        if (!cycle.invoiceDate) {
+          if (orderOverlaps) invoicesAvailable = false;
+          continue;
+        }
+        if (!billingDateMatches(cycle.invoiceDate, year, filters)) continue;
+        if (cycle.invoiceAmount == null) {
+          invoicesAvailable = false;
+          continue;
+        }
+
+        const invoiceKey = `${order.companyId ?? order.customerId ?? order.id}|${invoiceNumber.toUpperCase()}|${formatKolkataDate(cycle.invoiceDate)}`;
+        const amount = money(cycle.invoiceAmount);
+        const previous = invoices.get(invoiceKey);
+        if (previous != null) {
+          if (!money(previous).equals(amount)) invoicesAvailable = false;
+          continue;
+        }
+        invoices.set(invoiceKey, amount.toFixed(2));
+        invoicedWithoutGst = invoicedWithoutGst.plus(amount);
+        invoicedWithGst = invoicedWithGst.plus(amountWithGst(moneyToNumber(amount)));
+      }
+      continue;
+    }
+
+    if (!orderOverlaps) continue;
+    if (derivedSchedule) {
+      const shares = splitMoney(order.poAmount, derivedSchedule.length);
+      derivedSchedule.forEach((cycle, index) => {
+        if (billingDateMatches(cycle.scheduledDate, year, filters)) {
+          planned = planned.plus(shares[index] ?? 0);
+        }
+        if (order.status === POStatus.LIVE && cycle.scheduledDate > asOfDate &&
+            billingDateMatches(cycle.scheduledDate, year, filters)) {
+          // A calculable plan is not an actual generated billing cycle. Keep the
+          // upcoming figure unavailable rather than inventing a scheduled row.
+          upcomingAvailable = false;
+        }
+      });
+    } else {
+      plannedAvailable = false;
+      if (order.status === POStatus.LIVE &&
+          (!effectivePurchaseOrderEnd(order) || effectivePurchaseOrderEnd(order)! > asOfDate) &&
+          poMayMatchPeriod(order, filters)) {
+        upcomingAvailable = false;
+      }
+    }
+  }
+
+  const billingDoneWithoutGst = invoicesAvailable
+    ? moneyToNumber(invoicedWithoutGst)
+    : null;
+  const plannedBilling = plannedAvailable ? moneyToNumber(planned) : null;
+  const billingAchievement = plannedBilling != null && plannedBilling > 0 && billingDoneWithoutGst != null
+    ? Number(((billingDoneWithoutGst / plannedBilling) * 100).toFixed(2))
+    : null;
+
+  return {
+    plannedBilling,
+    billingDoneWithGst: invoicesAvailable ? moneyToNumber(invoicedWithGst) : null,
+    billingDoneWithoutGst,
+    upcomingBilling: upcomingAvailable ? moneyToNumber(upcoming) : null,
+    billingAchievement,
+    billingAchievementAbovePlan: billingAchievement != null && billingAchievement > 100,
+    gstRate: GST_RATE,
+  };
+}
+
 export async function getRevenueDashboard(query: RevenueDashboardQuery) {
   const access = await requirePermission("/admin/dashboard", "view");
   if (!access.ok) {
@@ -1539,6 +1796,7 @@ export async function getRevenueDashboard(query: RevenueDashboardQuery) {
       lines: [],
       monthly: [],
       creditNotes: null,
+      billingOverview: null,
     };
   }
   const { selectedYears, filters, year, earlier, comparisonFilters, comparisonYear } = dashboardPeriods(query);
@@ -1548,7 +1806,7 @@ export async function getRevenueDashboard(query: RevenueDashboardQuery) {
     if (comparisonFilters) comparisonFilters.purchaseOrderIds = filters.purchaseOrderIds;
   }
   const monthlyYears = selectedYears.length > 0 ? selectedYears : [query.monthlyYear];
-  const [summary, billingDetails, monthlySeries, comparisonSummary, creditNotes] = await Promise.all([
+  const [summary, billingDetails, monthlySeries, comparisonSummary, creditNotes, billingOverview] = await Promise.all([
     getRevenueDashboardSummary(year, filters),
     getBillingStatusDetails(year, filters),
     Promise.all(monthlyYears.map((item) => getMonthlyBillingData(item, filters))),
@@ -1556,6 +1814,10 @@ export async function getRevenueDashboard(query: RevenueDashboardQuery) {
       ? getRevenueDashboardSummary(comparisonYear, comparisonFilters)
       : Promise.resolve(null),
     getCreditNoteDashboardSummary(query),
+    getBillingOverviewMetrics(year, filters).catch((error: unknown) => {
+      console.error("Billing overview metrics could not be loaded", error);
+      return null;
+    }),
   ]);
   const monthly = monthlySeries[0]?.map((point, index) => ({
     month: point.month,
@@ -1578,5 +1840,6 @@ export async function getRevenueDashboard(query: RevenueDashboardQuery) {
     lines: billingDetails.lines,
     monthly,
     creditNotes,
+    billingOverview,
   };
 }

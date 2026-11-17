@@ -302,60 +302,17 @@ async function main() {
     });
 
     const companies = [
-        {
-            name: "TechNova Solutions",
-            companyCode: "TN001",
-            email: "contact@technova.com",
-            phone: "+91-9876543210",
-            alternatePhone: "+91-9123456780",
-            addressLine1: "123 Innovation Drive",
-            addressLine2: "5th Floor, Block B",
-            city: "Bangalore",
-            state: "Karnataka",
-            country: "India",
-            pincode: "560001",
-            gstNumber: "29ABCDE1234F1Z5",
-            panNumber: "ABCDE1234F",
-            cinNumber: "U12345KA2023PTC123456",
-        },
-        {
-            name: "BluePeak Industries",
-            companyCode: "BP002",
-            email: "info@bluepeak.com",
-            phone: "+91-9988776655",
-            alternatePhone: "+91-9988776656",
-            addressLine1: "45 Industrial Area",
-            addressLine2: "Unit 7",
-            city: "Pune",
-            state: "Maharashtra",
-            country: "India",
-            pincode: "411001",
-            gstNumber: "27ABCDE1234F2Z6",
-            panNumber: "ABCDE1234G",
-            cinNumber: "U54321MH2022PTC654321",
-        },
-        {
-            name: "GreenLeaf Tech",
-            companyCode: "GL003",
-            email: "support@greenleaftech.com",
-            phone: "+91-9123456789",
-            alternatePhone: "+91-9876543211",
-            addressLine1: "88 Green Park",
-            addressLine2: "Suite 101",
-            city: "Hyderabad",
-            state: "Telangana",
-            country: "India",
-            pincode: "500081",
-            gstNumber: "36ABCDE1234F3Z7",
-            panNumber: "ABCDE1234H",
-            cinNumber: "U67890TG2021PTC789012",
-        },
+        { name: "SY Associates", companyCode: "SY001" },
+        { name: "Technosys", companyCode: "TECH001" },
     ];
 
-    await prisma.company.createMany({
-        data: companies,
-        skipDuplicates: true
-    });
+    for (const company of companies) {
+        await prisma.company.upsert({
+            where: { companyCode: company.companyCode },
+            update: { name: company.name },
+            create: company,
+        });
+    }
 
     console.log("Seed completed")
 }

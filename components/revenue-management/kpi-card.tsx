@@ -1,6 +1,10 @@
 import { Info } from "lucide-react";
 
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { formatCount, formatInr, type TrendTone } from "@/lib/revenue-metrics";
 import { cn } from "@/lib/utils";
 
@@ -34,7 +38,11 @@ export function HoverAmount({
       >
         {display}
       </TooltipTrigger>
-      <TooltipContent side="top" sideOffset={6} className="font-mono text-sm font-semibold tabular-nums">
+      <TooltipContent
+        side="top"
+        sideOffset={6}
+        className="font-mono text-sm font-semibold tabular-nums"
+      >
         {exact}
       </TooltipContent>
     </Tooltip>
@@ -44,7 +52,6 @@ export function HoverAmount({
 export function KpiCard({
   label,
   value,
-  support,
   hint,
   mode = "currency",
   accent,
@@ -54,7 +61,6 @@ export function KpiCard({
 }: {
   label: string;
   value: number;
-  support: string;
   hint: string;
   mode?: "currency" | "number" | "percent";
   accent: string;
@@ -63,14 +69,22 @@ export function KpiCard({
   unavailable?: boolean;
 }) {
   const exact =
-    mode === "percent" ? `${value.toFixed(2)}%` : mode === "number" ? formatCount(value) : formatInr(value);
+    mode === "percent"
+      ? `${value.toFixed(2)}%`
+      : mode === "number"
+        ? formatCount(value)
+        : formatInr(value);
   const display =
-    mode === "percent" ? `${value.toFixed(2)}%` : mode === "number" ? formatCount(value) : formatInr(value, true);
+    mode === "percent"
+      ? `${value.toFixed(2)}%`
+      : mode === "number"
+        ? formatCount(value)
+        : formatInr(value, true);
   const amountLabel = unavailable ? "Unavailable" : exact;
 
   return (
     <article
-      className="min-w-0 rounded-md border px-3 py-2.5"
+      className="flex min-h-[8.5rem] min-w-0 flex-col rounded-md border px-3 py-2.5"
       style={{
         backgroundColor: `color-mix(in srgb, ${accent} 12%, white)`,
         borderColor: `color-mix(in srgb, ${accent} 38%, white)`,
@@ -78,9 +92,14 @@ export function KpiCard({
       }}
     >
       <div className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 flex-wrap items-center gap-1">
-          <h2 className="text-[11px] font-medium leading-4 text-[#667085]">{label}</h2>
-          <FyBadge />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <h2 className="min-h-4 text-[11px] font-medium leading-4 text-[#667085]">
+            {label}
+          </h2>
+
+          <div className="mt-1 flex h-6 items-center">
+            <FyBadge />
+          </div>l
         </div>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -93,7 +112,9 @@ export function KpiCard({
             </button>
           </TooltipTrigger>
           <TooltipContent side="top" sideOffset={6} className="max-w-72">
-            <span className="block font-mono text-sm font-semibold tabular-nums">{amountLabel}</span>
+            <span className="block font-mono text-sm font-semibold tabular-nums">
+              {amountLabel}
+            </span>
             <span className="mt-1 block opacity-80">{hint}</span>
           </TooltipContent>
         </Tooltip>
@@ -108,8 +129,14 @@ export function KpiCard({
           className="mt-1 block w-full truncate text-left font-mono text-[22px] leading-7 font-semibold tracking-tight text-[#1c2430] tabular-nums"
         />
       )}
-      <p className={cn("mt-1 truncate text-[11px] font-medium tabular-nums", toneClass[deltaTone])}>{deltaText}</p>
-      <p className="truncate text-[11px] leading-4 text-[#667085]">{support}</p>
+      <p
+        className={cn(
+          "mt-1 truncate text-[11px] font-medium tabular-nums",
+          toneClass[deltaTone],
+        )}
+      >
+        {deltaText}
+      </p>
     </article>
   );
 }

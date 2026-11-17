@@ -560,6 +560,7 @@ export async function loginFormUser(prevState: unknown, formData: FormData) {
         message: "This account is already signed in on another device. Sign out there before signing in here.",
       };
     }
+
     if (error instanceof CredentialsSignin) {
       try {
         const state = await loginLimitState(user.username, clientAddress(await headers()));

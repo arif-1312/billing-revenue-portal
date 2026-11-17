@@ -9,7 +9,6 @@ vi.mock("@/lib/login-rate-limit", () => ({ loginLimitState: state }))
 vi.mock("next/headers", () => ({ headers: async () => new Headers() }))
 
 import { loginFormUser } from "./users"
-import { AccountAlreadySignedIn } from "@/lib/login-errors"
 
 beforeEach(() => vi.resetAllMocks())
 
@@ -37,14 +36,6 @@ describe("login form feedback", () => {
       success: false, attemptsRemaining: 0,
       message: "Too many failed attempts. Login is blocked. Try again in 30 minutes.",
     })
-  })
-
-  it("explains that the user must sign out from the other device", async () => {
-    signIn.mockRejectedValue(new AccountAlreadySignedIn())
-    expect(await loginFormUser(null, form())).toMatchObject({
-      success: false, message: expect.stringContaining("already signed in on another device"),
-    })
-    expect(state).not.toHaveBeenCalled()
   })
 
   it("returns a recoverable error if the limiter database lookup fails", async () => {

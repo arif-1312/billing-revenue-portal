@@ -9,9 +9,10 @@ import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { periodMode } from "@/lib/dashboard-presets";
 import { getFiscalYear } from "@/lib/fiscal-year";
-import type { BillingInvoiceLine, CreditNoteDashboardSummary, RevenueDashboardSummary, RevenuePeriodComparison } from "@/lib/actions/dashboard";
+import type { BillingInvoiceLine, BillingOverviewMetrics, CreditNoteDashboardSummary, RevenueDashboardSummary, RevenuePeriodComparison } from "@/lib/actions/dashboard";
 import {
   applyRecordFilters,
+  efficiencyOf,
   filterTokens,
   formatInr,
   formatPercent,
@@ -88,6 +89,7 @@ export function ManagementReport({
   onPreset,
   onReset,
   summary,
+  billingOverview,
   creditNotes,
   comparison,
   records,
@@ -111,6 +113,7 @@ export function ManagementReport({
   onPreset: (preset: "month" | "quarter" | "fy" | "last-fy") => void;
   onReset: () => void;
   summary: RevenueDashboardSummary | null;
+  billingOverview: BillingOverviewMetrics | null;
   creditNotes: CreditNoteDashboardSummary | null;
   comparison: RevenuePeriodComparison | null;
   records: RevenueRecord[];
@@ -154,18 +157,13 @@ export function ManagementReport({
   });
   const totals = sumRecords(filtered);
   const usingRows = selectedStatuses.length > 0 || (crossFilter != null && crossFilter.kind !== "month");
-  const billed = summary?.totalRevenueTillNow ?? 0;
+  const billedGross = totals.billed;
+  const creditNoteAmount = creditNotes?.amount ?? 0;
+  const netBilled = billedGross - creditNoteAmount;
   const collected = usingRows ? totals.collected : summary?.collectedAmountTillNow ?? 0;
-  const outstanding = usingRows ? totals.due : summary?.pendingCollectionTillNow ?? 0;
-  const undated = usingRows ? totals.undated : summary?.aging.missingDueDateAmount ?? 0;
-  const supported = usingRows
-    ? !(outstanding > 0 && totals.pastDue === 0 && totals.undated >= outstanding - 0.5)
-    : Boolean(summary?.aging.supported || outstanding === 0);
-  const overdue = !supported && outstanding > 0
-    ? null
-    : usingRows
-      ? totals.pastDue
-      : summary?.overdueAmountTillNow ?? 0;
+  const notYetDue = totals.due;
+  const outstanding = notYetDue + totals.pastDue + totals.undated;
+  const overdue = totals.pastDue;
   const partial = usingRows
     ? filtered.filter((record) => toNumber(record.collectedAmount) > 0 && (toNumber(record.overdueAmount) > 0 || toNumber(record.pastDueAmount) > 0)).length
     : summary?.partialInvoiceCount ?? 0;
@@ -180,25 +178,24 @@ export function ManagementReport({
         { name: "Overdue", value: Math.max(overdue, 0) },
       ];
   const previous = !usingRows ? comparison : null;
-  const overdueComparable = Boolean(
-    previous &&
-      overdue != null &&
-      ((summary?.aging.supported && previous.summary.aging.supported) ||
-        (outstanding === 0 && previous.summary.pendingCollectionTillNow === 0)),
-  );
   const comparisonLabel = previous?.label ?? null;
   const deltas = {
-    billed: moneyDelta(billed, previous ? previous.summary.totalRevenueTillNow : null, comparisonLabel, "higher-is-better"),
+    billed: moneyDelta(netBilled, previous ? previous.summary.totalRevenueTillNow : null, comparisonLabel, "higher-is-better"),
     collected: moneyDelta(collected, previous ? previous.summary.collectedAmountTillNow : null, comparisonLabel, "higher-is-better"),
-    outstanding: moneyDelta(outstanding, previous ? previous.summary.pendingCollectionTillNow : null, comparisonLabel, "lower-is-better"),
-    overdue: overdueComparable && previous
+    outstanding: moneyDelta(
+      outstanding,
+      previous
+        ? previous.summary.pendingCollectionTillNow + previous.summary.overdueAmountTillNow + previous.summary.aging.missingDueDateAmount
+        : null,
+      comparisonLabel,
+      "lower-is-better",
+    ),
+    overdue: previous
       ? moneyDelta(overdue ?? 0, previous.summary.overdueAmountTillNow, comparisonLabel, "lower-is-better")
       : { text: "Comparison unavailable", tone: "neutral" as const },
   };
-  const overdueNote = overdue == null
-    ? "Due dates are missing, so overdue cannot be calculated."
-    : undated > 0
-      ? `Excludes ${formatInr(undated, true)} outstanding with no due date.`
+  const overdueNote = totals.undated > 0
+    ? `${formatInr(totals.undated, true)} unpaid balance has no due date.`
       : null;
   const statuses = [...new Set(records.map((record) => record.status || "Unknown"))].sort();
   const fyLabel = financialYearLabel(filters.year);
@@ -330,16 +327,22 @@ export function ManagementReport({
           ) : null}
           {summary && view === "overview" ? (
             <OverviewView
-              billed={billed}
+      billed={billedGross}
+      netBilled={netBilled}
               collected={collected}
               outstanding={outstanding}
+      notYetDue={notYetDue}
               overdue={overdue}
+      collectionEfficiency={efficiencyOf(collected, netBilled)}
+      collectionEfficiencyAvailable={netBilled > 0 && Boolean(creditNotes) && !error}
+      netBilledAvailable={Boolean(creditNotes) && !error}
               creditNotes={creditNotes}
               creditNotesLoading={loading}
               creditNotesError={Boolean(error)}
               partial={partial}
               projected={summary.totalRevenueProjected}
               dueForBilling={summary.dueForBillingTillNow}
+              billingOverview={billingOverview}
               overdueNote={overdueNote}
               deltas={deltas}
               slices={slices}
@@ -385,7 +388,7 @@ export function ManagementReport({
           {summary && view === "forecast" ? (
             <ForecastView
               projected={summary.totalRevenueProjected}
-              billed={billed}
+              billed={summary.totalRevenueTillNow}
               collected={collected}
               monthly={monthly}
             />

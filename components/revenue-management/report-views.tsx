@@ -20,7 +20,10 @@ import {
 
 import { ChartContainer, type ChartConfig } from "@/components/ui/chart";
 import type { AgingSummary } from "@/lib/revenue-metrics";
-import type { CreditNoteDashboardSummary } from "@/lib/actions/dashboard";
+import type {
+  BillingOverviewMetrics,
+  CreditNoteDashboardSummary,
+} from "@/lib/actions/dashboard";
 import {
   amountWithGst,
   formatCount,
@@ -82,15 +85,21 @@ type Delta = { text: string; tone: TrendTone };
 
 export function OverviewView({
   billed,
+  netBilled,
   collected,
   outstanding,
+  notYetDue,
   overdue,
+  collectionEfficiency,
+  collectionEfficiencyAvailable,
+  netBilledAvailable,
   creditNotes,
   creditNotesLoading,
   creditNotesError,
   partial,
   projected,
   dueForBilling,
+  billingOverview,
   overdueNote,
   deltas,
   slices,
@@ -104,15 +113,21 @@ export function OverviewView({
   onCrossFilter,
 }: {
   billed: number;
+  netBilled: number;
   collected: number;
   outstanding: number;
+  notYetDue: number;
   overdue: number | null;
+  collectionEfficiency: number;
+  collectionEfficiencyAvailable: boolean;
+  netBilledAvailable: boolean;
   creditNotes: CreditNoteDashboardSummary | null;
   creditNotesLoading: boolean;
   creditNotesError: boolean;
   partial: number;
   projected: number;
   dueForBilling: number;
+  billingOverview: BillingOverviewMetrics | null;
   overdueNote: string | null;
   deltas: Record<"billed" | "collected" | "outstanding" | "overdue", Delta>;
   slices: Array<{ name: string; value: number }>;
@@ -140,9 +155,15 @@ export function OverviewView({
   const mrrFillId = `mrr-fill-${useId().replace(/:/g, "")}`;
   const billedByMonth = new Map<string, number>();
   for (const line of invoiceLines) {
-    billedByMonth.set(line.month, (billedByMonth.get(line.month) ?? 0) + line.billed);
+    billedByMonth.set(
+      line.month,
+      (billedByMonth.get(line.month) ?? 0) + line.billed,
+    );
   }
-  const mrrMonths = focusMonths.length > 0 ? monthly.filter((point) => focusMonths.includes(point.month)) : monthly;
+  const mrrMonths =
+    focusMonths.length > 0
+      ? monthly.filter((point) => focusMonths.includes(point.month))
+      : monthly;
   const mrrRows = mrrMonths.map((point) => ({
     month: point.month,
     MRR: billedByMonth.get(point.month) ?? 0,
@@ -152,8 +173,16 @@ export function OverviewView({
     "Billed amount without GST": point.billing,
     "Collected amount without GST": point.payment,
   }));
-  const companies = topParties(groupByParty(recordRows, "companyName"), "billed", 8);
-  const customers = topParties(groupByParty(recordRows, "customerName"), "due", 8);
+  const companies = topParties(
+    groupByParty(recordRows, "companyName"),
+    "billed",
+    8,
+  );
+  const customers = topParties(
+    groupByParty(recordRows, "customerName"),
+    "due",
+    8,
+  );
   const companyRows = companies.map((row) => ({
     Company: displayPartyName(row.name),
     "Billed amount without GST": row.billed,
@@ -168,71 +197,147 @@ export function OverviewView({
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
-        <KpiCard
-          label="Billed amount without GST"
-          value={billed}
-          support="After credit notes, before 18% GST"
-          hint="Invoice amount before GST for the selected period, minus credit notes dated in that period."
-          accent="#1F6FB5"
-          deltaText={deltas.billed.text}
-          deltaTone={deltas.billed.tone}
-        />
-        <KpiCard
-          label="Collected amount without GST"
-          value={collected}
-          support="Used for the period comparison"
-          hint="Amount collected before GST. The change versus the previous period is calculated from this amount."
-          accent="#0E8A6A"
-          deltaText={deltas.collected.text}
-          deltaTone={deltas.collected.tone}
-        />
-        <KpiCard
-          label="Collected amount with GST"
-          value={amountWithGst(collected)}
-          support="Collected amount plus 18% GST"
-          hint="Collected amount with 18% GST added. Shown on this card only. The period comparison uses collected amount without GST."
-          accent="#6D28D9"
-          deltaText={deltas.collected.text}
-          deltaTone={deltas.collected.tone}
-        />
-        <KpiCard
-          label="Outstanding"
-          value={outstanding}
-          support="Unpaid before the due date"
-          hint="Invoices with payment received status No, from the invoice date until the day before the payment due date."
-          accent="#C47E09"
-          deltaText={deltas.outstanding.text}
-          deltaTone={deltas.outstanding.tone}
-        />
-        <KpiCard
-          label="Overdue"
-          value={overdue ?? 0}
-          unavailable={overdue == null}
-          support={overdueNote ?? "Due today or earlier, and still unpaid"}
-          hint="Invoices with payment received status No whose payment due date is today or earlier."
-          accent="#C5363C"
-          deltaText={deltas.overdue.text}
-          deltaTone={deltas.overdue.tone}
-        />
-        <KpiCard
-          label="Credit Notes"
-          value={creditNotes?.amount ?? 0}
-          unavailable={!creditNotes || creditNotesError}
-          support={creditNotesError
-            ? "Credit notes could not be loaded. Refresh to retry."
-            : creditNotesLoading
-              ? "Loading credit notes…"
-              : `${formatCount(creditNotes?.count ?? 0)} Credit Note${creditNotes?.count === 1 ? "" : "s"} Issued`}
-          hint="Credit notes dated in the selected period. Customer names are matched to customer records; company and billing status selections use those customers' purchase orders. Each note is counted once, even when several orders match."
-          accent="#7E22CE"
-          deltaText={creditNotesError || !creditNotes
-            ? "Comparison unavailable"
-            : creditNotes.comparison
-              ? `Previous period: ${formatInr(creditNotes.comparison.amount)} (${creditNotes.comparison.label})`
-              : "Comparison unavailable"}
-        />
-      </div>
+      <section aria-labelledby="billing-overview-heading" className="space-y-2">
+        <h2
+          id="billing-overview-heading"
+          className="border-l-2 border-[#2563EB] pl-2 text-xs font-semibold tracking-wide text-[#2563EB]"
+        >
+          BILLING OVERVIEW
+        </h2>
+
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+          {/* Planned Billing - Blue */}
+          <KpiCard
+            label="Planned Billing (without GST)"
+            value={billingOverview?.plannedBilling ?? 0}
+            unavailable={billingOverview?.plannedBilling == null}
+            hint="Sum actual billing-cycle schedule amounts dated in the selected FY and filters. When a PO has no cycles, its amount is allocated across derived plan cycles only when the plan frequency, amount, and duration are available. PO GST treatment is not stored; the dashboard treats PO amounts as GST-exclusive."
+            accent="#2563EB"
+            deltaText="PO amount allocated by billing schedule"
+          />
+
+          {/* Billed Amount - Cyan Blue */}
+          <KpiCard
+            label="Billed Amount (without GST)"
+            value={billed}
+            hint="Sum of invoice amounts from billing cycles matching the current invoice date, company, customer, status, and cross-filter selection."
+            accent="#0891B2"
+            deltaText={deltas.billed.text}
+            deltaTone={deltas.billed.tone}
+          />
+
+          {/* Net Billed - Indigo */}
+          <KpiCard
+            label="Net Billed Amount"
+            value={netBilled}
+            unavailable={!netBilledAvailable}
+            hint="Existing calculation: invoice amounts before GST minus the credit-note register amount for the selected period. The credit-note table does not record GST treatment."
+            accent="#6366F1"
+            deltaText={deltas.billed.text}
+            deltaTone={deltas.billed.tone}
+          />
+
+          {/* Credit Notes - Purple */}
+          <KpiCard
+            label="Credit Note Amount"
+            value={creditNotes?.amount ?? 0}
+            unavailable={!creditNotes || creditNotesError}
+            hint="Credit notes dated in the selected period. Customer names are matched to customer records; company and billing status selections use those customers' purchase orders. Each note is counted once, even when several orders match. The credit note schema has no GST-treatment field; Net Billed keeps the existing subtraction basis."
+            accent="#9333EA"
+            deltaText={
+              creditNotesError || !creditNotes
+                ? "Comparison unavailable"
+                : creditNotes.comparison
+                  ? `Previous period: ${formatInr(creditNotes.comparison.amount)} (${creditNotes.comparison.label})`
+                  : "Comparison unavailable"
+            }
+          />
+
+          {/* Billing Done Including GST - Teal */}
+          <KpiCard
+            label="Billing Done (Including GST)"
+            value={billingOverview?.billingDoneWithGst ?? 0}
+            unavailable={billingOverview?.billingDoneWithGst == null}
+            hint={`BillingCycle is the existing invoice record: rows with an invoice number and invoice date are counted once per company, invoice number, and date. Invoice amount is treated as GST-exclusive using the existing dashboard ${(1 + (billingOverview?.gstRate ?? 0.18)).toFixed(2)} GST multiplier. The schema has no draft, void, or cancelled-invoice flag.`}
+            accent="#0D9488"
+            deltaText="Actual invoices by invoice date"
+          />
+
+          {/* Billing Achievement - Green */}
+          <KpiCard
+            label="Billing Achievement"
+            value={billingOverview?.billingAchievement ?? 0}
+            mode="percent"
+            unavailable={billingOverview?.billingAchievement == null}
+            hint="Billing Done is normalized to GST-exclusive invoice amounts before comparison with the GST-exclusive PO plan. A result over 100% is retained and flagged as above plan."
+            accent="#16A34A"
+            deltaText={
+              billingOverview?.billingAchievementAbovePlan
+                ? "Above plan"
+                : "Actual vs planned"
+            }
+            deltaTone={
+              billingOverview?.billingAchievementAbovePlan ? "bad" : "neutral"
+            }
+          />
+        </div>
+      </section>
+      
+      <section
+        aria-labelledby="collection-overview-heading"
+        className="space-y-2"
+      >
+        <h2
+          id="collection-overview-heading"
+          className="border-l-2 border-[#0E8A6A] pl-2 text-xs font-semibold tracking-wide text-[#0E8A6A]"
+        >
+          COLLECTION OVERVIEW
+        </h2>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+          <KpiCard
+            label="Total Collected (without GST)"
+            value={collected}
+            hint="Sum of payment ledger receipts before GST in the current filters. The with-GST figure adds the existing 18% GST display rate."
+            accent="#0E8A6A"
+            deltaText={deltas.collected.text}
+            deltaTone={deltas.collected.tone}
+          />
+          <KpiCard
+            label="Total Receivables (without GST)"
+            value={outstanding}
+            hint="Not yet due plus overdue plus unpaid balances without a due date, using the existing invoice balance calculation."
+            accent="#C47E09"
+            deltaText={deltas.outstanding.text}
+            deltaTone={deltas.outstanding.tone}
+          />
+          <KpiCard
+            label="Not Yet Due (without GST)"
+            value={notYetDue}
+            hint="Unpaid invoice balances with a due date that has not passed."
+            accent="#C47E09"
+            deltaText={deltas.outstanding.text}
+            deltaTone={deltas.outstanding.tone}
+          />
+          <KpiCard
+            label="Overdue Amount (without GST)"
+            value={overdue ?? 0}
+            unavailable={overdue == null}
+            hint="Invoices with payment received status No whose payment due date is today or earlier."
+            accent="#C5363C"
+            deltaText={deltas.overdue.text}
+            deltaTone={deltas.overdue.tone}
+          />
+          <KpiCard
+            label="Collection Efficiency"
+            value={collectionEfficiency}
+            mode="percent"
+            unavailable={!collectionEfficiencyAvailable}
+            hint="Current-period collections before GST divided by net billed amount before GST."
+            accent="#0E8A6A"
+            deltaText="Current selection"
+          />
+        </div>
+      </section>
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <SecondaryStat
@@ -268,48 +373,121 @@ export function OverviewView({
           }))}
           loading={loading}
           error={error}
-          empty={monthRows.every((row) => row["Billed amount without GST"] === 0 && row["Collected amount without GST"] === 0)}
+          empty={monthRows.every(
+            (row) =>
+              row["Billed amount without GST"] === 0 &&
+              row["Collected amount without GST"] === 0,
+          )}
         >
-          <ChartContainer config={chartConfig} className="aspect-auto h-60 w-full">
+          <ChartContainer
+            config={chartConfig}
+            className="aspect-auto h-60 w-full"
+          >
             <BarChart data={monthRows} barGap={2}>
               <CartesianGrid vertical={false} stroke="#eef1f4" />
-              <XAxis dataKey="month" tickLine={false} axisLine={false} tick={axisTick} />
-              <YAxis tickFormatter={(value) => formatInr(Number(value), true)} tickLine={false} axisLine={false} tick={axisTick} width={72} />
-              <Tooltip formatter={(value) => formatInr(Number(value))} contentStyle={tooltipStyle} />
+              <XAxis
+                dataKey="month"
+                tickLine={false}
+                axisLine={false}
+                tick={axisTick}
+              />
+              <YAxis
+                tickFormatter={(value) => formatInr(Number(value), true)}
+                tickLine={false}
+                axisLine={false}
+                tick={axisTick}
+                width={72}
+              />
+              <Tooltip
+                formatter={(value) => formatInr(Number(value))}
+                contentStyle={tooltipStyle}
+              />
               <Legend />
-              <Bar dataKey="Billed amount without GST" fill="var(--color-billing)" radius={[2, 2, 0, 0]} maxBarSize={22} cursor="pointer" isAnimationActive={false} onClick={(item) => onMonth(String(item.month))} />
-              <Bar dataKey="Collected amount without GST" fill="var(--color-payment)" radius={[2, 2, 0, 0]} maxBarSize={22} isAnimationActive={false} />
+              <Bar
+                dataKey="Billed amount without GST"
+                fill="var(--color-billing)"
+                radius={[2, 2, 0, 0]}
+                maxBarSize={22}
+                cursor="pointer"
+                isAnimationActive={false}
+                onClick={(item) => onMonth(String(item.month))}
+              />
+              <Bar
+                dataKey="Collected amount without GST"
+                fill="var(--color-payment)"
+                radius={[2, 2, 0, 0]}
+                maxBarSize={22}
+                isAnimationActive={false}
+              />
             </BarChart>
           </ChartContainer>
         </ChartCard>
         <ChartCard
           title="Collection status"
-          description={partial > 0 ? `${formatCount(partial)} partially collected invoices are already included in collected and outstanding.` : "Collected, pending, and overdue amounts for this selection."}
+          description={
+            partial > 0
+              ? `${formatCount(partial)} partially collected invoices are already included in collected and outstanding.`
+              : "Collected, pending, and overdue amounts for this selection."
+          }
           filename="collection-status.csv"
-          rows={slices.map((slice) => ({ Status: slice.name, Amount: slice.value }))}
+          rows={slices.map((slice) => ({
+            Status: slice.name,
+            Amount: slice.value,
+          }))}
           loading={loading}
           error={error}
           empty={slices.every((slice) => slice.value === 0)}
         >
           <div className="grid grid-cols-1 items-center gap-2 sm:grid-cols-[minmax(0,1fr)_9rem]">
-            <ChartContainer config={chartConfig} className="aspect-auto h-52 w-full">
+            <ChartContainer
+              config={chartConfig}
+              className="aspect-auto h-52 w-full"
+            >
               <PieChart>
-                <Pie data={slices.filter((slice) => slice.value > 0)} dataKey="value" nameKey="name" innerRadius={52} outerRadius={74} stroke="#fff" strokeWidth={2} isAnimationActive={false}>
-                  {slices.filter((slice) => slice.value > 0).map((slice) => (
-                    <Cell key={slice.name} fill={sliceColor[slice.name] ?? "#98A2B3"} />
-                  ))}
+                <Pie
+                  data={slices.filter((slice) => slice.value > 0)}
+                  dataKey="value"
+                  nameKey="name"
+                  innerRadius={52}
+                  outerRadius={74}
+                  stroke="#fff"
+                  strokeWidth={2}
+                  isAnimationActive={false}
+                >
+                  {slices
+                    .filter((slice) => slice.value > 0)
+                    .map((slice) => (
+                      <Cell
+                        key={slice.name}
+                        fill={sliceColor[slice.name] ?? "#98A2B3"}
+                      />
+                    ))}
                 </Pie>
-                <Tooltip formatter={(value) => formatInr(Number(value))} contentStyle={tooltipStyle} />
+                <Tooltip
+                  formatter={(value) => formatInr(Number(value))}
+                  contentStyle={tooltipStyle}
+                />
               </PieChart>
             </ChartContainer>
             <ul className="space-y-1.5">
               {slices.map((slice) => (
-                <li key={slice.name} className="flex items-center justify-between gap-2 text-xs">
+                <li
+                  key={slice.name}
+                  className="flex items-center justify-between gap-2 text-xs"
+                >
                   <span className="flex items-center gap-1.5 text-[#667085]">
-                    <span className="size-2 rounded-sm" style={{ background: sliceColor[slice.name] ?? "#98A2B3" }} />
+                    <span
+                      className="size-2 rounded-sm"
+                      style={{
+                        background: sliceColor[slice.name] ?? "#98A2B3",
+                      }}
+                    />
                     {slice.name}
                   </span>
-                  <HoverAmount value={slice.value} className="font-mono text-[#1c2430] tabular-nums" />
+                  <HoverAmount
+                    value={slice.value}
+                    className="font-mono text-[#1c2430] tabular-nums"
+                  />
                 </li>
               ))}
             </ul>
@@ -352,17 +530,52 @@ export function OverviewView({
           rows={monthRows}
           loading={loading}
           error={error}
-          empty={monthRows.every((row) => row["Billed amount without GST"] === 0 && row["Collected amount without GST"] === 0)}
+          empty={monthRows.every(
+            (row) =>
+              row["Billed amount without GST"] === 0 &&
+              row["Collected amount without GST"] === 0,
+          )}
         >
-          <ChartContainer config={chartConfig} className="aspect-auto h-60 w-full">
+          <ChartContainer
+            config={chartConfig}
+            className="aspect-auto h-60 w-full"
+          >
             <ComposedChart data={monthRows}>
               <CartesianGrid vertical={false} stroke="#eef1f4" />
-              <XAxis dataKey="month" tickLine={false} axisLine={false} tick={axisTick} />
-              <YAxis tickFormatter={(value) => formatInr(Number(value), true)} tickLine={false} axisLine={false} tick={axisTick} width={72} />
-              <Tooltip formatter={(value) => formatInr(Number(value))} contentStyle={tooltipStyle} />
+              <XAxis
+                dataKey="month"
+                tickLine={false}
+                axisLine={false}
+                tick={axisTick}
+              />
+              <YAxis
+                tickFormatter={(value) => formatInr(Number(value), true)}
+                tickLine={false}
+                axisLine={false}
+                tick={axisTick}
+                width={72}
+              />
+              <Tooltip
+                formatter={(value) => formatInr(Number(value))}
+                contentStyle={tooltipStyle}
+              />
               <Legend />
-              <Line dataKey="Billed amount without GST" stroke="var(--color-billing)" strokeWidth={2} dot={false} type="linear" isAnimationActive={false} />
-              <Line dataKey="Collected amount without GST" stroke="var(--color-payment)" strokeWidth={2} dot={false} type="linear" isAnimationActive={false} />
+              <Line
+                dataKey="Billed amount without GST"
+                stroke="var(--color-billing)"
+                strokeWidth={2}
+                dot={false}
+                type="linear"
+                isAnimationActive={false}
+              />
+              <Line
+                dataKey="Collected amount without GST"
+                stroke="var(--color-payment)"
+                strokeWidth={2}
+                dot={false}
+                type="linear"
+                isAnimationActive={false}
+              />
             </ComposedChart>
           </ChartContainer>
         </ChartCard>
@@ -375,7 +588,10 @@ export function OverviewView({
           error={error}
           empty={mrrRows.every((row) => row.MRR === 0)}
         >
-          <ChartContainer config={chartConfig} className="aspect-auto h-60 w-full">
+          <ChartContainer
+            config={chartConfig}
+            className="aspect-auto h-60 w-full"
+          >
             <AreaChart data={mrrRows}>
               <defs>
                 <linearGradient id={mrrFillId} x1="0" y1="0" x2="0" y2="1">
@@ -384,10 +600,34 @@ export function OverviewView({
                 </linearGradient>
               </defs>
               <CartesianGrid vertical={false} stroke="#eef1f4" />
-              <XAxis dataKey="month" tickLine={false} axisLine={false} tick={axisTick} minTickGap={16} />
-              <YAxis tickFormatter={(value) => formatInr(Number(value), true)} tickLine={false} axisLine={false} tick={axisTick} width={72} />
-              <Tooltip formatter={(value) => formatInr(Number(value))} contentStyle={tooltipStyle} />
-              <Area dataKey="MRR" name="MRR" type="monotone" stroke="#8E97C9" strokeWidth={2} fill={`url(#${mrrFillId})`} dot={false} isAnimationActive={false} />
+              <XAxis
+                dataKey="month"
+                tickLine={false}
+                axisLine={false}
+                tick={axisTick}
+                minTickGap={16}
+              />
+              <YAxis
+                tickFormatter={(value) => formatInr(Number(value), true)}
+                tickLine={false}
+                axisLine={false}
+                tick={axisTick}
+                width={72}
+              />
+              <Tooltip
+                formatter={(value) => formatInr(Number(value))}
+                contentStyle={tooltipStyle}
+              />
+              <Area
+                dataKey="MRR"
+                name="MRR"
+                type="monotone"
+                stroke="#8E97C9"
+                strokeWidth={2}
+                fill={`url(#${mrrFillId})`}
+                dot={false}
+                isAnimationActive={false}
+              />
             </AreaChart>
           </ChartContainer>
         </ChartCard>
@@ -419,7 +659,9 @@ export function PartyView({
     id: purpose === "customer" ? "due" : "billed",
     dir: "desc",
   });
-  const sorted = [...rows].sort((left, right) => compareParty(left, right, sort.id, sort.dir));
+  const sorted = [...rows].sort((left, right) =>
+    compareParty(left, right, sort.id, sort.dir),
+  );
   const ranked = topParties(rows, purpose === "customer" ? "due" : "billed", 8);
   const rankedChart = namedRows(ranked);
 
@@ -432,8 +674,16 @@ export function PartyView({
       </p>
       <div className="grid shrink-0 grid-cols-1 items-start gap-3 xl:grid-cols-2">
         <RankChart
-          title={purpose === "customer" ? "Highest outstanding" : "Highest billed revenue"}
-          filename={purpose === "customer" ? "customer-outstanding.csv" : "company-revenue.csv"}
+          title={
+            purpose === "customer"
+              ? "Highest outstanding"
+              : "Highest billed revenue"
+          }
+          filename={
+            purpose === "customer"
+              ? "customer-outstanding.csv"
+              : "company-revenue.csv"
+          }
           rows={ranked.map((row) => ({
             Name: displayPartyName(row.name),
             Amount: purpose === "customer" ? row.due : row.billed,
@@ -447,8 +697,16 @@ export function PartyView({
           onPick={(name) => onCrossFilter({ kind, value: name })}
         />
         <ChartCard
-          title={purpose === "customer" ? "Collected against outstanding" : "Billed against collected"}
-          filename={purpose === "customer" ? "customer-collection.csv" : "company-collection.csv"}
+          title={
+            purpose === "customer"
+              ? "Collected against outstanding"
+              : "Billed against collected"
+          }
+          filename={
+            purpose === "customer"
+              ? "customer-collection.csv"
+              : "company-collection.csv"
+          }
           rows={ranked.map((row) => ({
             Name: displayPartyName(row.name),
             "Billed amount without GST": row.billed,
@@ -460,35 +718,97 @@ export function PartyView({
           error={error}
           empty={ranked.length === 0}
         >
-          <ChartContainer config={chartConfig} className="aspect-auto h-72 w-full">
-            <BarChart data={rankedChart} layout="vertical" margin={{ left: 8, right: 8 }}>
+          <ChartContainer
+            config={chartConfig}
+            className="aspect-auto h-72 w-full"
+          >
+            <BarChart
+              data={rankedChart}
+              layout="vertical"
+              margin={{ left: 8, right: 8 }}
+            >
               <CartesianGrid horizontal={false} stroke="#eef1f4" />
-              <XAxis type="number" tickFormatter={(value) => formatInr(Number(value), true)} tickLine={false} axisLine={false} tick={axisTick} />
-              <YAxis type="category" dataKey="name" width={120} tickLine={false} axisLine={false} tick={axisTick} tickFormatter={shorten} />
-              <Tooltip formatter={(value) => formatInr(Number(value))} contentStyle={tooltipStyle} />
+              <XAxis
+                type="number"
+                tickFormatter={(value) => formatInr(Number(value), true)}
+                tickLine={false}
+                axisLine={false}
+                tick={axisTick}
+              />
+              <YAxis
+                type="category"
+                dataKey="name"
+                width={120}
+                tickLine={false}
+                axisLine={false}
+                tick={axisTick}
+                tickFormatter={shorten}
+              />
+              <Tooltip
+                formatter={(value) => formatInr(Number(value))}
+                contentStyle={tooltipStyle}
+              />
               <Legend />
-              {purpose === "company" ? <Bar dataKey="billed" name="Billed amount without GST" fill="#1F6FB5" maxBarSize={12} isAnimationActive={false} /> : null}
-              <Bar dataKey="collected" name="Collected amount without GST" fill="#0E8A6A" maxBarSize={12} isAnimationActive={false} />
-              <Bar dataKey="due" name="Outstanding" fill="#C47E09" maxBarSize={12} isAnimationActive={false} />
-              <Bar dataKey="pastDue" name="Overdue" fill="#C5363C" maxBarSize={12} isAnimationActive={false} />
+              {purpose === "company" ? (
+                <Bar
+                  dataKey="billed"
+                  name="Billed amount without GST"
+                  fill="#1F6FB5"
+                  maxBarSize={12}
+                  isAnimationActive={false}
+                />
+              ) : null}
+              <Bar
+                dataKey="collected"
+                name="Collected amount without GST"
+                fill="#0E8A6A"
+                maxBarSize={12}
+                isAnimationActive={false}
+              />
+              <Bar
+                dataKey="due"
+                name="Outstanding"
+                fill="#C47E09"
+                maxBarSize={12}
+                isAnimationActive={false}
+              />
+              <Bar
+                dataKey="pastDue"
+                name="Overdue"
+                fill="#C5363C"
+                maxBarSize={12}
+                isAnimationActive={false}
+              />
             </BarChart>
           </ChartContainer>
         </ChartCard>
       </div>
       <article className="flex min-h-80 flex-1 flex-col rounded-md border border-[#e4e8ee] bg-white p-3 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
-        <h3 className="mb-2 shrink-0 text-sm font-semibold text-[#1c2430]">{title}</h3>
+        <h3 className="mb-2 shrink-0 text-sm font-semibold text-[#1c2430]">
+          {title}
+        </h3>
         <DataTable
           className="max-h-none min-h-0 flex-1"
           sort={sort}
           onSort={(id) =>
             setSort((current) =>
-              current.id === id ? { id, dir: current.dir === "desc" ? "asc" : "desc" } : { id, dir: "desc" },
+              current.id === id
+                ? { id, dir: current.dir === "desc" ? "asc" : "desc" }
+                : { id, dir: "desc" },
             )
           }
           columns={[
             { id: "name", label: "Name" },
-            { id: "billed", label: "Billed amount without GST", align: "right" },
-            { id: "collected", label: "Collected amount without GST", align: "right" },
+            {
+              id: "billed",
+              label: "Billed amount without GST",
+              align: "right",
+            },
+            {
+              id: "collected",
+              label: "Collected amount without GST",
+              align: "right",
+            },
             { id: "due", label: "Outstanding", align: "right" },
             { id: "pastDue", label: "Overdue", align: "right" },
             { id: "records", label: "Records", align: "right" },
@@ -504,7 +824,10 @@ export function PartyView({
             <StatusBadge key="status" value={row.efficiency} />,
           ])}
         />
-        <p className="mt-2 shrink-0 text-[11px] text-[#667085]">Overdue is the outstanding portion past its due date. Average days to pay stays hidden because payment dates are not on these rows.</p>
+        <p className="mt-2 shrink-0 text-[11px] text-[#667085]">
+          Overdue is the outstanding portion past its due date. Average days to
+          pay stays hidden because payment dates are not on these rows.
+        </p>
       </article>
     </div>
   );
@@ -519,22 +842,30 @@ export function AgingView({
   aging: AgingSummary | null;
   hiddenReason: string | null;
 }) {
-  const outstanding = records.filter((record) => toNumber(record.overdueAmount) > 0);
-  const bucketRows = aging?.buckets.map((bucket) => ({
-    Bucket: bucket.label,
-    Amount: bucket.amount,
-    Invoices: bucket.count,
-  })) ?? [];
+  const outstanding = records.filter(
+    (record) => toNumber(record.overdueAmount) > 0,
+  );
+  const bucketRows =
+    aging?.buckets.map((bucket) => ({
+      Bucket: bucket.label,
+      Amount: bucket.amount,
+      Invoices: bucket.count,
+    })) ?? [];
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-[#667085]">Receivables aging for outstanding invoices that have a due date.</p>
+      <p className="text-sm text-[#667085]">
+        Receivables aging for outstanding invoices that have a due date.
+      </p>
       {hiddenReason ? (
-        <p className="rounded-md border border-[#f3e2b8] bg-[#fff8eb] px-3 py-2 text-sm text-[#8a5a00]">{hiddenReason}</p>
+        <p className="rounded-md border border-[#f3e2b8] bg-[#fff8eb] px-3 py-2 text-sm text-[#8a5a00]">
+          {hiddenReason}
+        </p>
       ) : null}
       {!hiddenReason && aging && !aging.supported ? (
         <p className="rounded-md border border-[#f3e2b8] bg-[#fff8eb] px-3 py-2 text-sm text-[#8a5a00]">
-          Aging buckets are unavailable. Outstanding invoices in this selection do not have payment due dates.
+          Aging buckets are unavailable. Outstanding invoices in this selection
+          do not have payment due dates.
         </p>
       ) : null}
       {!hiddenReason && aging?.supported ? (
@@ -547,40 +878,82 @@ export function AgingView({
             rows={bucketRows}
             empty={aging.buckets.every((bucket) => bucket.amount === 0)}
           >
-            <ChartContainer config={chartConfig} className="aspect-auto h-60 w-full">
+            <ChartContainer
+              config={chartConfig}
+              className="aspect-auto h-60 w-full"
+            >
               <BarChart data={aging.buckets}>
                 <CartesianGrid vertical={false} stroke="#eef1f4" />
-                <XAxis dataKey="label" tickLine={false} axisLine={false} tick={axisTick} />
-                <YAxis tickFormatter={(value) => formatInr(Number(value), true)} tickLine={false} axisLine={false} tick={axisTick} width={72} />
-                <Tooltip formatter={(value, name) => (name === "amount" ? formatInr(Number(value)) : value)} contentStyle={tooltipStyle} />
-                <Bar dataKey="amount" name="Overdue" fill="#C5363C" radius={[2, 2, 0, 0]} maxBarSize={36} isAnimationActive={false} />
+                <XAxis
+                  dataKey="label"
+                  tickLine={false}
+                  axisLine={false}
+                  tick={axisTick}
+                />
+                <YAxis
+                  tickFormatter={(value) => formatInr(Number(value), true)}
+                  tickLine={false}
+                  axisLine={false}
+                  tick={axisTick}
+                  width={72}
+                />
+                <Tooltip
+                  formatter={(value, name) =>
+                    name === "amount" ? formatInr(Number(value)) : value
+                  }
+                  contentStyle={tooltipStyle}
+                />
+                <Bar
+                  dataKey="amount"
+                  name="Overdue"
+                  fill="#C5363C"
+                  radius={[2, 2, 0, 0]}
+                  maxBarSize={36}
+                  isAnimationActive={false}
+                />
               </BarChart>
             </ChartContainer>
           </ChartCard>
           <article className="rounded-md border border-[#e4e8ee] bg-white p-3 text-sm shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
-            <h3 className="font-semibold text-[#1c2430]">Outside the overdue buckets</h3>
+            <h3 className="font-semibold text-[#1c2430]">
+              Outside the overdue buckets
+            </h3>
             <dl className="mt-3 space-y-2">
               <div className="flex items-center justify-between gap-3">
                 <dt className="text-[#667085]">Not yet due</dt>
-                <dd className="font-mono tabular-nums"><HoverAmount value={aging.notYetDueAmount} /></dd>
+                <dd className="font-mono tabular-nums">
+                  <HoverAmount value={aging.notYetDueAmount} />
+                </dd>
               </div>
               <div className="flex items-center justify-between gap-3">
                 <dt className="text-[#667085]">No due date</dt>
-                <dd className="font-mono tabular-nums"><HoverAmount value={aging.missingDueDateAmount} /></dd>
+                <dd className="font-mono tabular-nums">
+                  <HoverAmount value={aging.missingDueDateAmount} />
+                </dd>
               </div>
             </dl>
           </article>
         </div>
       ) : null}
       <article className="rounded-md border border-[#e4e8ee] bg-white p-3 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
-        <h3 className="mb-2 text-sm font-semibold text-[#1c2430]">Outstanding records</h3>
+        <h3 className="mb-2 text-sm font-semibold text-[#1c2430]">
+          Outstanding records
+        </h3>
         <DataTable
           columns={[
             { id: "customer", label: "Customer" },
             { id: "company", label: "Company" },
             { id: "po", label: "PO" },
-            { id: "billed", label: "Billed amount without GST", align: "right" },
-            { id: "collected", label: "Collected amount without GST", align: "right" },
+            {
+              id: "billed",
+              label: "Billed amount without GST",
+              align: "right",
+            },
+            {
+              id: "collected",
+              label: "Collected amount without GST",
+              align: "right",
+            },
             { id: "outstanding", label: "Outstanding", align: "right" },
             { id: "overdue", label: "Overdue", align: "right" },
             { id: "status", label: "Status" },
@@ -621,31 +994,78 @@ export function ForecastView({
   return (
     <div className="space-y-3">
       <p className="rounded-md border border-[#d5e4f2] bg-[#f4f9fd] px-3 py-2 text-sm text-[#1c2430]">
-        Projected is the amount that should be billed for the month, including later months in the financial year. Billed amount without GST is the invoice amount minus credit notes dated in that month. Later months stay at zero until they are billed.
+        Projected is the amount that should be billed for the month, including
+        later months in the financial year. Billed amount without GST is the
+        invoice amount minus credit notes dated in that month. Later months stay
+        at zero until they are billed.
       </p>
       <ChartCard
         title="Projected vs billed"
         description="Projected is how much should be billed. Billed amount without GST is the invoice amount minus credit notes."
         filename="forecast.csv"
         rows={series}
-        empty={series.every((row) => row.Projected === 0 && row["Billed amount without GST"] === 0)}
+        empty={series.every(
+          (row) =>
+            row.Projected === 0 && row["Billed amount without GST"] === 0,
+        )}
       >
-        <ChartContainer config={chartConfig} className="aspect-auto h-72 w-full">
+        <ChartContainer
+          config={chartConfig}
+          className="aspect-auto h-72 w-full"
+        >
           <BarChart data={series} barGap={2}>
             <CartesianGrid vertical={false} stroke="#eef1f4" />
-            <XAxis dataKey="month" tickLine={false} axisLine={false} tick={axisTick} />
-            <YAxis tickFormatter={(value) => formatInr(Number(value), true)} tickLine={false} axisLine={false} tick={axisTick} width={72} />
-            <Tooltip formatter={(value) => formatInr(Number(value))} contentStyle={tooltipStyle} />
+            <XAxis
+              dataKey="month"
+              tickLine={false}
+              axisLine={false}
+              tick={axisTick}
+            />
+            <YAxis
+              tickFormatter={(value) => formatInr(Number(value), true)}
+              tickLine={false}
+              axisLine={false}
+              tick={axisTick}
+              width={72}
+            />
+            <Tooltip
+              formatter={(value) => formatInr(Number(value))}
+              contentStyle={tooltipStyle}
+            />
             <Legend />
-            <Bar dataKey="Projected" fill="#9EC3E2" radius={[2, 2, 0, 0]} maxBarSize={18} isAnimationActive={false} />
-            <Bar dataKey="Billed amount without GST" fill="#1F6FB5" radius={[2, 2, 0, 0]} maxBarSize={18} isAnimationActive={false} />
+            <Bar
+              dataKey="Projected"
+              fill="#9EC3E2"
+              radius={[2, 2, 0, 0]}
+              maxBarSize={18}
+              isAnimationActive={false}
+            />
+            <Bar
+              dataKey="Billed amount without GST"
+              fill="#1F6FB5"
+              radius={[2, 2, 0, 0]}
+              maxBarSize={18}
+              isAnimationActive={false}
+            />
           </BarChart>
         </ChartContainer>
       </ChartCard>
       <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-        <SecondaryStat label="Total revenue projected without GST" value={projected} hint="Amount before GST for the selected financial year, including later months, minus credit notes dated in that financial year." />
-        <SecondaryStat label="Billed amount without GST" value={billed} hint="Invoice amount before GST, minus credit notes dated in the selected period." />
-        <SecondaryStat label="Collected amount without GST" value={collected} hint="Amount collected in the selected period. The period comparison uses this amount." />
+        <SecondaryStat
+          label="Total revenue projected without GST"
+          value={projected}
+          hint="Amount before GST for the selected financial year, including later months, minus credit notes dated in that financial year."
+        />
+        <SecondaryStat
+          label="Billed amount without GST"
+          value={billed}
+          hint="Invoice amount before GST, minus credit notes dated in the selected period."
+        />
+        <SecondaryStat
+          label="Collected amount without GST"
+          value={collected}
+          hint="Amount collected in the selected period. The period comparison uses this amount."
+        />
       </div>
     </div>
   );
@@ -677,21 +1097,69 @@ function RankChart({
   const chartData = namedRows(data);
 
   return (
-    <ChartCard title={title} description={description} filename={filename} rows={rows} loading={loading} error={error} empty={data.length === 0}>
+    <ChartCard
+      title={title}
+      description={description}
+      filename={filename}
+      rows={rows}
+      loading={loading}
+      error={error}
+      empty={data.length === 0}
+    >
       <ChartContainer config={chartConfig} className="aspect-auto h-72 w-full">
-        <BarChart data={chartData} layout="vertical" margin={{ left: 8, right: 12 }}>
+        <BarChart
+          data={chartData}
+          layout="vertical"
+          margin={{ left: 8, right: 12 }}
+        >
           <CartesianGrid horizontal={false} stroke="#eef1f4" />
-          <XAxis type="number" tickFormatter={(value) => formatInr(Number(value), true)} tickLine={false} axisLine={false} tick={axisTick} />
-          <YAxis type="category" dataKey="name" width={128} tickLine={false} axisLine={false} tick={axisTick} tickFormatter={shorten} />
-          <Tooltip formatter={(value) => formatInr(Number(value))} contentStyle={tooltipStyle} />
-          <Bar dataKey={dataKey} name={dataKey === "billed" ? "Billed amount without GST" : "Outstanding"} fill={color} radius={[0, 2, 2, 0]} maxBarSize={16} cursor="pointer" isAnimationActive={false} onClick={(item) => onPick(String(item.rawName ?? item.name))} />
+          <XAxis
+            type="number"
+            tickFormatter={(value) => formatInr(Number(value), true)}
+            tickLine={false}
+            axisLine={false}
+            tick={axisTick}
+          />
+          <YAxis
+            type="category"
+            dataKey="name"
+            width={128}
+            tickLine={false}
+            axisLine={false}
+            tick={axisTick}
+            tickFormatter={shorten}
+          />
+          <Tooltip
+            formatter={(value) => formatInr(Number(value))}
+            contentStyle={tooltipStyle}
+          />
+          <Bar
+            dataKey={dataKey}
+            name={
+              dataKey === "billed" ? "Billed amount without GST" : "Outstanding"
+            }
+            fill={color}
+            radius={[0, 2, 2, 0]}
+            maxBarSize={16}
+            cursor="pointer"
+            isAnimationActive={false}
+            onClick={(item) => onPick(String(item.rawName ?? item.name))}
+          />
         </BarChart>
       </ChartContainer>
     </ChartCard>
   );
 }
 
-function SecondaryStat({ label, value, hint }: { label: string; value: number; hint: string }) {
+function SecondaryStat({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: number;
+  hint: string;
+}) {
   return (
     <article className="flex items-center justify-between gap-3 rounded-md border border-[#e4e8ee] bg-white px-3 py-2">
       <div className="min-w-0">
@@ -701,22 +1169,28 @@ function SecondaryStat({ label, value, hint }: { label: string; value: number; h
         </div>
         <p className="truncate text-[11px] text-[#98a2b3]">{hint}</p>
       </div>
-      <HoverAmount value={value} className="shrink-0 font-mono text-sm font-semibold text-[#1c2430] tabular-nums" />
+      <HoverAmount
+        value={value}
+        className="shrink-0 font-mono text-sm font-semibold text-[#1c2430] tabular-nums"
+      />
     </article>
   );
 }
 
 function Money({ value }: { value: number }) {
-  return (
-    <HoverAmount value={value} className="font-mono tabular-nums" />
-  );
+  return <HoverAmount value={value} className="font-mono tabular-nums" />;
 }
 
 function shorten(value: string) {
   return value.length > 18 ? `${value.slice(0, 17)}…` : value;
 }
 
-function compareParty(left: PartyRow, right: PartyRow, id: string, dir: "asc" | "desc") {
+function compareParty(
+  left: PartyRow,
+  right: PartyRow,
+  id: string,
+  dir: "asc" | "desc",
+) {
   const sign = dir === "asc" ? 1 : -1;
   const key = id === "status" ? "efficiency" : id;
   const leftValue = left[key as keyof PartyRow];

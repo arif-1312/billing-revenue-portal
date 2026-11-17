@@ -27,3 +27,7 @@ export function canonicalCompanyName(name: string) {
 export function isMappedCompanyName(name: string) {
   return normalizeCompanyKey(name) in CANONICAL_COMPANY_NAMES
 }
+
+export function isAllowedCompanyName(name: string) {
+  return isMappedCompanyName(name)
+}

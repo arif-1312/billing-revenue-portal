@@ -9,7 +9,11 @@ import { toBusinessDateValue } from "@/lib/date-utils";
 import { guardRevenueImportWrite } from "@/lib/financial-write";
 import { moneyToNumber } from "@/lib/money";
 import { canonicalCustomerName, normalizeCustomerKey } from "@/lib/customer-names";
-import { canonicalCompanyName, normalizeCompanyKey } from "@/lib/company-names";
+import {
+  canonicalCompanyName,
+  isAllowedCompanyName,
+  normalizeCompanyKey,
+} from "@/lib/company-names";
 import {
   normalizeRevenueKey,
   revenuePurchaseOrderKey,
@@ -92,6 +96,11 @@ export async function persistRevenueImport(
       );
     }
     if (row.purchaseOrder.companyName) {
+      if (!isAllowedCompanyName(row.purchaseOrder.companyName)) {
+        throw new Error(
+          `Only SY Associates and Technosys are allowed as company names (row ${row.excelRow}).`,
+        );
+      }
       row.purchaseOrder.companyName = canonicalCompanyName(
         row.purchaseOrder.companyName,
       );

@@ -7,7 +7,7 @@ function sessionHash(sessionId: string) {
   return createHash("sha256").update(sessionId).digest("hex")
 }
 
-/** The userId primary key and conditional upsert allow only one winner. */
+/** Claim the account's single active session, replacing only an expired session. */
 export async function claimActiveLogin(userId: string, credentialVersion: string, now = Date.now()) {
   const sessionId = randomBytes(32).toString("hex")
   const hash = sessionHash(sessionId)

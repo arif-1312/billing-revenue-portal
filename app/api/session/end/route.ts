@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
 
-import { auth, signOut } from "@/auth"
-import { isSignedInSession } from "@/lib/session-decision"
+import { signOut } from "@/auth"
 
 type ClearedCookie = {
   name: string
@@ -10,11 +9,6 @@ type ClearedCookie = {
 }
 
 export async function GET(request: Request) {
-  const session = await auth()
-  if (isSignedInSession(session)) {
-    return NextResponse.redirect(new URL("/admin/home", request.url))
-  }
-
   const result = await signOut({ redirect: false })
   const response = NextResponse.redirect(new URL("/login", request.url))
   const clearedCookies =

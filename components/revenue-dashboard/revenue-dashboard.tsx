@@ -96,6 +96,7 @@ export function RevenueDashboard({
       }
       onReset={() => commit(defaultFilters(defaultYear))}
       summary={report.data?.summary ?? null}
+      billingOverview={report.data?.billingOverview ?? null}
       creditNotes={report.data?.creditNotes ?? null}
       comparison={report.data?.comparison ?? null}
       records={report.data?.records ?? []}
