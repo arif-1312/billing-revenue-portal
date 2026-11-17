@@ -46,10 +46,10 @@ export function PLStatusChart() {
   const [sliceDetails, setSliceDetails] = useState<POItem[]>([]);
 
   const colors: Record<string, string> = {
-    Revenue: "#3b82f6",
-    Cost: "#f97316",
-    Profit: "#10b981",
-    Overdue: "#ef4444",
+    Revenue: "#1976D2",
+    Cost: "#E69A23",
+    Profit: "#15966A",
+    Overdue: "#DC4545",
   };
 
   // ================= FETCH =================

@@ -15,7 +15,6 @@ import {
   writeFilterParams,
   type DashboardPreset,
 } from "@/lib/dashboard-presets";
-import { FIRST_FISCAL_YEAR } from "@/lib/fiscal-year";
 import { filterTokens, type CrossFilter, type DashboardFilters } from "@/lib/revenue-metrics";
 
 type CompanyOption = { id: string; name: string };
@@ -37,10 +36,12 @@ export function RevenueDashboard({
   companies,
   customers,
   defaultYear,
+  years,
 }: {
   companies: CompanyOption[];
   customers: CustomerOption[];
   defaultYear: number;
+  years: number[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -48,11 +49,6 @@ export function RevenueDashboard({
   const filters = filtersFromSearchParams(params, defaultYear);
   const [status, setStatus] = useState("all");
   const [crossFilter, setCrossFilter] = useState<CrossFilter | null>(null);
-  const years = Array.from(
-    { length: defaultYear - FIRST_FISCAL_YEAR + 1 },
-    (_, index) => defaultYear - index,
-  );
-
   const commit = (next: DashboardFilters) => {
     const query = new URLSearchParams(params.toString());
     writeFilterParams(query, next, defaultYear);
@@ -101,6 +97,7 @@ export function RevenueDashboard({
       comparison={report.data?.comparison ?? null}
       records={report.data?.records ?? []}
       lines={report.data?.lines ?? []}
+      creditNoteRecords={report.data?.creditNoteRecords ?? []}
       monthly={report.data?.monthly ?? []}
       loading={report.isPending}
       isFetching={report.isFetching}

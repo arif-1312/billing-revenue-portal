@@ -63,27 +63,24 @@ export default async function AdminLayout({
       className="group/sidebar"
       style={
         {
-          "--sidebar-width": "calc(var(--spacing) * 76)",
-          "--sidebar-width-icon": "calc(var(--spacing) * 14)", // ✅ important for icon mode
-          "--header-height": "calc(var(--spacing) * 12)",
+          "--sidebar-width": "18rem",
+          "--sidebar-width-icon": "3.5rem",
+          "--header-height": "3.75rem",
         } as React.CSSProperties
       }
     >
       <AppSidebar user={user} configuration={configuration} />
 
       <SidebarInset
-        className="
-          transition-[margin] duration-300 ease-in-out
-          bg-[radial-gradient(circle_at_top,_rgba(186,230,253,0.28),_transparent_22%),linear-gradient(180deg,#f8fbff_0%,#f8fafc_50%,#f1f5f9_100%)]
-        "
+        className="min-w-0 bg-[#F5F7FA] transition-[margin] duration-300 ease-in-out"
       >
-        <div className="sticky top-0 z-50 border-b border-sky-100/80 bg-white/80 backdrop-blur-xl">
+        <div className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl">
           <SiteHeader />
         </div>
 
         <div className="flex min-h-[calc(100svh-var(--header-height))] min-w-0 flex-1 flex-col">
           <div className="@container/main flex min-h-0 min-w-0 flex-1 flex-col gap-2">
-            <div className="flex min-h-0 flex-1 flex-col gap-4 p-4 py-4 md:gap-6 md:py-6">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 p-3 sm:p-4 lg:gap-5 lg:p-6">
               {children}
             </div>
           </div>

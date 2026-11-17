@@ -33,7 +33,7 @@ const ProjectPage = async () => {
       title="Project"
       actions={
         canCreate && (
-          <Button className="bg-[#3B82F6] hover:bg-[#2563EB] text-white shadow-md">
+          <Button className="bg-[#1976D2] hover:bg-[#155EA8] text-white shadow-md">
             <Link href="/admin/pl/create">Add Project</Link>
           </Button>
         )

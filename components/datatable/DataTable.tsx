@@ -42,6 +42,7 @@ interface DataTableProps<TData, TValue> {
   title?: string;
   actions?: React.ReactNode;
   className?: string;
+  tableWidth?: "full" | "content";
   rowClassName?: (row: TData, index: number) => string;
   toolbar?: (filteredRows: TData[]) => React.ReactNode;
 }
@@ -62,18 +63,14 @@ function getRowEdgeClass(className: string) {
 function getDefaultAlternateRowClass(index: number) {
   return index % 2 === 0
     ? `
-      bg-emerald-50/70
-      dark:bg-emerald-950/20
-      hover:bg-emerald-100/80
-      dark:hover:bg-emerald-900/30
-      transition-all duration-300
+      bg-white
+      hover:bg-[#EAF3FC]
+      transition-colors duration-150
     `
     : `
-      bg-white
-      dark:bg-background
-      hover:bg-slate-50
-      dark:hover:bg-slate-900/40
-      transition-all duration-300
+      bg-slate-50/70
+      hover:bg-[#EAF3FC]
+      transition-colors duration-150
     `;
 }
 
@@ -83,6 +80,7 @@ export function DataTable<TData, TValue>({
   title = "",
   actions,
   className,
+  tableWidth = "full",
   rowClassName,
   toolbar,
 }: DataTableProps<TData, TValue>) {
@@ -133,7 +131,7 @@ export function DataTable<TData, TValue>({
   });
 
   return (
-    <Card className="rounded-2xl shadow-sm">
+      <Card className="w-full min-w-0 rounded-2xl shadow-sm">
       <CardHeader>
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <CardTitle className="text-2xl font-bold">{title}</CardTitle>
@@ -212,19 +210,23 @@ export function DataTable<TData, TValue>({
             </DropdownMenu>
           </div>
 
-          <div className={cn("rounded-xl border overflow-x-auto", className)}>
-            <Table>
+          <div className={cn("w-full min-w-0 overflow-hidden rounded-xl border border-[#E2E8F0]", className)}>
+            <Table
+              className={tableWidth === "content" ? "w-max min-w-full table-fixed" : "w-full"}
+              style={tableWidth === "content" ? { width: `${table.getTotalSize()}px` } : undefined}
+            >
               <TableHeader>
                 {table.getHeaderGroups().map((headerGroup) => (
                   <TableRow
                     key={headerGroup.id}
-                    className="border-b border-sky-300/60 bg-sky-600 hover:bg-sky-600"
+                    className="h-11 border-b border-[#E2E8F0] bg-[#EAF3FC] hover:bg-[#EAF3FC]"
                   >
                     {headerGroup.headers.map((header) => (
                       <TableHead
                         key={header.id}
                         onClick={header.column.getToggleSortingHandler()}
-                        className="cursor-pointer select-none whitespace-nowrap text-sky-50"
+                        style={{ width: `${header.getSize()}px` }}
+                        className="cursor-pointer select-none whitespace-nowrap px-3 py-3 text-xs font-semibold text-[#17365D]"
                       >
                         <div className="flex items-center gap-1">
                           {flexRender(
@@ -256,8 +258,9 @@ export function DataTable<TData, TValue>({
                         {row.getVisibleCells().map((cell, index) => (
                           <TableCell
                             key={cell.id}
+                            style={{ width: `${cell.column.getSize()}px` }}
                             className={cn(
-                              "whitespace-nowrap",
+                              "whitespace-normal break-words align-top px-3 py-3 text-sm text-[#263445]",
                               index === 0 && rowEdgeClasses,
                             )}
                           >

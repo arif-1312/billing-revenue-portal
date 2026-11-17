@@ -25,18 +25,18 @@ export function EditPageShell({
 }: EditPageShellProps) {
   return (
     <div className="space-y-6">
-      <section className="overflow-hidden rounded-xl border border-zinc-200 bg-[linear-gradient(135deg,#ffffff,#f8fafc_55%,#fff7ed)] shadow-[0_20px_56px_-42px_rgba(39,39,42,0.45)]">
-        <div className="h-1.5 bg-gradient-to-r from-teal-500 via-amber-400 to-rose-500" />
-        <div className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="h-1 bg-blue-600" />
+        <div className="flex flex-col gap-4 p-4 sm:p-5 md:flex-row md:items-center md:justify-between">
           <div className="flex min-w-0 items-center gap-4">
-            <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-teal-50 text-teal-700">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
               <Icon className="size-5" />
             </div>
             <div className="min-w-0 space-y-1">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                 {eyebrow}
               </p>
-              <h1 className="text-2xl font-semibold text-zinc-950 md:text-3xl">
+              <h1 className="text-xl font-semibold tracking-tight text-slate-900 md:text-2xl">
                 {title}
               </h1>
             </div>
@@ -45,7 +45,7 @@ export function EditPageShell({
           <Button
             asChild
             variant="outline"
-            className="h-10 rounded-lg border-zinc-300 bg-white text-zinc-700 hover:border-teal-300 hover:bg-teal-50 hover:text-teal-700"
+            className="h-9 rounded-lg border-slate-200 bg-white text-slate-700 shadow-sm hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
           >
             <Link href={backHref}>
               <ArrowLeft className="size-4" />
@@ -55,8 +55,8 @@ export function EditPageShell({
         </div>
       </section>
 
-      <Card className="rounded-xl border-zinc-200 bg-white shadow-[0_18px_42px_-34px_rgba(39,39,42,0.28)]">
-        <CardContent className="p-5">{children}</CardContent>
+      <Card className="rounded-xl border-slate-200 bg-white shadow-sm">
+        <CardContent className="p-4 sm:p-6">{children}</CardContent>
       </Card>
     </div>
   );

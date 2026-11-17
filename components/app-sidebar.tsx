@@ -19,7 +19,7 @@ import {
   IconUserCog,
 } from "@tabler/icons-react";
 
-import { Handshake, SettingsIcon } from "lucide-react";
+import { Handshake } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useDispatch } from "react-redux";
@@ -222,52 +222,33 @@ export function AppSidebar({
       variant="sidebar"
       collapsible="icon"
       {...props}
-      className="!border-r-0"
+      className="!border-r !border-[var(--sidebar-border)] !bg-[var(--sidebar)]"
     >
-      {/* HEADER */}
-      <SidebarHeader className="bg-[linear-gradient(180deg,rgba(8,47,73,0.98),rgba(14,116,144,0.94),rgba(12,74,110,0.98))] px-3 py-3 text-white">
+      <SidebarHeader className="border-b border-[var(--sidebar-border)] !bg-[var(--sidebar-logo-background)] px-3 py-3 text-[var(--sidebar-heading)] group-data-[collapsible=icon]:px-1">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
               asChild
-              className="
-                h-auto rounded-2xl
-                bg-white/6
-                p-3
-                text-white
-                shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]
-                hover:bg-sky-500/15
-                hover:text-white
-                focus:bg-sky-500/15
-                focus:text-white
-                active:bg-sky-500/20
-                data-[active=true]:bg-sky-500/20
-                data-[active=true]:text-white
-                outline-none
-                border border-white/10
-                group-data-[collapsible=icon]:justify-center
-                group-data-[collapsible=icon]:rounded-xl
-                group-data-[collapsible=icon]:p-2
-              "
+              className="h-auto rounded-xl !bg-[var(--sidebar-logo-background)] p-2 !text-[var(--sidebar-heading)] transition-colors duration-200 hover:!bg-[var(--sidebar-hover-background)] hover:!text-[var(--sidebar-heading)] focus:!bg-[var(--sidebar-hover-background)] active:!bg-[var(--sidebar-hover-background)] data-[active=true]:!bg-[var(--sidebar-logo-background)] data-[active=true]:!text-[var(--sidebar-heading)] outline-none border border-transparent group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-xl"
             >
               <Link href="/admin/home">
-                <div className="flex w-full items-center gap-3">
-                  <Image
-                    src={configuration?.logo || "/sy.png"}
-                    alt="logo"
-                    width={44}
-                    height={44}
-                    className="rounded-xl bg-white/95 object-cover p-1 shadow-[0_12px_28px_-18px_rgba(15,23,42,0.6)]"
-                  />
+                <div className="flex w-full items-center gap-3 group-data-[collapsible=icon]:justify-center">
+                  <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[var(--sidebar-logo-background)] p-1">
+                    <Image
+                      src={configuration?.logo || "/sy.png"}
+                      alt="Company logo"
+                      width={32}
+                      height={32}
+                      className="size-8 rounded-lg object-contain brightness-0 invert"
+                    />
+                  </span>
 
                   <div className="min-w-0 group-data-[collapsible=icon]:hidden">
-                    <p className="truncate text-[11px] font-semibold uppercase tracking-[0.28em] text-sky-100/65">
-                      Operations Hub
+                    <p className="truncate text-[10px] font-semibold tracking-[0.16em] text-[var(--sidebar-brand-kicker)]">
+                      BILLING OPERATIONS
                     </p>
-
-                    <p className="truncate text-base font-semibold text-white">
-                      {configuration?.name?.toUpperCase() ||
-                        "SY ASSOCIATES"}
+                    <p className="truncate text-sm font-bold text-[var(--sidebar-heading)]">
+                      {configuration?.name?.toUpperCase() || "SY ASSOCIATES"}
                     </p>
                   </div>
                 </div>
@@ -277,18 +258,12 @@ export function AppSidebar({
         </SidebarMenu>
       </SidebarHeader>
 
-      {/* CONTENT */}
-      <SidebarContent className="sidebar-scrollbar overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(125,211,252,0.12),_transparent_20%),linear-gradient(180deg,#082f49_0%,#0f172a_100%)]">
+      <SidebarContent className="sidebar-scrollbar !bg-[var(--sidebar)] overflow-y-auto px-2 py-3 group-data-[collapsible=icon]:px-1">
         <NavMain items={filteredNav} />
-
-        <NavSecondary
-          items={data.navSecondary}
-          className="mt-auto"
-        />
+        <NavSecondary items={data.navSecondary} className="mt-auto" />
       </SidebarContent>
 
-      {/* FOOTER */}
-      <SidebarFooter className="bg-[#0f172a] px-3 py-3 text-white">
+      <SidebarFooter className="border-t border-[var(--sidebar-border)] !bg-[var(--sidebar)] px-2 py-3 group-data-[collapsible=icon]:px-1">
         <NavSettings items={filteredSettings} />
         <NavUser user={user} />
       </SidebarFooter>

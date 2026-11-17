@@ -136,7 +136,7 @@ export function ActivityLogView({
             </select>
 
             <div className="flex items-center gap-2">
-              <Button type="submit" className="bg-sky-600 hover:bg-sky-700">
+              <Button type="submit" className="bg-[#1976D2] hover:bg-[#155EA8]">
                 Filter
               </Button>
               {hasFilters ? (

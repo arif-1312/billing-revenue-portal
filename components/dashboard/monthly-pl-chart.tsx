@@ -128,8 +128,8 @@ export function MonthlyPLChart({ plData }: MonthlyPLChartProps) {
   });
 
   const chartConfig = {
-    revenue: { label: "Revenue", color: "#2563eb" },
-    cost: { label: "Cost", color: "#f97316" },
+    revenue: { label: "Revenue", color: "#1976D2" },
+    cost: { label: "Cost", color: "#E69A23" },
   };
 
   useEffect(() => {
@@ -213,17 +213,17 @@ export function MonthlyPLChart({ plData }: MonthlyPLChartProps) {
           <div className="flex flex-wrap gap-6 text-sm">
             <div>
               <p className="font-semibold text-gray-500">Total Revenue</p>
-              <p className="font-semibold text-blue-600">{formatExactCurrency(summary.revenue)}</p>
+              <p className="font-semibold text-[#1976D2]">{formatExactCurrency(summary.revenue)}</p>
             </div>
 
             <div>
               <p className="font-semibold text-gray-500">Total Cost</p>
-              <p className="font-semibold text-orange-500">{formatExactCurrency(summary.cost)}</p>
+              <p className="font-semibold text-[#E69A23]">{formatExactCurrency(summary.cost)}</p>
             </div>
 
             <div>
               <p className="font-semibold text-gray-500">Total Profit</p>
-              <p className="font-semibold text-green-600">{formatExactCurrency(summary.profit)}</p>
+              <p className="font-semibold text-[#15966A]">{formatExactCurrency(summary.profit)}</p>
             </div>
           </div>
         </div>

@@ -75,21 +75,23 @@ export const getUsersColumns = ({
   const columns: ColumnDef<RevenueRow>[] = [
     {
       id: "company",
+      size: 220,
+      minSize: 190,
       accessorFn: (row) =>
         [row.company?.name, row.customer?.companyName]
           .filter(Boolean)
           .join(" "),
       header: () => (
-        <span className="text-xs font-semibold uppercase tracking-wider text-white">
+        <span className="text-xs font-semibold uppercase tracking-wide text-[#17365D]">
           Company
         </span>
       ),
       cell: ({ row }) => (
         <div className="space-y-1">
-          <p className="font-semibold text-slate-900">
+          <p className="break-words font-semibold text-[#263445]">
             {row.original.company?.name || "-"}
           </p>
-          <p className="text-xs text-slate-500">
+          <p className="break-words text-xs text-[#64748B]">
             {row.original.customer?.companyName ||
               "No mapped customer"}
           </p>
@@ -98,6 +100,8 @@ export const getUsersColumns = ({
     },
     {
       id: "vendor",
+      size: 190,
+      minSize: 170,
       accessorFn: (row) =>
         [
           row.vendor?.companyName,
@@ -107,7 +111,7 @@ export const getUsersColumns = ({
           .filter(Boolean)
           .join(" "),
       header: () => (
-        <span className="text-xs font-semibold uppercase tracking-wider text-white">
+        <span className="text-xs font-semibold uppercase tracking-wide text-[#17365D]">
           Vendor
         </span>
       ),
@@ -122,7 +126,7 @@ export const getUsersColumns = ({
 
         return (
           <div className="space-y-1">
-            <p className="font-semibold text-slate-900">
+            <p className="break-words font-semibold text-[#263445]">
               {vendorName}
             </p>
             <p className="text-xs text-slate-500">
@@ -134,10 +138,12 @@ export const getUsersColumns = ({
     },
     {
       id: "customerPONumber",
+      size: 170,
+      minSize: 150,
       accessorFn: (row) =>
         [row.customerPONumber, row.poOwner].filter(Boolean).join(" "),
       header: () => (
-        <span className="text-xs font-semibold uppercase tracking-wider text-white">
+        <span className="text-xs font-semibold uppercase tracking-wide text-[#17365D]">
           PO Number
         </span>
       ),
@@ -155,14 +161,16 @@ export const getUsersColumns = ({
     {
       accessorFn: (row) => row.scope ?? "",
       id: "scope",
+      size: 240,
+      minSize: 210,
       header: () => (
-        <span className="text-xs font-semibold uppercase tracking-wider text-white">
+        <span className="text-xs font-semibold uppercase tracking-wide text-[#17365D]">
           Scope Of Work
         </span>
       ),
       cell: ({ row }) => (
-        <div className="max-w-[220px]">
-          <p className="line-clamp-2 text-sm font-medium text-slate-900">
+        <div className="max-w-[240px] whitespace-normal">
+          <p className="break-words text-sm font-medium leading-5 text-[#263445]">
             {row.original.scope || "-"}
           </p>
         </div>
@@ -170,6 +178,8 @@ export const getUsersColumns = ({
     },
     {
       id: "billed",
+      size: 245,
+      minSize: 225,
       accessorFn: (row) => {
         const totals = getRevenueTotals(row.billingCycles);
 
@@ -181,7 +191,7 @@ export const getUsersColumns = ({
         ].join(" ");
       },
       header: () => (
-        <span className="text-xs font-semibold uppercase tracking-wider text-white">
+        <span className="text-xs font-semibold uppercase tracking-wide text-[#17365D]">
           Billed
         </span>
       ),
@@ -190,11 +200,12 @@ export const getUsersColumns = ({
 
         return (
           <div className="space-y-1">
-            <p className="font-semibold text-emerald-600">
+            <p className="whitespace-nowrap font-semibold text-[#1976D2]">
               {formatCurrency(totals.billed)}
             </p>
-            <p className="text-xs text-slate-500">
-              Collected amount without GST {formatCurrency(totals.collected)}
+            <p className="whitespace-nowrap text-xs text-[#64748B]">
+              <span className="font-medium text-[#15966A]">Collected</span>{" "}
+              {formatCurrency(totals.collected)}
             </p>
           </div>
         );
@@ -202,6 +213,8 @@ export const getUsersColumns = ({
     },
     {
       id: "collectionHealth",
+      size: 260,
+      minSize: 245,
       accessorFn: (row) => {
         const totals = getRevenueTotals(row.billingCycles);
         const pending = Math.max(totals.billed - totals.collected, 0);
@@ -218,7 +231,7 @@ export const getUsersColumns = ({
         ].join(" ");
       },
       header: () => (
-        <span className="text-xs font-semibold uppercase tracking-wider text-white">
+        <span className="text-xs font-semibold uppercase tracking-wide text-[#17365D]">
           Collection Health
         </span>
       ),
@@ -234,20 +247,25 @@ export const getUsersColumns = ({
             : 0;
 
         return (
-          <div className="min-w-[160px] space-y-2">
-            <div className="flex items-center justify-between text-xs font-medium text-slate-500">
-              <span>{ratio.toFixed(2)}% realized</span>
-              <span>{formatCurrency(pending)} pending</span>
+          <div className="min-w-[220px] space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs font-medium">
+              <span className={`whitespace-nowrap ${ratio > 0 ? "text-[#15966A]" : "text-[#64748B]"}`}>
+                {ratio.toFixed(2)}% collected
+              </span>
+              <span className={`whitespace-nowrap ${pending > 0 ? "text-[#9B620D]" : "text-[#64748B]"}`}>
+                {formatCurrency(pending)} pending
+              </span>
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-zinc-100">
+            <div
+              className="h-2.5 overflow-hidden rounded-full bg-slate-100"
+              role="progressbar"
+              aria-label="Collection percentage"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.min(ratio, 100)}
+            >
               <div
-                className={`h-full rounded-full ${
-                  ratio >= 85
-                    ? "bg-emerald-500"
-                    : ratio >= 50
-                      ? "bg-amber-500"
-                      : "bg-rose-500"
-                }`}
+                className="h-full rounded-full bg-[#15966A] transition-[width]"
                 style={{ width: `${Math.min(ratio, 100)}%` }}
               />
             </div>
@@ -257,9 +275,11 @@ export const getUsersColumns = ({
     },
     {
       id: "billingPlan",
+      size: 145,
+      minSize: 130,
       accessorFn: (row) => row.billingPlan?.name ?? "",
       header: () => (
-        <span className="text-xs font-semibold uppercase tracking-wider text-white">
+        <span className="text-xs font-semibold uppercase tracking-wide text-[#17365D]">
           Billing Plan
         </span>
       ),
@@ -274,9 +294,11 @@ export const getUsersColumns = ({
     },
     {
       id: "serviceType",
+      size: 150,
+      minSize: 135,
       accessorFn: (row) => row.ServiceType?.name ?? "",
       header: () => (
-        <span className="text-xs font-semibold uppercase tracking-wider text-white">
+        <span className="text-xs font-semibold uppercase tracking-wide text-[#17365D]">
           Service Type
         </span>
       ),
@@ -292,8 +314,10 @@ export const getUsersColumns = ({
     {
       accessorFn: (row) => row.status ?? "",
       id: "status",
+      size: 115,
+      minSize: 105,
       header: () => (
-        <span className="text-xs font-semibold uppercase tracking-wider text-white">
+        <span className="text-xs font-semibold uppercase tracking-wide text-[#17365D]">
           Status
         </span>
       ),
@@ -327,9 +351,11 @@ export const getUsersColumns = ({
 
   columns.push({
     id: "actions",
+    size: 140,
+    minSize: 130,
     enableGlobalFilter: false,
     header: () => (
-      <span className="text-xs font-semibold uppercase tracking-wider text-white">
+      <span className="text-xs font-semibold uppercase tracking-wide text-[#17365D]">
         Action
       </span>
     ),

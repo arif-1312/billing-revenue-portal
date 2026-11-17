@@ -38,14 +38,14 @@ const formatCurrency = (value?: number | null) =>
   }).format(Number(value ?? 0));
 
 const surfaceClassName =
-  "rounded-xl border border-zinc-200/90 bg-white p-5 shadow-[0_18px_42px_-34px_rgba(39,39,42,0.28)]";
+  "rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5";
 
 const metricTone = {
   teal: {
-    border: "border-teal-200",
-    bg: "bg-teal-50",
-    text: "text-teal-700",
-    bar: "bg-teal-500",
+    border: "border-blue-200",
+    bg: "bg-blue-50",
+    text: "text-blue-700",
+    bar: "bg-blue-600",
   },
   emerald: {
     border: "border-emerald-200",
@@ -54,10 +54,10 @@ const metricTone = {
     bar: "bg-emerald-500",
   },
   rose: {
-    border: "border-rose-200",
-    bg: "bg-rose-50",
-    text: "text-rose-700",
-    bar: "bg-rose-500",
+    border: "border-amber-200",
+    bg: "bg-amber-50",
+    text: "text-amber-700",
+    bar: "bg-amber-500",
   },
 };
 
@@ -135,17 +135,17 @@ export default async function PurchaseOrderViewPage({ params }: Props) {
 
   return (
     <div className="space-y-6">
-      <section className="overflow-hidden rounded-xl border border-zinc-200 bg-[linear-gradient(135deg,#ffffff,#f8fafc_55%,#fff7ed)] shadow-[0_20px_56px_-42px_rgba(39,39,42,0.45)]">
-        <div className="h-1.5 bg-gradient-to-r from-teal-500 via-amber-400 to-rose-500" />
-        <div className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="h-1 bg-blue-600" />
+        <div className="flex flex-col gap-4 p-4 sm:p-5 md:flex-row md:items-center md:justify-between">
           <div className="min-w-0 space-y-1">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
               Revenue Record
             </p>
-            <h1 className="text-2xl font-semibold text-zinc-950 md:text-3xl">
+            <h1 className="text-xl font-semibold tracking-tight text-slate-900 md:text-2xl">
               Revenue Details
             </h1>
-            <p className="text-sm text-zinc-500">
+            <p className="text-sm text-slate-500">
               PO {po.customerPONumber || "-"} - {po.customer?.companyName || "Company not set"}
             </p>
           </div>
@@ -153,7 +153,7 @@ export default async function PurchaseOrderViewPage({ params }: Props) {
           <Button
             asChild
             variant="outline"
-            className="h-10 rounded-lg border-zinc-300 bg-white text-zinc-700 hover:border-teal-300 hover:bg-teal-50 hover:text-teal-700"
+            className="h-9 rounded-lg border-slate-200 bg-white text-slate-700 shadow-sm hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
           >
             <Link href="/admin/revenue">
               <ArrowLeft className="size-4" />
@@ -189,13 +189,13 @@ export default async function PurchaseOrderViewPage({ params }: Props) {
           return (
             <div
               key={item.label}
-              className={`overflow-hidden rounded-xl border ${item.tone.border} bg-white shadow-[0_16px_38px_-32px_rgba(39,39,42,0.34)]`}
+              className={`overflow-hidden rounded-xl border ${item.tone.border} bg-white shadow-sm`}
             >
               <div className={`h-1 ${item.tone.bar}`} />
-              <div className="flex items-start justify-between gap-4 p-5">
+              <div className="flex items-start justify-between gap-4 p-4 sm:p-5">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-zinc-500">{item.label}</p>
-                  <p className="mt-2 text-2xl font-semibold text-zinc-950">
+                  <p className="mt-2 text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
                     {rupee}
                     {formatCurrency(item.value)}
                   </p>
@@ -283,7 +283,7 @@ export default async function PurchaseOrderViewPage({ params }: Props) {
                       invoiceAmount - Number(bc.collectedAmount || 0);
 
                     return (
-                      <tr key={bc.id} className="transition-colors hover:bg-teal-50/45">
+                      <tr key={bc.id} className="transition-colors hover:bg-blue-50/40">
                         <td className="p-3 text-zinc-500">{index + 1}</td>
                         <td className="p-3 font-medium text-zinc-900">
                           {bc.invoiceDate

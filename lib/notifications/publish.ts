@@ -9,7 +9,11 @@ import {
   type PurchaseOrderSnapshot,
   type SystemNotificationInput,
 } from "./model"
-import { loadPurchaseOrderSnapshots, persistDrafts } from "./store"
+import {
+  loadPurchaseOrderSnapshots,
+  persistDrafts,
+  syncStateNotificationsIfDue,
+} from "./store"
 
 export async function safeNotify(task: () => Promise<void>) {
   try {
@@ -26,6 +30,7 @@ export async function publishPurchaseOrderChange(
   const [after] = await loadPurchaseOrderSnapshots(prisma, [purchaseOrderId])
   if (!after) return
   await publishDrafts(transitionNotificationDrafts(before, after))
+  await syncStateNotificationsIfDue(true)
 }
 
 export async function publishPurchaseOrderChanges(
@@ -39,6 +44,7 @@ export async function publishPurchaseOrderChanges(
     transitionNotificationDrafts(previous.get(order.id) ?? null, order),
   )
   await publishDrafts(drafts)
+  await syncStateNotificationsIfDue(true)
 }
 
 export async function safePublishSystem(input: SystemNotificationInput) {

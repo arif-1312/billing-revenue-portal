@@ -20,7 +20,7 @@ export function FilterChips({
           key={chip.id}
           type="button"
           onClick={chip.onRemove}
-          className="inline-flex items-center gap-1 rounded-md border border-[#e4e8ee] bg-[#f7f8fa] px-2 py-1 text-xs font-medium text-[#1c2430] hover:bg-white"
+          className="inline-flex items-center gap-1 rounded-lg border border-blue-100 bg-blue-50/70 px-2.5 py-1.5 text-xs font-medium text-blue-800 hover:bg-blue-50"
         >
           {chip.label}
           <X className="size-3" aria-hidden="true" />
@@ -33,7 +33,7 @@ export function FilterChips({
       <button
         type="button"
         onClick={onReset}
-        className="rounded-md border border-[#e4e8ee] bg-white px-2 py-1 text-xs font-semibold text-[#1c2430] hover:bg-[#f7f8fa]"
+        className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
       >
         Reset filters
       </button>

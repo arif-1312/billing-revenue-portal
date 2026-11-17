@@ -24,49 +24,50 @@ export default function HomePage({ configuration }: HomePageProps) {
   const logo = configuration?.logo || "";
 
   return (
-    <div className="min-h-screen overflow-hidden bg-[#F5F7FB] text-slate-800">
-      <div className="absolute top-0 right-0 h-[400px] w-[400px] rounded-full bg-blue-100 opacity-70 blur-3xl" />
-      <div className="absolute bottom-0 left-0 h-[350px] w-[350px] rounded-full bg-indigo-100 opacity-60 blur-3xl" />
+    <div className="min-h-[calc(100svh-var(--header-height))] bg-[#F5F7FA] text-[#263445]">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+        {logo || companyName ? (
+          <header className="mb-7 flex min-h-14 items-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm sm:mb-8 sm:px-5">
+            <div className="flex min-w-0 items-center gap-3">
+              {logo ? (
+                <Image
+                  src={logo}
+                  alt={companyName}
+                  width={40}
+                  height={40}
+                  className="shrink-0 rounded-lg border border-slate-200"
+                />
+              ) : null}
+              {companyName ? (
+                <h1 className="truncate text-base font-semibold tracking-tight sm:text-lg">
+                  {companyName}
+                </h1>
+              ) : null}
+            </div>
+          </header>
+        ) : null}
 
-      <div className="relative z-10 px-6 py-8 md:px-12 lg:px-20">
-        <header className="mb-16 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            {logo ? (
-              <Image
-                src={logo}
-                alt={companyName}
-                width={48}
-                height={48}
-                className="rounded-xl shadow-md"
-              />
-            ) : null}
-            <h1 className="text-2xl font-bold uppercase tracking-wide">
-              {companyName}
-            </h1>
-          </div>
-        </header>
-
-        <section className="mb-24 grid items-center gap-10 lg:grid-cols-2">
+        <section className="grid items-center gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:gap-12">
           <div>
-            <p className="mb-4 font-medium text-blue-600">
+            <p className="mb-3 text-sm font-semibold text-[#1976D2]">
               Financial Operations Simplified
             </p>
 
-            <h2 className="text-5xl font-bold leading-tight md:text-6xl">
+            <h2 className="max-w-2xl text-4xl font-semibold leading-[1.08] tracking-tight text-slate-950 sm:text-5xl">
               One Portal for
-              <span className="block text-blue-600">Revenue & Billing</span>
+              <span className="block text-[#1976D2]">Revenue & Billing</span>
             </h2>
 
-            <p className="mt-6 max-w-xl text-lg leading-relaxed text-slate-500">
+            <p className="mt-5 max-w-xl text-base leading-7 text-slate-600 sm:text-lg">
               Manage revenue streams, billing workflows, and profit analysis in
               one clean and reliable workspace.
             </p>
 
-            <div className="mt-8 flex flex-wrap gap-4">
+            <div className="mt-7 flex flex-wrap gap-3">
               <Button
                 asChild
                 size="lg"
-                className="rounded-2xl bg-blue-600 px-7 text-white hover:bg-blue-700"
+                className="h-10 rounded-lg bg-[#1976D2] px-5 text-white shadow-sm hover:bg-[#155EA8]"
               >
                 <Link href="/admin/dashboard?tab=revenue">
                   Open Revenue Dashboard
@@ -77,7 +78,7 @@ export default function HomePage({ configuration }: HomePageProps) {
                 asChild
                 size="lg"
                 variant="outline"
-                className="rounded-2xl px-7"
+                className="h-10 rounded-lg border-slate-200 bg-white px-5"
               >
                 <Link href="/admin/dashboard?tab=pl">Open P&amp;L</Link>
               </Button>
@@ -85,44 +86,44 @@ export default function HomePage({ configuration }: HomePageProps) {
           </div>
 
           <div className="relative">
-            <Card className="rounded-3xl border-none bg-white shadow-xl">
-              <CardContent className="p-8">
-                <div className="grid gap-5">
-                  <div className="flex items-center justify-between rounded-2xl bg-blue-50 p-5">
+            <Card className="rounded-2xl border-slate-200 bg-white shadow-[0_18px_50px_-36px_rgba(15,23,42,0.32)]">
+              <CardContent className="p-4 sm:p-6">
+                <div className="grid gap-3">
+                  <div className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 p-4">
                     <div>
                       <h4 className="font-semibold">Revenue Tracking</h4>
                       <p className="text-sm text-slate-500">
                         Monitor payments &amp; collections
                       </p>
                     </div>
-                    <DollarSign className="text-blue-600" />
+                    <DollarSign className="text-[#1976D2]" />
                   </div>
 
-                  <div className="flex items-center justify-between rounded-2xl bg-indigo-50 p-5">
+                  <div className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 p-4">
                     <div>
                       <h4 className="font-semibold">Profit &amp; Loss</h4>
                       <p className="text-sm text-slate-500">
                         Analyze performance
                       </p>
                     </div>
-                    <BarChart3 className="text-indigo-600" />
+                    <BarChart3 className="text-[#1976D2]" />
                   </div>
 
-                  <div className="flex items-center justify-between rounded-2xl bg-sky-50 p-5">
+                  <div className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 p-4">
                     <div>
                       <h4 className="font-semibold">Billing Management</h4>
                       <p className="text-sm text-slate-500">
                         Organize billing cycles
                       </p>
                     </div>
-                    <FileText className="text-sky-600" />
+                    <FileText className="text-[#1976D2]" />
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            <div className="absolute -top-6 -left-9 flex items-center gap-3 rounded-2xl bg-white px-5 py-4 shadow-lg">
-              <TrendingUp className="text-green-500" />
+            <div className="absolute -top-5 -left-4 hidden items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-md sm:flex lg:-left-7">
+              <TrendingUp className="text-[#1976D2]" />
               <div>
                 <p className="text-sm font-semibold">Smarter Decisions</p>
                 <p className="text-xs text-slate-500">Data-driven insights</p>
@@ -131,7 +132,7 @@ export default function HomePage({ configuration }: HomePageProps) {
           </div>
         </section>
 
-        <section className="mb-24 grid gap-6 md:grid-cols-3">
+        <section className="mt-9 grid gap-4 md:grid-cols-3">
           {[
             {
               icon: IndianRupee,
@@ -148,26 +149,24 @@ export default function HomePage({ configuration }: HomePageProps) {
               title: "Billing Control",
               desc: "Manage billing efficiently.",
             },
-          ].map((item, index) => (
+          ].map((item) => (
             <Card
               key={item.title}
-              className={`rounded-3xl border-none shadow-md transition-all hover:shadow-xl ${
-                index === 1 ? "md:-mt-6" : ""
-              }`}
+              className="rounded-xl border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md"
             >
-              <CardContent className="p-8">
-                <item.icon className="mb-4 h-8 w-8 text-blue-600" />
-                <h3 className="text-xl font-semibold">{item.title}</h3>
-                <p className="mt-2 text-slate-500">{item.desc}</p>
+              <CardContent className="p-5">
+                <item.icon className="mb-3 size-6 text-[#1976D2]" />
+                <h3 className="text-base font-semibold">{item.title}</h3>
+                <p className="mt-1 text-sm text-slate-500">{item.desc}</p>
               </CardContent>
             </Card>
           ))}
         </section>
 
-        <section className="flex flex-col items-center justify-between rounded-[32px] bg-white p-10 shadow-lg md:flex-row">
+        <section className="mt-5 flex flex-col items-start justify-between gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 md:flex-row md:items-center">
           <div>
-            <h3 className="text-3xl font-bold">Ready to manage finances?</h3>
-            <p className="mt-2 text-slate-500">
+            <h3 className="text-xl font-semibold tracking-tight">Ready to manage finances?</h3>
+            <p className="mt-1 text-sm text-slate-500">
               Access your dashboards and insights instantly.
             </p>
           </div>
@@ -175,7 +174,7 @@ export default function HomePage({ configuration }: HomePageProps) {
           <Button
             asChild
             size="lg"
-            className="mt-5 rounded-2xl bg-blue-600 hover:bg-blue-700 md:mt-0"
+            className="h-10 rounded-lg bg-[#1976D2] px-4 text-white hover:bg-[#155EA8] md:mt-0"
           >
             <Link href="/admin/dashboard?tab=pl">
               Get Started
@@ -184,7 +183,7 @@ export default function HomePage({ configuration }: HomePageProps) {
           </Button>
         </section>
 
-        <footer className="mt-12 text-center text-sm text-slate-500">
+        <footer className="mt-8 text-center text-sm text-slate-500">
           Copyright {new Date().getFullYear()} {companyName}. All rights
           reserved.
         </footer>

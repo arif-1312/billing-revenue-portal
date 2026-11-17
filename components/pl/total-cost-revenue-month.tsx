@@ -68,7 +68,7 @@ type BarLabelProps = {
 const chartConfig = {
   value: {
     label: "Cost",
-    color: "hsl(355 78% 58%)",
+    color: "#DC4545",
   },
 } satisfies ChartConfig;
 
@@ -185,7 +185,7 @@ function CustomTooltip({ active, payload }: TooltipProps) {
         <span className="text-xs font-medium uppercase tracking-[0.16em] text-slate-400">
           Cost
         </span>
-        <span className="font-mono text-sm font-semibold text-rose-600">
+        <span className="font-mono text-sm font-semibold text-[#DC4545]">
           {formatCurrency(datum.value)}
         </span>
       </div>
@@ -292,14 +292,14 @@ export function TotalCostChart({
     chartStats.trend === null
       ? "text-slate-400"
       : chartStats.trend >= 0
-        ? "text-rose-600"
-        : "text-emerald-600";
+        ? "text-[#DC4545]"
+        : "text-[#15966A]";
 
   return (
     <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-col gap-4 border-b border-slate-100 px-5 py-5 sm:flex-row sm:items-start sm:justify-between sm:px-6">
         <div className="flex items-start gap-3">
-          <div className="rounded-2xl border border-rose-100 bg-rose-50 p-3 text-rose-600 shadow-sm">
+          <div className="rounded-2xl border border-[#DC4545]/20 bg-[#DC4545]/5 p-3 text-[#DC4545] shadow-sm">
             <BarChart3 className="h-4 w-4" />
           </div>
           <div className="space-y-1">
@@ -310,7 +310,7 @@ export function TotalCostChart({
           </div>
         </div>
 
-        <div className="rounded-2xl border border-rose-100 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
+        <div className="rounded-2xl border border-[#DC4545]/20 bg-[#DC4545]/5 px-3 py-2 text-sm font-medium text-[#B42323]">
           FY {selectedYear}-{String(selectedYear + 1).slice(-2)}
         </div>
       </div>
@@ -397,8 +397,8 @@ export function TotalCostChart({
                 >
                   <defs>
                     <linearGradient id="costGrad" x1="0" y1="0" x2="1" y2="0">
-                      <stop offset="0%" stopColor="#FB7185" />
-                      <stop offset="100%" stopColor="#E11D48" />
+                      <stop offset="0%" stopColor="#F29A9A" />
+                      <stop offset="100%" stopColor="#DC4545" />
                     </linearGradient>
                   </defs>
 
@@ -420,7 +420,7 @@ export function TotalCostChart({
                   />
 
                   <ChartTooltip
-                    cursor={{ fill: "rgba(244, 63, 94, 0.05)", rx: 8 }}
+                    cursor={{ fill: "rgba(220, 69, 69, 0.05)", rx: 8 }}
                     content={<CustomTooltip />}
                   />
 
@@ -442,9 +442,9 @@ export function TotalCostChart({
                         fill = "#E2E8F0";
                         opacity = 0.8;
                       } else if (isActive) {
-                        fill = "#BE123C";
+                        fill = "#B42323";
                       } else if (isHovered) {
-                        fill = "#F43F5E";
+                        fill = "#E56B6B";
                       }
 
                       return (
@@ -476,11 +476,11 @@ export function TotalCostChart({
       </div>
 
       {activeIndex !== null && data[activeIndex] ? (
-        <div className="mx-4 mb-4 flex items-center gap-2 rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm sm:mx-5">
-          <span className="h-2 w-2 shrink-0 rounded-full bg-rose-500" />
+        <div className="mx-4 mb-4 flex items-center gap-2 rounded-2xl border border-[#DC4545]/20 bg-[#DC4545]/5 px-4 py-3 text-sm sm:mx-5">
+          <span className="h-2 w-2 shrink-0 rounded-full bg-[#DC4545]" />
           <span className="text-slate-600">
             Drill-down loaded for{" "}
-            <span className="font-semibold text-rose-700">
+            <span className="font-semibold text-[#B42323]">
               {data[activeIndex].month} {data[activeIndex].year}
             </span>
           </span>

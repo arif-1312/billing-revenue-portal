@@ -27,7 +27,7 @@ export function NavSecondary({
           {items.map((item) => (
             <SidebarMenuItem key={item.title}>
               <SidebarMenuButton asChild>
-                <a href={item.url} className="rounded-xl text-slate-200 hover:text-white">
+                <a href={item.url} className="rounded-xl text-[var(--sidebar-navigation-text)] transition-colors duration-200 hover:bg-[var(--sidebar-hover-background)] hover:text-[var(--sidebar-hover-foreground)]">
                   <item.icon />
                   <span>{item.title}</span>
                 </a>

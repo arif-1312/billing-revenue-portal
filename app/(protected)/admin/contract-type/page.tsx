@@ -27,7 +27,7 @@ const RolesPage = async () => {
       title="Contract Type"
       actions={
         canCreate && (
-          <Button className="bg-blue-500 hover:bg-blue-600">
+          <Button className="bg-[#1976D2] hover:bg-[#155EA8]">
             <Link href="/admin/contract-type/create">Add Contract Type</Link>
           </Button>
         )

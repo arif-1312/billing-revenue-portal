@@ -21,11 +21,11 @@ import {
 const chartConfig = {
   billing: {
     label: "Billing",
-    color: "#3b82f6",
+    color: "#1976D2",
   },
   payment: {
     label: "Payment",
-    color: "#10b981",
+    color: "#15966A",
   },
 }
 
@@ -79,7 +79,7 @@ export function BillingPaymentChart() {
           <Line
             type="monotone"
             dataKey="billing"
-            stroke="#3b82f6"
+            stroke="#1976D2"
             strokeWidth={3}
             dot={false}
           />
@@ -87,7 +87,7 @@ export function BillingPaymentChart() {
           <Line
             type="monotone"
             dataKey="payment"
-            stroke="#10b981"
+            stroke="#15966A"
             strokeWidth={3}
             dot={false}
           />

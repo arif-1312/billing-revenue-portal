@@ -11,17 +11,62 @@ import { cn } from "@/lib/utils";
 import { FyBadge } from "./fy-badge";
 
 const toneClass: Record<TrendTone, string> = {
-  good: "text-[#0E8A6A]",
-  bad: "text-[#C5363C]",
-  neutral: "text-[#667085]",
+  good: "text-[var(--financial-collected)]",
+  bad: "text-[var(--financial-overdue)]",
+  neutral: "text-[var(--kpi-label)]",
 };
+
+type KpiAccent = "billing" | "collected" | "receivables" | "notDue" | "overdue";
+
+const cardTone: Record<KpiAccent, { accent: string; background: string; border: string }> = {
+  billing: {
+    accent: "var(--kpi-billing-accent)",
+    background: "var(--kpi-billing-background)",
+    border: "var(--kpi-billing-border)",
+  },
+  collected: {
+    accent: "var(--kpi-collected-accent)",
+    background: "var(--kpi-collected-background)",
+    border: "var(--border)",
+  },
+  receivables: {
+    accent: "var(--kpi-receivables-accent)",
+    background: "var(--kpi-receivables-background)",
+    border: "var(--border)",
+  },
+  notDue: {
+    accent: "var(--kpi-not-due-accent)",
+    background: "var(--kpi-not-due-background)",
+    border: "var(--border)",
+  },
+  overdue: {
+    accent: "var(--kpi-overdue-accent)",
+    background: "var(--kpi-overdue-background)",
+    border: "var(--border)",
+  },
+};
+
+export type KpiDetailKey =
+  | "plannedBilling"
+  | "billedAmount"
+  | "netBilledAmount"
+  | "creditNoteAmount"
+  | "billingDone"
+  | "billingAchievement"
+  | "totalCollected"
+  | "totalReceivables"
+  | "notYetDue"
+  | "overdueAmount"
+  | "collectionEfficiency";
 
 export function HoverAmount({
   value,
   className,
+  onClick,
 }: {
   value: number;
   className?: string;
+  onClick?: () => void;
 }) {
   const exact = formatInr(value);
   const display = formatInr(value, true);
@@ -31,9 +76,10 @@ export function HoverAmount({
       <TooltipTrigger
         type="button"
         className={cn(
-          "cursor-default border-0 bg-transparent p-0 text-inherit",
+          "pointer-events-auto cursor-pointer border-0 bg-transparent p-0 text-inherit",
           className,
         )}
+        onClick={onClick}
         aria-label={exact}
       >
         {display}
@@ -54,19 +100,23 @@ export function KpiCard({
   value,
   hint,
   mode = "currency",
-  accent,
+  accent = "billing",
   deltaText,
   deltaTone = "neutral",
   unavailable = false,
+  detailKey,
+  onOpenDetails,
 }: {
   label: string;
   value: number;
   hint: string;
   mode?: "currency" | "number" | "percent";
-  accent: string;
+  accent?: KpiAccent;
   deltaText: string;
   deltaTone?: TrendTone;
   unavailable?: boolean;
+  detailKey: KpiDetailKey;
+  onOpenDetails: (key: KpiDetailKey) => void;
 }) {
   const exact =
     mode === "percent"
@@ -81,32 +131,41 @@ export function KpiCard({
         ? formatCount(value)
         : formatInr(value, true);
   const amountLabel = unavailable ? "Unavailable" : exact;
+  const colors = cardTone[accent];
+  const openDetails = () => onOpenDetails(detailKey);
 
   return (
     <article
-      className="flex min-h-[8.5rem] min-w-0 flex-col rounded-md border px-3 py-2.5"
+      className="group relative flex min-h-[8.75rem] min-w-0 flex-col rounded-xl border px-3.5 py-3 transition-[border-color,box-shadow] duration-150 hover:shadow-sm"
       style={{
-        backgroundColor: `color-mix(in srgb, ${accent} 12%, white)`,
-        borderColor: `color-mix(in srgb, ${accent} 38%, white)`,
-        boxShadow: `inset 3px 0 0 ${accent}`,
+        backgroundColor: colors.background,
+        borderColor: colors.border,
+        boxShadow: `inset 3px 0 0 ${colors.accent}, 0 1px 2px rgb(15 23 42 / 0.035)`,
       }}
     >
-      <div className="flex items-start justify-between gap-2">
+      <button
+        type="button"
+        className="absolute inset-0 z-0 cursor-pointer rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--financial-billing)]"
+        aria-label={`View ${label} details`}
+        onClick={openDetails}
+      />
+      <div className="pointer-events-none relative z-10 flex items-start justify-between gap-2">
         <div className="flex min-w-0 flex-1 flex-col">
-          <h2 className="min-h-4 text-[11px] font-medium leading-4 text-[#667085]">
+          <h2 className="min-h-4 text-[11px] font-medium leading-4 text-[var(--kpi-label)]">
             {label}
           </h2>
 
           <div className="mt-1 flex h-6 items-center">
             <FyBadge />
-          </div>l
+          </div>
         </div>
         <Tooltip>
           <TooltipTrigger asChild>
             <button
               type="button"
-              className="rounded-sm text-[#98a2b3] hover:text-[#1F6FB5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1F6FB5]"
+              className="pointer-events-auto rounded-md p-0.5 text-[var(--kpi-label)] hover:bg-slate-50 hover:text-[var(--financial-billing)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--financial-billing)]"
               aria-label={`About ${label}`}
+              onClick={(event) => event.stopPropagation()}
             >
               <Info className="size-3.5" />
             </button>
@@ -119,14 +178,16 @@ export function KpiCard({
           </TooltipContent>
         </Tooltip>
       </div>
+      <div className="pointer-events-none relative z-10">
       {unavailable || mode !== "currency" ? (
-        <p className="mt-1 truncate font-mono text-[22px] leading-7 font-semibold tracking-tight text-[#1c2430] tabular-nums">
+        <p className="mt-1 truncate font-mono text-[23px] leading-7 font-semibold tracking-tight text-[var(--kpi-value)] tabular-nums">
           {unavailable ? "—" : display}
         </p>
       ) : (
         <HoverAmount
           value={value}
-          className="mt-1 block w-full truncate text-left font-mono text-[22px] leading-7 font-semibold tracking-tight text-[#1c2430] tabular-nums"
+          onClick={openDetails}
+          className="mt-1 block w-full truncate text-left font-mono text-[23px] leading-7 font-semibold tracking-tight text-[var(--kpi-value)] tabular-nums"
         />
       )}
       <p
@@ -137,6 +198,7 @@ export function KpiCard({
       >
         {deltaText}
       </p>
+      </div>
     </article>
   );
 }

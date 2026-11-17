@@ -2,9 +2,9 @@ import { efficiencyLabel, efficiencyTone, type StatusTone } from "@/lib/revenue-
 import { cn } from "@/lib/utils";
 
 const toneClass: Record<StatusTone, string> = {
-  bad: "border-rose-200 bg-rose-50 text-rose-800",
-  warn: "border-amber-200 bg-amber-50 text-amber-800",
-  good: "border-emerald-200 bg-emerald-50 text-emerald-800",
+  bad: "border-[#DC4545]/25 bg-[#DC4545]/10 text-[#B42323]",
+  warn: "border-[#E69A23]/30 bg-[#E69A23]/10 text-[#9B620D]",
+  good: "border-[#15966A]/25 bg-[#15966A]/10 text-[#117653]",
 };
 
 export function StatusBadge({

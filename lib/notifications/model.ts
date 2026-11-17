@@ -285,24 +285,34 @@ function agreementStateDrafts(order: PurchaseOrderSnapshot, today: Date) {
   const drafts: NotificationDraft[] = []
   const ending = formatCivil(order.endOn)
 
-  if (order.status === "LIVE" && days < 0) {
-    drafts.push(purchaseOrderDraft(order, {
-      eventType: "PO_EXPIRED",
-      title: "Purchase order expired",
-      body: `${poLabel(order)} for ${partyName(order)} ended on ${ending}.`,
-      priority: "CRITICAL",
-      dedupeKey: `PO_EXPIRED|${order.id}|${order.endOn}`,
-    }))
-  } else if (order.status === "LIVE" && days <= CONTRACT_EXPIRY_SOON_DAYS) {
-    drafts.push(purchaseOrderDraft(order, {
-      eventType: "PO_EXPIRING_SOON",
-      title: "Purchase order expiring soon",
-      body: days === 0
-        ? `${poLabel(order)} for ${partyName(order)} ends today, ${ending}.`
-        : `${poLabel(order)} for ${partyName(order)} ends on ${ending} (in ${dayCount(days)}).`,
-      priority: "HIGH",
-      dedupeKey: `PO_EXPIRING_SOON|${order.id}|${order.endOn}`,
-    }))
+  if (order.status === "LIVE") {
+    const stages = [
+      { days: 30, eventType: "PO_EXPIRY_30_DAYS", title: "Upcoming PO expiry", priority: "NORMAL" as const },
+      { days: 15, eventType: "PO_EXPIRY_15_DAYS", title: "PO expiring soon", priority: "HIGH" as const },
+      { days: 7, eventType: "PO_EXPIRY_7_DAYS", title: "Critical PO expiry", priority: "CRITICAL" as const },
+    ]
+
+    for (const stage of stages) {
+      if (days > stage.days) continue
+      const remaining = days === 0 ? "0 (ends today)" : String(days)
+      drafts.push(purchaseOrderDraft(order, {
+        eventType: stage.eventType,
+        title: stage.title,
+        body: `${poLabel(order)} | Company: ${order.companyName || "—"} | Customer: ${order.customerName || "—"} | Start: ${order.startOn ? formatCivil(order.startOn) : "—"} | End: ${ending} | Remaining days: ${remaining} | PO amount: ${rupees(order.poAmount ?? 0)}.`,
+        priority: stage.priority,
+        dedupeKey: `${stage.eventType}|${order.id}|${order.endOn}`,
+      }))
+    }
+
+    if (days < 0) {
+      drafts.push(purchaseOrderDraft(order, {
+        eventType: "PO_EXPIRY_EXPIRED",
+        title: "Purchase order expired",
+        body: `${poLabel(order)} | Company: ${order.companyName || "—"} | Customer: ${order.customerName || "—"} | Start: ${order.startOn ? formatCivil(order.startOn) : "—"} | End: ${ending} | Remaining days: ${days} | PO amount: ${rupees(order.poAmount ?? 0)}.`,
+        priority: "CRITICAL",
+        dedupeKey: `PO_EXPIRY_EXPIRED|${order.id}|${order.endOn}`,
+      }))
+    }
   }
 
   if (!order.contractId) return drafts

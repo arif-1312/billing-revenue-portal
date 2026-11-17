@@ -14,9 +14,9 @@ export function DataTable({
   className?: string;
 }) {
   return (
-    <div className={cn("max-h-[28rem] max-w-full min-w-0 overflow-auto", className)}>
+    <div className={cn("max-h-[28rem] max-w-full min-w-0 overflow-auto rounded-lg border border-slate-100", className)}>
       <table className="min-w-full border-separate border-spacing-0 text-left text-sm">
-        <thead className="sticky top-0 z-10 bg-[#f7f8fa]">
+        <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur">
           <tr>
             {columns.map((column) => {
               const active = sort?.id === column.id;
@@ -26,7 +26,7 @@ export function DataTable({
                   key={column.id}
                   aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
                   className={cn(
-                    "border-b border-[#e4e8ee] px-3 py-2 text-xs font-semibold text-[#667085]",
+                    "border-b border-[#e4e8ee] px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-[#667085]",
                     column.align === "right" && "text-right",
                   )}
                 >
@@ -57,12 +57,12 @@ export function DataTable({
             </tr>
           ) : (
             rows.map((row, index) => (
-              <tr key={index} className="hover:bg-[#f8fafc]">
+              <tr key={index} className="transition-colors hover:bg-blue-50/40">
                 {row.map((cell, cellIndex) => (
                   <td
                     key={cellIndex}
                     className={cn(
-                      "border-b border-[#f0f2f5] px-3 py-2 text-[#1c2430]",
+                      "border-b border-[#f0f2f5] px-3 py-2.5 text-[#1c2430]",
                       columns[cellIndex]?.align === "right" && "text-right",
                     )}
                   >

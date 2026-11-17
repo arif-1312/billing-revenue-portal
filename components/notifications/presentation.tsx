@@ -38,9 +38,9 @@ const PRIORITY_LABEL: Record<NotificationPriority, string> = {
 }
 
 const PRIORITY_TONE: Record<NotificationPriority, { dot: string; icon: string }> = {
-  CRITICAL: { dot: "bg-rose-600", icon: "bg-rose-50 text-rose-700" },
-  HIGH: { dot: "bg-amber-500", icon: "bg-amber-50 text-amber-800" },
-  NORMAL: { dot: "bg-sky-600", icon: "bg-sky-50 text-sky-800" },
+  CRITICAL: { dot: "bg-[#DC4545]", icon: "bg-[#DC4545]/10 text-[#B42323]" },
+  HIGH: { dot: "bg-[#E69A23]", icon: "bg-[#E69A23]/10 text-[#9B620D]" },
+  NORMAL: { dot: "bg-[#1976D2]", icon: "bg-[#1976D2]/10 text-[#17365D]" },
   LOW: { dot: "bg-slate-300", icon: "bg-slate-100 text-slate-600" },
 }
 
@@ -100,7 +100,7 @@ export function NotificationRow({
       className={cn(
         "grid grid-cols-[auto_minmax(0,1fr)] gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0",
         density === "full" && "sm:px-5 sm:py-4",
-        !item.read && "bg-sky-50/80",
+        !item.read && "bg-[#1976D2]/[0.04]",
       )}
     >
       <div
@@ -158,7 +158,7 @@ export function NotificationRow({
           {item.href ? (
             <Link
               href={item.href}
-              className="text-xs font-semibold text-sky-800 hover:underline"
+              className="text-xs font-semibold text-[#1976D2] hover:underline"
               onClick={() => {
                 if (!item.read) onRead(item.id)
               }}
@@ -171,7 +171,7 @@ export function NotificationRow({
               type="button"
               variant="ghost"
               size="xs"
-              className="h-6 px-1.5 text-xs font-semibold text-sky-800"
+              className="h-6 px-1.5 text-xs font-semibold text-[#1976D2]"
               disabled={pending}
               onClick={() => onRead(item.id)}
             >
@@ -183,7 +183,7 @@ export function NotificationRow({
               type="button"
               variant="ghost"
               size="xs"
-              className="h-6 px-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+              className="h-6 px-1.5 text-xs font-semibold text-[#DC4545] hover:bg-[#DC4545]/10 hover:text-[#B42323]"
               disabled={pending}
               onClick={() => onDelete(item.id)}
             >

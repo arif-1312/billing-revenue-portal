@@ -28,7 +28,7 @@ const ContractDurationPage = async () => {
       title="Contract Duration"
       actions={
         canCreate && (
-          <Button className="bg-blue-500 hover:bg-blue-600">
+          <Button className="bg-[#1976D2] hover:bg-[#155EA8]">
             <Link href="/admin/contract-duration/create">Add Contract Duration</Link>
           </Button>
         )

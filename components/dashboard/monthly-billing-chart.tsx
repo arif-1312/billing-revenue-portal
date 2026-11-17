@@ -136,51 +136,51 @@ const months = [
 const chartConfig = {
   billing: {
     label: "Billing Generated",
-    color: "hsl(24 95% 53%)",
+    color: "#1976D2",
   },
   payment: {
     label: "Payment Received",
-    color: "hsl(160 84% 39%)",
+    color: "#15966A",
   },
 } satisfies ChartConfig;
 
 const seriesMeta: Record<SeriesKey, SeriesMeta> = {
   billing: {
-    activeFill: "#C2410C",
-    cursor: "rgba(249, 115, 22, 0.05)",
+    activeFill: "#155EA8",
+    cursor: "rgba(25, 118, 210, 0.05)",
     detailDescription:
       "Billing-cycle level revenue generated for the selected month.",
     detailTitle: "Billing Generated Detail View",
     emptyHint: "Light bars indicate months with no billing",
     emptyLabel: "No billing data found for this selection.",
-    gradientEnd: "#EA580C",
-    gradientStart: "#FB923C",
-    hoverFill: "#F97316",
+    gradientEnd: "#1976D2",
+    gradientStart: "#9ECBF5",
+    hoverFill: "#3689D8",
     indicatorClassName:
-      "border-orange-100 bg-orange-50 text-orange-700",
-    indicatorDotClassName: "bg-orange-400",
-    indicatorTextClassName: "text-orange-600",
+      "border-[#1976D2]/20 bg-[#1976D2]/5 text-[#17365D]",
+    indicatorDotClassName: "bg-[#1976D2]",
+    indicatorTextClassName: "text-[#1976D2]",
     title: "Monthly Billing Generated",
-    tooltipAccentClass: "text-orange-600",
+    tooltipAccentClass: "text-[#1976D2]",
   },
   payment: {
-    activeFill: "#047857",
-    cursor: "rgba(16, 185, 129, 0.05)",
+    activeFill: "#117653",
+    cursor: "rgba(21, 150, 106, 0.05)",
     detailDescription:
       "Collected payment entries posted in the selected month.",
     detailTitle: "Payment Received Detail View",
     emptyHint:
       "Light bars indicate months with no collections",
     emptyLabel: "No payment data found for this selection.",
-    gradientEnd: "#059669",
-    gradientStart: "#34D399",
-    hoverFill: "#10B981",
+    gradientEnd: "#15966A",
+    gradientStart: "#73C6A8",
+    hoverFill: "#2AA77D",
     indicatorClassName:
-      "border-emerald-100 bg-emerald-50 text-emerald-700",
-    indicatorDotClassName: "bg-emerald-400",
-    indicatorTextClassName: "text-emerald-600",
+      "border-[#15966A]/20 bg-[#15966A]/5 text-[#117653]",
+    indicatorDotClassName: "bg-[#15966A]",
+    indicatorTextClassName: "text-[#15966A]",
     title: "Monthly Payment Received",
-    tooltipAccentClass: "text-emerald-600",
+    tooltipAccentClass: "text-[#15966A]",
   },
 };
 

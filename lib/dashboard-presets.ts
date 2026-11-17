@@ -194,7 +194,12 @@ export function previousPeriod(filters: DashboardFilters): PreviousPeriod | null
   }
 
   if (year - 1 < FIRST_FISCAL_YEAR) return null;
-  return { year: String(year - 1), month: "all", quarter: "all", label: "prior FY" };
+  return {
+    year: String(year - 1),
+    month: "all",
+    quarter: "all",
+    label: `FY ${year - 1}–${String(year).slice(-2)}`,
+  };
 }
 
 export function matchingPreset(filters: DashboardFilters, today: Date): DashboardPreset | null {

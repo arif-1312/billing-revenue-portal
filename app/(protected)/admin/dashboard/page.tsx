@@ -6,6 +6,7 @@ import { getCompanys } from "@/lib/actions/company";
 import { getCustomers } from "@/lib/actions/customer";
 import { canonicalCustomerName } from "@/lib/customer-names";
 import { canonicalCompanyName } from "@/lib/company-names";
+import { getRevenueDashboardFinancialYears } from "@/lib/actions/dashboard";
 import { PLDashboardComponent } from "@/components/pl/pl-dashboard-component";
 import { RevenueDashboard } from "@/components/revenue-dashboard/revenue-dashboard";
 import { getFiscalYear } from "@/lib/fiscal-year";
@@ -29,6 +30,7 @@ export default async function DashboardPage({
   const projects = await getProjects();
   const companies = await getCompanys();
   const customers = await getCustomers();
+  const financialYears = await getRevenueDashboardFinancialYears();
   const customerOptions = customers
     .map((customer) => {
       const fullName = [customer.firstName, customer.lastName]
@@ -57,6 +59,7 @@ export default async function DashboardPage({
       <Suspense fallback={<div className="h-40 animate-pulse rounded-2xl bg-slate-100" />}>
         <RevenueDashboard
           defaultYear={getFiscalYear(new Date())}
+          years={financialYears}
           companies={companies
             .map((company) => ({
               id: company.id,

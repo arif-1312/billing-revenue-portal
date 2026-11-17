@@ -7,6 +7,7 @@ import { formatFilterDate, parseFilterDate, previousPeriod } from "@/lib/dashboa
 import {
   calendarDaysBetween,
   formatKolkataDate,
+  getFiscalYear,
   kolkataCalendar,
   parseKolkataDate,
 } from "@/lib/fiscal-year";
@@ -18,6 +19,7 @@ import {
   GST_RATE,
   type AgingSummary,
   type DashboardFilters,
+  type RevenueRecord,
 } from "@/lib/revenue-metrics";
 import { billedInvoiceAmount, classifyInvoiceReceivable, collectedAmountOf } from "@/lib/invoice-balances";
 import { generateBillingCycleSchedule, resolveBillingPlanInterval } from "@/lib/billing-cycle-utils";
@@ -82,11 +84,15 @@ export type BillingOverviewMetrics = {
   billingAchievement: number | null;
   billingAchievementAbovePlan: boolean;
   gstRate: number;
+  plannedRecords: DashboardKpiDetailRecord[];
 };
 
 export type RevenuePeriodComparison = {
   label: string;
   summary: RevenueDashboardSummary;
+  records: RevenueRecord[];
+  billingOverview: BillingOverviewMetrics | null;
+  creditNotes: CreditNoteDashboardSummary | null;
 };
 
 interface BillingStatusFilters {
@@ -125,6 +131,8 @@ export type CreditNoteDashboardSummary = {
 };
 
 export type BillingInvoiceLine = {
+  id: string;
+  invoiceIdentity: string;
   month: string;
   customerName: string;
   companyName: string;
@@ -137,6 +145,54 @@ export type BillingInvoiceLine = {
   collected: number;
   outstanding: number;
   status: string;
+  invoiceDate: string | null;
+  dueDate: string | null;
+  scheduledDate: string | null;
+  recordDate: string | null;
+  amount: number;
+  gst: number;
+  totalAmount: number;
+  paymentStatus: string;
+  paymentReceived: string;
+  collectedAmount: number;
+  collectedAsOfDate: number;
+  notYetDueAmount: number;
+  overdueAmount: number;
+  undatedOutstanding: number;
+  billingPlan: string;
+  contractDuration: string;
+  payments: Array<{ receivedDate: string; amount: number }>;
+};
+
+export type DashboardKpiDetailRecord = {
+  id: string;
+  source: "planned" | "credit-note";
+  invoiceNumber: string;
+  poNumber: string;
+  companyName: string;
+  customerName: string;
+  invoiceDate: string | null;
+  dueDate: string | null;
+  scheduledDate: string | null;
+  recordDate: string | null;
+  amount: number;
+  gst: number | null;
+  totalAmount: number | null;
+  paymentStatus: string;
+  paymentReceived: string;
+  poStatus: string;
+  scope: string;
+  serviceType: string;
+  billingPlan: string;
+  contractDuration: string;
+  collectedAmount: number;
+  collectedAsOfDate: number;
+  outstanding: number;
+  notYetDueAmount: number;
+  overdueAmount: number;
+  undatedOutstanding: number;
+  payments: Array<{ receivedDate: string; amount: number }>;
+  noteDetails?: string;
 };
 
 function roundMoney(value: number) {
@@ -1129,6 +1185,7 @@ export async function getBillingStatusDetails(
 
   const groupedRecords = new Map<string, GroupedRevenueDetail>();
   const lines: BillingInvoiceLine[] = [];
+  const asOfDate = getSummaryAsOfDate(year, filters);
 
   for (const cycle of cycles) {
     const invoiceDate = getInvoiceDate(cycle);
@@ -1163,6 +1220,7 @@ export async function getBillingStatusDetails(
 
     const billed = billedInvoiceAmount(cycle);
     const collected = getEffectiveCollectedAmount(cycle);
+    const collectedAsOfDate = collectedByReceiptDate(cycle, asOfDate);
     const receivable = classifyInvoiceReceivable(cycle);
     const pendingAmount = receivable.outstanding;
     const overdueBalance = receivable.overdue;
@@ -1189,6 +1247,8 @@ export async function getBillingStatusDetails(
         ? `${configuredDurationMonths} months`
         : cycle.purchaseOrder?.contractDuration?.name || "-";
     lines.push({
+      id: cycle.id,
+      invoiceIdentity: `${cycle.purchaseOrder?.company?.id ?? cycle.purchaseOrder?.customer?.id ?? cycle.purchaseOrderId}|${cycle.invoiceNumber.trim().toUpperCase()}|${cycle.invoiceDate ? formatKolkataDate(cycle.invoiceDate) : ""}`,
       month: MONTHS[financialMonth],
       customerName: getCustomerDisplayName(cycle.purchaseOrder?.customer),
       companyName: cycle.purchaseOrder?.company?.name || "-",
@@ -1201,6 +1261,32 @@ export async function getBillingStatusDetails(
       collected: roundMoney(collected),
       outstanding: roundMoney(pendingAmount + overdueBalance),
       status: cycle.purchaseOrder?.status || "-",
+      invoiceDate: cycle.invoiceDate?.toISOString() ?? null,
+      dueDate: cycle.paymentDueDate?.toISOString() ?? null,
+      scheduledDate: cycle.billingSubmittedDate?.toISOString() ?? null,
+      recordDate: invoiceDate.toISOString(),
+      amount: roundMoney(billed),
+      gst: roundMoney(amountWithGst(billed) - billed),
+      totalAmount: roundMoney(amountWithGst(billed)),
+      paymentStatus: receivable.outstanding + receivable.overdue + receivable.undated <= 0 && billed > 0
+        ? "Paid"
+        : collected > 0
+          ? "Partially paid"
+          : cycle.paymentReceived === PaymentReceived.YES
+            ? "Marked paid"
+            : "Unpaid",
+      paymentReceived: cycle.paymentReceived,
+      collectedAmount: roundMoney(collected),
+      collectedAsOfDate: roundMoney(collectedAsOfDate),
+      notYetDueAmount: roundMoney(receivable.outstanding),
+      overdueAmount: roundMoney(receivable.overdue),
+      undatedOutstanding: roundMoney(receivable.undated),
+      contractDuration,
+      billingPlan: cycle.purchaseOrder?.billingPlan?.name || "-",
+      payments: (cycle.payments ?? []).map((payment) => ({
+        receivedDate: payment.receivedDate.toISOString(),
+        amount: moneyToNumber(payment.amount),
+      })),
     });
     const existing = groupedRecords.get(groupKey);
 
@@ -1541,23 +1627,107 @@ export async function getCreditNoteDashboardSummary(
   };
 }
 
+async function getCreditNoteKpiDetails(
+  query: CreditNoteDashboardQuery,
+): Promise<DashboardKpiDetailRecord[]> {
+  const { year, filters } = dashboardPeriods(query);
+  const { customerKeys, purchaseOrderIds = [] } = await dashboardPartyScope(query);
+  if (customerKeys?.size === 0) return [];
+
+  const [notes, orders] = await Promise.all([
+    prisma.creditNote.findMany({
+      select: { id: true, customerName: true, date: true, vchType: true, vchNo: true, amount: true },
+    }),
+    prisma.purchaseOrder.findMany({
+      where: purchaseOrderIds.length ? { id: { in: purchaseOrderIds } } : undefined,
+      select: {
+        customerPONumber: true,
+        status: true,
+        scope: true,
+        company: { select: { name: true } },
+        customer: { select: { companyName: true, firstName: true, lastName: true, customerCode: true } },
+        ServiceType: { select: { name: true } },
+        billingPlan: { select: { name: true } },
+      },
+    }),
+  ]);
+
+  return notes
+    .filter((note) =>
+      (!customerKeys || customerKeys.has(creditNoteCustomerKey(note.customerName))) &&
+      matchesSelectedFinancialYears(note.date, year, filters) &&
+      isWithinFilterDateRange(note.date, filters) &&
+      matchesFilterMonth(note.date, filters),
+    )
+    .map((note) => {
+      const noteKey = creditNoteCustomerKey(note.customerName);
+      const relatedOrders = orders.filter((order) =>
+        order.customer && creditNoteCustomerKey(getCustomerDisplayName(order.customer)) === noteKey,
+      );
+      const amount = moneyToNumber(note.amount);
+      const companies = [...new Set(relatedOrders.map((order) => order.company?.name).filter(Boolean))];
+      const purchaseOrders = [...new Set(relatedOrders.map((order) => order.customerPONumber?.trim()).filter(Boolean))];
+      return {
+        id: `credit-note-${note.id}`,
+        source: "credit-note" as const,
+        invoiceNumber: "-",
+        poNumber: purchaseOrders.length ? purchaseOrders.join(", ") : "-",
+        companyName: companies.length ? companies.join(", ") : "-",
+        customerName: note.customerName,
+        invoiceDate: null,
+        dueDate: null,
+        scheduledDate: null,
+        recordDate: note.date.toISOString(),
+        amount: roundMoney(amount),
+        gst: null,
+        totalAmount: null,
+        paymentStatus: "Credit note",
+        paymentReceived: "N/A",
+        poStatus: [...new Set(relatedOrders.map((order) => order.status))].join(", ") || "-",
+        scope: [...new Set(relatedOrders.map((order) => order.scope?.trim()).filter(Boolean))].join(", ") || "-",
+        serviceType: [...new Set(relatedOrders.map((order) => order.ServiceType?.name).filter(Boolean))].join(", ") || "-",
+        billingPlan: [...new Set(relatedOrders.map((order) => order.billingPlan?.name).filter(Boolean))].join(", ") || "-",
+        contractDuration: "-",
+        collectedAmount: 0,
+        collectedAsOfDate: 0,
+        outstanding: 0,
+        notYetDueAmount: 0,
+        overdueAmount: 0,
+        undatedOutstanding: 0,
+        payments: [],
+        noteDetails: `${note.vchType} ${note.vchNo} · ${formatKolkataDate(note.date)}`,
+      };
+    });
+}
+
 type BillingOverviewPurchaseOrder = Prisma.PurchaseOrderGetPayload<{
   select: {
     id: true;
+    customerPONumber: true;
+    scope: true;
     status: true;
     poAmount: true;
     startFrom: true;
     endDate: true;
     companyId: true;
     customerId: true;
+    company: { select: { name: true } };
+    customer: { select: { companyName: true; firstName: true; lastName: true; customerCode: true } };
+    ServiceType: { select: { name: true } };
     billingPlan: { select: { name: true; totalBillingCycles: true; billingCycleType: true; status: true } };
     contractDuration: { select: { totalNumberOfMonths: true } };
     billingCycles: {
       select: {
+        id: true;
         invoiceNumber: true;
         invoiceDate: true;
         billingSubmittedDate: true;
         invoiceAmount: true;
+        paymentDueDate: true;
+        paymentReceivedDate: true;
+        paymentReceived: true;
+        collectedAmount: true;
+        payments: { select: { receivedDate: true; amount: true } };
       };
     };
   };
@@ -1653,12 +1823,17 @@ async function getBillingOverviewMetrics(
     where: getPurchaseOrderFilter(filters),
     select: {
       id: true,
+      customerPONumber: true,
+      scope: true,
       status: true,
       poAmount: true,
       startFrom: true,
       endDate: true,
       companyId: true,
       customerId: true,
+      company: { select: { name: true } },
+      customer: { select: { companyName: true, firstName: true, lastName: true, customerCode: true } },
+      ServiceType: { select: { name: true } },
       billingPlan: {
         select: {
           name: true,
@@ -1670,10 +1845,16 @@ async function getBillingOverviewMetrics(
       contractDuration: { select: { totalNumberOfMonths: true } },
       billingCycles: {
         select: {
+          id: true,
           invoiceNumber: true,
           invoiceDate: true,
           billingSubmittedDate: true,
           invoiceAmount: true,
+          paymentDueDate: true,
+          paymentReceivedDate: true,
+          paymentReceived: true,
+          collectedAmount: true,
+          payments: { select: { receivedDate: true, amount: true } },
         },
       },
     },
@@ -1688,6 +1869,64 @@ async function getBillingOverviewMetrics(
   let invoicedWithGst = money(0);
   let invoicesAvailable = true;
   const invoices = new Map<string, string>();
+  const plannedRecords: DashboardKpiDetailRecord[] = [];
+
+  const plannedRecord = (
+    order: BillingOverviewPurchaseOrder,
+    amount: number,
+    scheduledDate: Date,
+    cycle?: BillingOverviewPurchaseOrder["billingCycles"][number],
+  ): DashboardKpiDetailRecord => {
+    const collectedAmount = cycle
+      ? getEffectiveCollectedAmount(cycle)
+      : 0;
+    const invoiceNumber = cycle?.invoiceNumber.trim() || "-";
+    const invoiceAmount = amount;
+    return {
+      id: `planned-${order.id}-${cycle?.id ?? formatKolkataDate(scheduledDate)}`,
+      source: "planned",
+      invoiceNumber,
+      poNumber: order.customerPONumber?.trim() || "-",
+      companyName: order.company?.name || "-",
+      customerName: getCustomerDisplayName(order.customer),
+      invoiceDate: cycle?.invoiceDate?.toISOString() ?? null,
+      dueDate: cycle?.paymentDueDate?.toISOString() ?? null,
+      scheduledDate: scheduledDate.toISOString(),
+      recordDate: scheduledDate.toISOString(),
+      amount: roundMoney(invoiceAmount),
+      gst: roundMoney(amountWithGst(invoiceAmount) - invoiceAmount),
+      totalAmount: roundMoney(amountWithGst(invoiceAmount)),
+      paymentStatus: !cycle || !invoiceNumber || invoiceNumber === "-"
+        ? "Not invoiced"
+        : collectedAmount >= invoiceAmount && invoiceAmount > 0
+          ? "Paid"
+          : collectedAmount > 0
+            ? "Partially paid"
+            : cycle.paymentReceived === PaymentReceived.YES
+              ? "Marked paid"
+              : "Unpaid",
+      paymentReceived: cycle?.paymentReceived ?? PaymentReceived.NO,
+      poStatus: order.status,
+      scope: order.scope?.trim() || "-",
+      serviceType: order.ServiceType?.name || "-",
+      billingPlan: order.billingPlan?.name || "-",
+      contractDuration: order.contractDuration?.totalNumberOfMonths
+        ? `${order.contractDuration.totalNumberOfMonths} months`
+        : "-",
+      collectedAmount: roundMoney(collectedAmount),
+      collectedAsOfDate: cycle
+        ? roundMoney(collectedByReceiptDate(cycle, asOfDate))
+        : 0,
+      outstanding: roundMoney(Math.max(invoiceAmount - collectedAmount, 0)),
+      notYetDueAmount: 0,
+      overdueAmount: 0,
+      undatedOutstanding: 0,
+      payments: (cycle?.payments ?? []).map((payment) => ({
+        receivedDate: payment.receivedDate.toISOString(),
+        amount: moneyToNumber(payment.amount),
+      })),
+    };
+  };
 
   for (const order of orders) {
     const orderOverlaps = poMayMatchPeriod(order, filters);
@@ -1708,7 +1947,10 @@ async function getBillingOverviewMetrics(
 
         if (billingDateMatches(scheduledDate, year, filters)) {
           if (cycle.invoiceAmount == null) plannedAvailable = false;
-          else planned = planned.plus(cycle.invoiceAmount);
+          else {
+            planned = planned.plus(cycle.invoiceAmount);
+            plannedRecords.push(plannedRecord(order, moneyToNumber(cycle.invoiceAmount), scheduledDate, cycle));
+          }
         }
 
         const invoiceNumber = cycle.invoiceNumber.trim();
@@ -1748,7 +1990,9 @@ async function getBillingOverviewMetrics(
       const shares = splitMoney(order.poAmount, derivedSchedule.length);
       derivedSchedule.forEach((cycle, index) => {
         if (billingDateMatches(cycle.scheduledDate, year, filters)) {
-          planned = planned.plus(shares[index] ?? 0);
+          const amount = shares[index] ?? 0;
+          planned = planned.plus(amount);
+          plannedRecords.push(plannedRecord(order, moneyToNumber(amount), cycle.scheduledDate));
         }
         if (order.status === POStatus.LIVE && cycle.scheduledDate > asOfDate &&
             billingDateMatches(cycle.scheduledDate, year, filters)) {
@@ -1783,6 +2027,7 @@ async function getBillingOverviewMetrics(
     billingAchievement,
     billingAchievementAbovePlan: billingAchievement != null && billingAchievement > 100,
     gstRate: GST_RATE,
+    plannedRecords,
   };
 }
 
@@ -1796,6 +2041,7 @@ export async function getRevenueDashboard(query: RevenueDashboardQuery) {
       lines: [],
       monthly: [],
       creditNotes: null,
+      creditNoteRecords: [],
       billingOverview: null,
     };
   }
@@ -1806,7 +2052,25 @@ export async function getRevenueDashboard(query: RevenueDashboardQuery) {
     if (comparisonFilters) comparisonFilters.purchaseOrderIds = filters.purchaseOrderIds;
   }
   const monthlyYears = selectedYears.length > 0 ? selectedYears : [query.monthlyYear];
-  const [summary, billingDetails, monthlySeries, comparisonSummary, creditNotes, billingOverview] = await Promise.all([
+  const comparisonQuery: RevenueDashboardQuery | null = comparisonFilters && comparisonYear != null
+    ? {
+        ...query,
+        year: String(comparisonYear),
+        month: comparisonFilters.month,
+        quarter: comparisonFilters.quarter,
+        startDate: comparisonFilters.startDate
+          ? typeof comparisonFilters.startDate === "string"
+            ? comparisonFilters.startDate
+            : formatFilterDate(comparisonFilters.startDate)
+          : undefined,
+        endDate: comparisonFilters.endDate
+          ? typeof comparisonFilters.endDate === "string"
+            ? comparisonFilters.endDate
+            : formatFilterDate(comparisonFilters.endDate)
+          : undefined,
+      }
+    : null;
+  const [summary, billingDetails, monthlySeries, comparisonSummary, creditNotes, creditNoteRecords, billingOverview, comparisonDetails, comparisonBillingOverview, comparisonCreditNotes] = await Promise.all([
     getRevenueDashboardSummary(year, filters),
     getBillingStatusDetails(year, filters),
     Promise.all(monthlyYears.map((item) => getMonthlyBillingData(item, filters))),
@@ -1814,10 +2078,26 @@ export async function getRevenueDashboard(query: RevenueDashboardQuery) {
       ? getRevenueDashboardSummary(comparisonYear, comparisonFilters)
       : Promise.resolve(null),
     getCreditNoteDashboardSummary(query),
+    getCreditNoteKpiDetails(query),
     getBillingOverviewMetrics(year, filters).catch((error: unknown) => {
       console.error("Billing overview metrics could not be loaded", error);
       return null;
     }),
+    comparisonQuery && comparisonFilters && comparisonYear != null
+      ? getBillingStatusDetails(comparisonYear, comparisonFilters)
+      : Promise.resolve({ records: [], lines: [] }),
+    comparisonQuery && comparisonFilters && comparisonYear != null
+      ? getBillingOverviewMetrics(comparisonYear, comparisonFilters).catch((error: unknown) => {
+          console.error("Comparison billing overview could not be loaded", error);
+          return null;
+        })
+      : Promise.resolve(null),
+    comparisonQuery
+      ? getCreditNoteDashboardSummary(comparisonQuery).catch((error: unknown) => {
+          console.error("Comparison credit notes could not be loaded", error);
+          return null;
+        })
+      : Promise.resolve(null),
   ]);
   const monthly = monthlySeries[0]?.map((point, index) => ({
     month: point.month,
@@ -1830,7 +2110,13 @@ export async function getRevenueDashboard(query: RevenueDashboardQuery) {
 
   const comparison: RevenuePeriodComparison | null =
     earlier && comparisonSummary
-      ? { label: earlier.label, summary: comparisonSummary }
+      ? {
+          label: earlier.label,
+          summary: comparisonSummary,
+          records: comparisonDetails.records,
+          billingOverview: comparisonBillingOverview,
+          creditNotes: comparisonCreditNotes,
+        }
       : null;
 
   return {
@@ -1840,6 +2126,49 @@ export async function getRevenueDashboard(query: RevenueDashboardQuery) {
     lines: billingDetails.lines,
     monthly,
     creditNotes,
+    creditNoteRecords,
     billingOverview,
   };
+}
+
+export async function getRevenueDashboardFinancialYears() {
+  const access = await requirePermission("/admin/dashboard", "view");
+  if (!access.ok) return [getFiscalYear(new Date())];
+
+  const [cycles, purchaseOrders] = await Promise.all([
+    prisma.billingCycle.findMany({
+      select: {
+        billingSubmittedDate: true,
+        invoiceDate: true,
+        paymentDueDate: true,
+        paymentReceivedDate: true,
+        payments: { select: { receivedDate: true } },
+      },
+    }),
+    prisma.purchaseOrder.findMany({
+      select: { startFrom: true, endDate: true },
+    }),
+  ]);
+  const years = new Set([getFiscalYear(new Date())]);
+
+  for (const cycle of cycles) {
+    const dates = [
+      cycle.billingSubmittedDate,
+      cycle.invoiceDate,
+      cycle.paymentDueDate,
+      cycle.paymentReceivedDate,
+      ...cycle.payments.map((payment) => payment.receivedDate),
+    ];
+    for (const date of dates) {
+      if (date && !Number.isNaN(date.getTime())) years.add(getFiscalYear(date));
+    }
+  }
+
+  for (const order of purchaseOrders) {
+    for (const date of [order.startFrom, order.endDate]) {
+      if (date && !Number.isNaN(date.getTime())) years.add(getFiscalYear(date));
+    }
+  }
+
+  return [...years].sort((left, right) => right - left);
 }

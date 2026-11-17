@@ -21,8 +21,10 @@ import {
 import { ChartContainer, type ChartConfig } from "@/components/ui/chart";
 import type { AgingSummary } from "@/lib/revenue-metrics";
 import type {
+  BillingInvoiceLine,
   BillingOverviewMetrics,
   CreditNoteDashboardSummary,
+  DashboardKpiDetailRecord,
 } from "@/lib/actions/dashboard";
 import {
   amountWithGst,
@@ -41,22 +43,22 @@ import {
 import { ChartCard } from "./chart-card";
 import { FyBadge } from "./fy-badge";
 import { DataTable } from "./data-table";
-import { HoverAmount, KpiCard } from "./kpi-card";
+import { HoverAmount, KpiCard, type KpiDetailKey } from "./kpi-card";
 import { StatusBadge } from "./status-badge";
 
 const chartConfig = {
-  billing: { label: "Billed amount without GST", color: "#1F6FB5" },
-  mrr: { label: "MRR", color: "#8E97C9" },
-  payment: { label: "Collected amount without GST", color: "#0E8A6A" },
-  overdue: { label: "Overdue", color: "#C5363C" },
-  pending: { label: "Pending", color: "#C47E09" },
+  billing: { label: "Billed amount without GST", color: "#1976D2" },
+  mrr: { label: "MRR", color: "#1976D2" },
+  payment: { label: "Collected amount without GST", color: "#15966A" },
+  overdue: { label: "Overdue", color: "#DC4545" },
+  pending: { label: "Pending", color: "#E69A23" },
 } satisfies ChartConfig;
 
 const sliceColor: Record<string, string> = {
-  Collected: "#0E8A6A",
-  Pending: "#C47E09",
-  Outstanding: "#C47E09",
-  Overdue: "#C5363C",
+  Collected: "#15966A",
+  Pending: "#E69A23",
+  Outstanding: "#E69A23",
+  Overdue: "#DC4545",
 };
 
 function displayPartyName(name?: string | null) {
@@ -73,7 +75,7 @@ function namedRows(rows: PartyRow[]) {
   }));
 }
 
-const axisTick = { fill: "#667085", fontSize: 11 };
+const axisTick = { fill: "#64748B", fontSize: 11 };
 const tooltipStyle = {
   border: "1px solid #e4e8ee",
   borderRadius: 6,
@@ -106,6 +108,8 @@ export function OverviewView({
   monthly,
   recordRows,
   invoiceLines,
+  creditNoteRecords,
+  onKpiClick,
   loading,
   error,
   focusMonths,
@@ -129,23 +133,13 @@ export function OverviewView({
   dueForBilling: number;
   billingOverview: BillingOverviewMetrics | null;
   overdueNote: string | null;
-  deltas: Record<"billed" | "collected" | "outstanding" | "overdue", Delta>;
+  deltas: Record<"planned" | "billed" | "netBilled" | "collected" | "outstanding" | "overdue" | "efficiency", Delta>;
   slices: Array<{ name: string; value: number }>;
   monthly: MonthPoint[];
   recordRows: RevenueRecord[];
-  invoiceLines: Array<{
-    month: string;
-    customerName: string;
-    companyName: string;
-    invoiceNumber: string;
-    poNumber: string;
-    scope: string;
-    serviceType: string;
-    billed: number;
-    collected: number;
-    outstanding: number;
-    status: string;
-  }>;
+  invoiceLines: BillingInvoiceLine[];
+  creditNoteRecords: DashboardKpiDetailRecord[];
+  onKpiClick: (key: KpiDetailKey) => void;
   loading: boolean;
   error: string | null;
   focusMonths: string[];
@@ -168,6 +162,11 @@ export function OverviewView({
     month: point.month,
     MRR: billedByMonth.get(point.month) ?? 0,
   }));
+  const openCollectionSlice = (name: string) => {
+    if (name === "Collected") onKpiClick("totalCollected");
+    else if (name === "Overdue") onKpiClick("overdueAmount");
+    else onKpiClick("totalReceivables");
+  };
   const monthRows = monthly.map((point) => ({
     month: point.month,
     "Billed amount without GST": point.billing,
@@ -200,7 +199,7 @@ export function OverviewView({
       <section aria-labelledby="billing-overview-heading" className="space-y-2">
         <h2
           id="billing-overview-heading"
-          className="border-l-2 border-[#2563EB] pl-2 text-xs font-semibold tracking-wide text-[#2563EB]"
+          className="border-l-2 border-[#1976D2] pl-2 text-xs font-semibold tracking-wide text-[#1976D2]"
         >
           BILLING OVERVIEW
         </h2>
@@ -209,19 +208,24 @@ export function OverviewView({
           {/* Planned Billing - Blue */}
           <KpiCard
             label="Planned Billing (without GST)"
+            detailKey="plannedBilling"
+            onOpenDetails={onKpiClick}
             value={billingOverview?.plannedBilling ?? 0}
             unavailable={billingOverview?.plannedBilling == null}
             hint="Sum actual billing-cycle schedule amounts dated in the selected FY and filters. When a PO has no cycles, its amount is allocated across derived plan cycles only when the plan frequency, amount, and duration are available. PO GST treatment is not stored; the dashboard treats PO amounts as GST-exclusive."
-            accent="#2563EB"
-            deltaText="PO amount allocated by billing schedule"
+            accent="billing"
+            deltaText={deltas.planned.text}
+            deltaTone={deltas.planned.tone}
           />
 
           {/* Billed Amount - Cyan Blue */}
           <KpiCard
             label="Billed Amount (without GST)"
+            detailKey="billedAmount"
+            onOpenDetails={onKpiClick}
             value={billed}
             hint="Sum of invoice amounts from billing cycles matching the current invoice date, company, customer, status, and cross-filter selection."
-            accent="#0891B2"
+            accent="billing"
             deltaText={deltas.billed.text}
             deltaTone={deltas.billed.tone}
           />
@@ -229,21 +233,25 @@ export function OverviewView({
           {/* Net Billed - Indigo */}
           <KpiCard
             label="Net Billed Amount"
+            detailKey="netBilledAmount"
+            onOpenDetails={onKpiClick}
             value={netBilled}
             unavailable={!netBilledAvailable}
             hint="Existing calculation: invoice amounts before GST minus the credit-note register amount for the selected period. The credit-note table does not record GST treatment."
-            accent="#6366F1"
-            deltaText={deltas.billed.text}
-            deltaTone={deltas.billed.tone}
+            accent="billing"
+            deltaText={deltas.netBilled.text}
+            deltaTone={deltas.netBilled.tone}
           />
 
           {/* Credit Notes - Purple */}
           <KpiCard
             label="Credit Note Amount"
+            detailKey="creditNoteAmount"
+            onOpenDetails={onKpiClick}
             value={creditNotes?.amount ?? 0}
             unavailable={!creditNotes || creditNotesError}
             hint="Credit notes dated in the selected period. Customer names are matched to customer records; company and billing status selections use those customers' purchase orders. Each note is counted once, even when several orders match. The credit note schema has no GST-treatment field; Net Billed keeps the existing subtraction basis."
-            accent="#9333EA"
+            accent="billing"
             deltaText={
               creditNotesError || !creditNotes
                 ? "Comparison unavailable"
@@ -256,21 +264,25 @@ export function OverviewView({
           {/* Billing Done Including GST - Teal */}
           <KpiCard
             label="Billing Done (Including GST)"
+            detailKey="billingDone"
+            onOpenDetails={onKpiClick}
             value={billingOverview?.billingDoneWithGst ?? 0}
             unavailable={billingOverview?.billingDoneWithGst == null}
             hint={`BillingCycle is the existing invoice record: rows with an invoice number and invoice date are counted once per company, invoice number, and date. Invoice amount is treated as GST-exclusive using the existing dashboard ${(1 + (billingOverview?.gstRate ?? 0.18)).toFixed(2)} GST multiplier. The schema has no draft, void, or cancelled-invoice flag.`}
-            accent="#0D9488"
+            accent="billing"
             deltaText="Actual invoices by invoice date"
           />
 
           {/* Billing Achievement - Green */}
           <KpiCard
             label="Billing Achievement"
+            detailKey="billingAchievement"
+            onOpenDetails={onKpiClick}
             value={billingOverview?.billingAchievement ?? 0}
             mode="percent"
             unavailable={billingOverview?.billingAchievement == null}
             hint="Billing Done is normalized to GST-exclusive invoice amounts before comparison with the GST-exclusive PO plan. A result over 100% is retained and flagged as above plan."
-            accent="#16A34A"
+            accent="billing"
             deltaText={
               billingOverview?.billingAchievementAbovePlan
                 ? "Above plan"
@@ -289,52 +301,63 @@ export function OverviewView({
       >
         <h2
           id="collection-overview-heading"
-          className="border-l-2 border-[#0E8A6A] pl-2 text-xs font-semibold tracking-wide text-[#0E8A6A]"
+          className="border-l-2 border-[#15966A] pl-2 text-xs font-semibold tracking-wide text-[#15966A]"
         >
           COLLECTION OVERVIEW
         </h2>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
           <KpiCard
             label="Total Collected (without GST)"
+            detailKey="totalCollected"
+            onOpenDetails={onKpiClick}
             value={collected}
             hint="Sum of payment ledger receipts before GST in the current filters. The with-GST figure adds the existing 18% GST display rate."
-            accent="#0E8A6A"
+            accent="collected"
             deltaText={deltas.collected.text}
             deltaTone={deltas.collected.tone}
           />
           <KpiCard
             label="Total Receivables (without GST)"
+            detailKey="totalReceivables"
+            onOpenDetails={onKpiClick}
             value={outstanding}
             hint="Not yet due plus overdue plus unpaid balances without a due date, using the existing invoice balance calculation."
-            accent="#C47E09"
+            accent="receivables"
             deltaText={deltas.outstanding.text}
             deltaTone={deltas.outstanding.tone}
           />
           <KpiCard
             label="Not Yet Due (without GST)"
+            detailKey="notYetDue"
+            onOpenDetails={onKpiClick}
             value={notYetDue}
             hint="Unpaid invoice balances with a due date that has not passed."
-            accent="#C47E09"
+            accent="notDue"
             deltaText={deltas.outstanding.text}
             deltaTone={deltas.outstanding.tone}
           />
           <KpiCard
             label="Overdue Amount (without GST)"
+            detailKey="overdueAmount"
+            onOpenDetails={onKpiClick}
             value={overdue ?? 0}
             unavailable={overdue == null}
             hint="Invoices with payment received status No whose payment due date is today or earlier."
-            accent="#C5363C"
+            accent="overdue"
             deltaText={deltas.overdue.text}
             deltaTone={deltas.overdue.tone}
           />
           <KpiCard
             label="Collection Efficiency"
+            detailKey="collectionEfficiency"
+            onOpenDetails={onKpiClick}
             value={collectionEfficiency}
             mode="percent"
             unavailable={!collectionEfficiencyAvailable}
             hint="Current-period collections before GST divided by net billed amount before GST."
-            accent="#0E8A6A"
-            deltaText="Current selection"
+            accent="collected"
+            deltaText={deltas.efficiency.text}
+            deltaTone={deltas.efficiency.tone}
           />
         </div>
       </section>
@@ -418,6 +441,8 @@ export function OverviewView({
                 radius={[2, 2, 0, 0]}
                 maxBarSize={22}
                 isAnimationActive={false}
+                cursor="pointer"
+                onClick={(item) => onMonth(String(item.month))}
               />
             </BarChart>
           </ChartContainer>
@@ -460,6 +485,8 @@ export function OverviewView({
                       <Cell
                         key={slice.name}
                         fill={sliceColor[slice.name] ?? "#98A2B3"}
+                        cursor="pointer"
+                        onClick={() => openCollectionSlice(slice.name)}
                       />
                     ))}
                 </Pie>
@@ -503,7 +530,7 @@ export function OverviewView({
           rows={companyRows}
           data={companies}
           dataKey="billed"
-          color="#1F6FB5"
+          color="#1976D2"
           loading={loading}
           error={error}
           onPick={(name) => onCrossFilter({ kind: "company", value: name })}
@@ -515,7 +542,7 @@ export function OverviewView({
           rows={customerRows}
           data={customers}
           dataKey="due"
-          color="#C47E09"
+          color="#E69A23"
           loading={loading}
           error={error}
           onPick={(name) => onCrossFilter({ kind: "customer", value: name })}
@@ -540,7 +567,13 @@ export function OverviewView({
             config={chartConfig}
             className="aspect-auto h-60 w-full"
           >
-            <ComposedChart data={monthRows}>
+            <ComposedChart
+              data={monthRows}
+              onClick={(state) => {
+                if (state?.activeLabel) onMonth(String(state.activeLabel));
+              }}
+              style={{ cursor: "pointer" }}
+            >
               <CartesianGrid vertical={false} stroke="#eef1f4" />
               <XAxis
                 dataKey="month"
@@ -592,11 +625,17 @@ export function OverviewView({
             config={chartConfig}
             className="aspect-auto h-60 w-full"
           >
-            <AreaChart data={mrrRows}>
+            <AreaChart
+              data={mrrRows}
+              onClick={(state) => {
+                if (state?.activeLabel) onMonth(String(state.activeLabel));
+              }}
+              style={{ cursor: "pointer" }}
+            >
               <defs>
                 <linearGradient id={mrrFillId} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#C5CAE8" stopOpacity={0.55} />
-                  <stop offset="100%" stopColor="#C5CAE8" stopOpacity={0.04} />
+                  <stop offset="0%" stopColor="#93C5FD" stopOpacity={0.5} />
+                  <stop offset="100%" stopColor="#93C5FD" stopOpacity={0.04} />
                 </linearGradient>
               </defs>
               <CartesianGrid vertical={false} stroke="#eef1f4" />
@@ -622,7 +661,7 @@ export function OverviewView({
                 dataKey="MRR"
                 name="MRR"
                 type="monotone"
-                stroke="#8E97C9"
+                stroke="#1976D2"
                 strokeWidth={2}
                 fill={`url(#${mrrFillId})`}
                 dot={false}
@@ -691,7 +730,7 @@ export function PartyView({
           }))}
           data={ranked}
           dataKey={purpose === "customer" ? "due" : "billed"}
-          color={purpose === "customer" ? "#C47E09" : "#1F6FB5"}
+          color={purpose === "customer" ? "#E69A23" : "#1976D2"}
           loading={loading}
           error={error}
           onPick={(name) => onCrossFilter({ kind, value: name })}
@@ -753,7 +792,7 @@ export function PartyView({
                 <Bar
                   dataKey="billed"
                   name="Billed amount without GST"
-                  fill="#1F6FB5"
+                  fill="#1976D2"
                   maxBarSize={12}
                   isAnimationActive={false}
                 />
@@ -761,21 +800,21 @@ export function PartyView({
               <Bar
                 dataKey="collected"
                 name="Collected amount without GST"
-                fill="#0E8A6A"
+                fill="#15966A"
                 maxBarSize={12}
                 isAnimationActive={false}
               />
               <Bar
                 dataKey="due"
                 name="Outstanding"
-                fill="#C47E09"
+                fill="#E69A23"
                 maxBarSize={12}
                 isAnimationActive={false}
               />
               <Bar
                 dataKey="pastDue"
                 name="Overdue"
-                fill="#C5363C"
+                fill="#DC4545"
                 maxBarSize={12}
                 isAnimationActive={false}
               />
@@ -783,7 +822,7 @@ export function PartyView({
           </ChartContainer>
         </ChartCard>
       </div>
-      <article className="flex min-h-80 flex-1 flex-col rounded-md border border-[#e4e8ee] bg-white p-3 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+      <article className="flex min-h-80 min-w-0 flex-1 flex-col rounded-xl border border-[#e3e8ef] bg-white p-3.5 shadow-sm sm:p-4">
         <h3 className="mb-2 shrink-0 text-sm font-semibold text-[#1c2430]">
           {title}
         </h3>
@@ -906,7 +945,7 @@ export function AgingView({
                 <Bar
                   dataKey="amount"
                   name="Overdue"
-                  fill="#C5363C"
+                  fill="#DC4545"
                   radius={[2, 2, 0, 0]}
                   maxBarSize={36}
                   isAnimationActive={false}
@@ -914,7 +953,7 @@ export function AgingView({
               </BarChart>
             </ChartContainer>
           </ChartCard>
-          <article className="rounded-md border border-[#e4e8ee] bg-white p-3 text-sm shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+          <article className="rounded-xl border border-[#e3e8ef] bg-white p-3.5 text-sm shadow-sm sm:p-4">
             <h3 className="font-semibold text-[#1c2430]">
               Outside the overdue buckets
             </h3>
@@ -935,7 +974,7 @@ export function AgingView({
           </article>
         </div>
       ) : null}
-      <article className="rounded-md border border-[#e4e8ee] bg-white p-3 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+      <article className="rounded-xl border border-[#e3e8ef] bg-white p-3.5 shadow-sm sm:p-4">
         <h3 className="mb-2 text-sm font-semibold text-[#1c2430]">
           Outstanding records
         </h3>
@@ -1035,14 +1074,14 @@ export function ForecastView({
             <Legend />
             <Bar
               dataKey="Projected"
-              fill="#9EC3E2"
+              fill="#9ECBF5"
               radius={[2, 2, 0, 0]}
               maxBarSize={18}
               isAnimationActive={false}
             />
             <Bar
               dataKey="Billed amount without GST"
-              fill="#1F6FB5"
+              fill="#1976D2"
               radius={[2, 2, 0, 0]}
               maxBarSize={18}
               isAnimationActive={false}
@@ -1161,7 +1200,7 @@ function SecondaryStat({
   hint: string;
 }) {
   return (
-    <article className="flex items-center justify-between gap-3 rounded-md border border-[#e4e8ee] bg-white px-3 py-2">
+    <article className="flex items-center justify-between gap-3 rounded-xl border border-[#e3e8ef] bg-white px-3.5 py-3 shadow-sm">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-1">
           <p className="text-[11px] font-medium text-[#667085]">{label}</p>

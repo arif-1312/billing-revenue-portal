@@ -39,16 +39,16 @@ function isNavActive(url: string | undefined, pathname: string, search: string) 
 }
 
 const primaryButtonClass =
-  "h-11 rounded-xl text-slate-200/95 hover:bg-white/7 hover:text-white active:bg-white/12 active:text-white group-data-[collapsible=icon]:rounded-full"
+  "relative h-10 rounded-[11px] text-[var(--sidebar-navigation-text)] [&>svg]:text-[var(--sidebar-navigation-icon)] transition-colors duration-200 hover:bg-[var(--sidebar-hover-background)] hover:text-[var(--sidebar-hover-foreground)] hover:[&>svg]:text-[var(--sidebar-hover-foreground)] active:bg-[var(--sidebar-hover-background)] active:text-[var(--sidebar-hover-foreground)] group-data-[collapsible=icon]:rounded-[11px]"
 
 const primaryActiveButtonClass =
-  "h-11 rounded-xl bg-gradient-to-r from-sky-500 via-sky-500 to-cyan-500 text-white shadow-[0_14px_36px_-20px_rgba(14,165,233,0.8)] hover:from-sky-500 hover:via-sky-500 hover:to-cyan-500 hover:text-white active:scale-[0.98] group-data-[collapsible=icon]:rounded-full"
+  "relative h-10 rounded-[11px] bg-[var(--sidebar-active-background)] font-semibold text-[var(--sidebar-active-foreground)] [&>svg]:text-[var(--sidebar-active-foreground)] shadow-none before:absolute before:left-0 before:top-1/2 before:h-5 before:w-[3px] before:-translate-y-1/2 before:rounded-r before:bg-[var(--sidebar-active-indicator)] transition-colors duration-200 hover:bg-[var(--sidebar-active-background)] hover:text-[var(--sidebar-active-foreground)] active:bg-[var(--sidebar-active-background)] active:text-[var(--sidebar-active-foreground)] group-data-[collapsible=icon]:rounded-[11px]"
 
 const subMenuButtonClass =
-  "h-10 rounded-xl text-slate-300/95 hover:bg-white/7 hover:text-white active:bg-white/12 active:text-white"
+  "h-9 rounded-lg text-[var(--sidebar-navigation-text)] [&>svg]:text-[var(--sidebar-navigation-icon)] transition-colors duration-200 hover:bg-[var(--sidebar-hover-background)] hover:text-[var(--sidebar-hover-foreground)] active:bg-[var(--sidebar-hover-background)] active:text-[var(--sidebar-hover-foreground)]"
 
 const subMenuActiveButtonClass =
-  "h-10 rounded-xl bg-white/10 text-white shadow-[inset_0_0_0_1px_rgba(125,211,252,0.18)] hover:bg-white/10 hover:text-white"
+  "h-9 rounded-lg bg-[var(--sidebar-active-background)] font-medium text-[var(--sidebar-active-foreground)] [&>svg]:text-[var(--sidebar-active-foreground)] shadow-none transition-colors duration-200 hover:bg-[var(--sidebar-active-background)] hover:text-[var(--sidebar-active-foreground)]"
 
 export function NavMain({
   items,
@@ -59,9 +59,9 @@ export function NavMain({
   const search = useSearchParams().toString()
 
   return (
-    <SidebarGroup>
+    <SidebarGroup className="group-data-[collapsible=icon]:p-0">
       <SidebarGroupContent className="flex flex-col">
-        <SidebarMenu>
+        <SidebarMenu className="gap-1.5">
           {items.map((item) => {
             if (item.items) {
               const isActive = item.items.some(
@@ -81,7 +81,7 @@ export function NavMain({
                         className={
                           isActive
                             ? primaryActiveButtonClass
-                            : `${primaryButtonClass} data-[state=open]:bg-white/7 data-[state=open]:text-white`
+                            : primaryButtonClass
                         }
                       >
                         <div className="flex w-full items-center justify-between px-1 group-data-[collapsible=icon]:justify-center">
@@ -129,7 +129,7 @@ export function NavMain({
                 <SidebarMenuButton
                   asChild
                   tooltip={item.title}
-                    className={
+                  className={
                     isNavActive(item.url, pathname, search)
                       ? primaryActiveButtonClass
                       : primaryButtonClass
@@ -140,7 +140,9 @@ export function NavMain({
                     className="flex w-full items-center gap-2 px-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0"
                   >
                     {item.icon && <item.icon />}
-                    <span>{item.title}</span>
+                    <span className="group-data-[collapsible=icon]:hidden">
+                      {item.title}
+                    </span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

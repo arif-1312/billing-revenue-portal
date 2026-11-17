@@ -24,7 +24,7 @@ export function DashboardTabs({
   onChange: (value: DashboardView) => void;
 }) {
   return (
-    <div role="tablist" aria-label="Management review sections" className="flex w-full min-w-0 gap-1 overflow-x-auto border-b border-[#e4e8ee]">
+    <div role="tablist" aria-label="Management review sections" className="flex w-full min-w-0 gap-1 overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 p-1">
       {DASHBOARD_VIEWS.map((view) => {
         const selected = view.id === value;
         return (
@@ -37,10 +37,10 @@ export function DashboardTabs({
             aria-controls={`panel-${view.id}`}
             tabIndex={selected ? 0 : -1}
             className={cn(
-              "-mb-px border-b-2 px-3 py-2 text-sm whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1F6FB5]",
+              "rounded-md px-3 py-1.5 text-sm whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1F6FB5]",
               selected
-                ? "border-[#1F6FB5] font-semibold text-[#1F6FB5]"
-                : "border-transparent font-medium text-[#667085] hover:text-[#1c2430]",
+                ? "bg-white font-semibold text-[#1F6FB5] shadow-sm ring-1 ring-slate-200/80"
+                : "font-medium text-[#667085] hover:bg-white/80 hover:text-[#1c2430]",
             )}
             onClick={() => onChange(view.id)}
             onKeyDown={(event) => {

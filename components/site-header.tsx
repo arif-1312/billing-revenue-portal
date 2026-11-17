@@ -41,17 +41,17 @@ export function SiteHeader() {
   };
 
   return (
-    <header className="flex h-[var(--header-height)] shrink-0 items-center gap-2 bg-transparent">
-      <div className="flex w-full items-center gap-3 px-4 lg:px-6">
-        <SidebarTrigger className="-ml-1 rounded-xl border border-sky-100 bg-white/90 shadow-sm hover:bg-sky-50" />
+    <header className="flex h-[var(--header-height)] shrink-0 items-center gap-2 bg-white">
+      <div className="flex w-full items-center gap-3 px-3 sm:px-4 lg:px-6">
+        <SidebarTrigger className="rounded-lg border border-slate-200 bg-white shadow-sm hover:bg-slate-50" />
 
         <Separator orientation="vertical" className="h-4" />
 
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-extrabold tracking-[0.18em] text-sky-700">
-            ADMIN PANEL
+          <p className="text-sm font-semibold tracking-tight text-slate-900">
+            Admin panel
           </p>
-          <p className="truncate text-sm text-slate-500">
+          <p className="hidden truncate text-xs text-slate-500 sm:block">
             Manage billing operations, master data, and revenue workflows.
           </p>
         </div>
@@ -61,8 +61,8 @@ export function SiteHeader() {
         {isMounted ? (
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="h-10 rounded-xl border-sky-100 bg-white/90 shadow-sm hover:bg-sky-50">
-                <span>{user?.name || "User"}</span>
+              <Button variant="outline" className="h-9 max-w-44 rounded-lg border-slate-200 bg-white px-2.5 shadow-sm hover:bg-slate-50 sm:px-3">
+                <span className="truncate">{user?.name || "User"}</span>
                 <ChevronDown className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -75,10 +75,10 @@ export function SiteHeader() {
         ) : (
           <Button
             variant="outline"
-            className="h-10 rounded-xl border-sky-100 bg-white/90 shadow-sm hover:bg-sky-50"
+            className="h-9 max-w-44 rounded-lg border-slate-200 bg-white px-2.5 shadow-sm hover:bg-slate-50 sm:px-3"
             type="button"
           >
-            <span>{user?.name || "User"}</span>
+            <span className="truncate">{user?.name || "User"}</span>
             <ChevronDown className="h-4 w-4" />
           </Button>
         )}

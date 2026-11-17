@@ -23,7 +23,7 @@ export function FyBadge({ className }: { className?: string }) {
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center rounded-md border border-[#e4e8ee] bg-[#f8f9fb] px-1.5 py-0.5 text-[10px] font-medium leading-4 text-[#667085]",
+        "inline-flex shrink-0 items-center rounded-md border border-[#DCE7F3] bg-[var(--fy-badge-background)] px-1.5 py-0.5 text-[10px] font-medium leading-4 text-[var(--fy-badge-foreground)]",
         className,
       )}
       title={label}

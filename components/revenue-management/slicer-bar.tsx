@@ -72,8 +72,8 @@ export function SlicerFields({
           : "Financial year is the active period.";
 
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-1.5">
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
         {presets.map(([preset, label]) => (
           <Button
             key={preset}
@@ -82,8 +82,8 @@ export function SlicerFields({
             size="sm"
             aria-pressed={active === preset}
             className={cn(
-              "h-8",
-              active === preset && "border-[#1F6FB5] bg-[#e8f3fb] text-[#1F6FB5] hover:bg-[#e8f3fb]",
+              "h-8 rounded-lg border-slate-200 bg-white px-3 text-xs text-slate-600 shadow-sm hover:bg-slate-50",
+              active === preset && "border-blue-200 bg-blue-50 font-semibold text-blue-700 hover:bg-blue-50",
             )}
             onClick={() => onPreset(preset)}
           >
@@ -95,7 +95,7 @@ export function SlicerFields({
             type="button"
             variant="ghost"
             size="sm"
-            className="ml-auto h-8 text-[#667085]"
+            className="ml-auto h-8 rounded-lg text-[#667085]"
             aria-expanded={!collapsed}
             onClick={onToggle}
           >
@@ -105,7 +105,7 @@ export function SlicerFields({
         ) : null}
       </div>
       {collapsed ? null : (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
           <Field label="Financial Year">
             <MultiSelect
               allLabel="All years"
@@ -161,7 +161,7 @@ export function SlicerFields({
           <DateField label="To Date" value={filters.endDate} onChange={(date) => onChange("endDate", date)} />
         </div>
       )}
-      <p className="text-[11px] text-[#667085]">{periodLabel} Select more than one value in a filter to include all of them. Billing status applies to totals, rankings, and tables.</p>
+      <p className="text-[11px] leading-4 text-[#667085]">{periodLabel} Select more than one value in a filter to include all of them. Billing status applies to totals, rankings, and tables.</p>
     </div>
   );
 }
@@ -222,7 +222,7 @@ function MultiSelect({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button type="button" variant="outline" size="sm" className="w-full justify-between px-2 font-normal">
+        <Button type="button" variant="outline" size="sm" className="h-9 w-full justify-between rounded-lg border-slate-200 bg-white px-2.5 font-normal shadow-sm">
           <span className="truncate">{summary}</span>
           <ChevronDown />
         </Button>
@@ -243,23 +243,32 @@ function MultiSelect({
           <span className="truncate">{allLabel}</span>
         </div>
         <div className="max-h-64 overflow-y-auto">
-          {options.map((option) => (
-            <div
-              key={option.value}
-              role="button"
-              tabIndex={0}
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-[#f3f5f8]"
-              onClick={() => onChange(toggleFilterToken(value, option.value))}
-              onKeyDown={(event) => {
-                if (event.key !== "Enter" && event.key !== " ") return;
-                event.preventDefault();
-                onChange(toggleFilterToken(value, option.value));
-              }}
-            >
-              <Checkbox checked={selected.includes(option.value)} className="pointer-events-none" tabIndex={-1} />
-              <span className="truncate">{option.label}</span>
-            </div>
-          ))}
+          {options.map((option) => {
+            const isSelected = selected.includes(option.value);
+            return (
+              <div
+                key={option.value}
+                role="button"
+                tabIndex={0}
+                aria-pressed={isSelected}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm",
+                  isSelected
+                    ? "bg-[#e8f3fb] font-semibold text-[#1F6FB5]"
+                    : "hover:bg-[#f3f5f8]",
+                )}
+                onClick={() => onChange(toggleFilterToken(value, option.value))}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" && event.key !== " ") return;
+                  event.preventDefault();
+                  onChange(toggleFilterToken(value, option.value));
+                }}
+              >
+                <Checkbox checked={isSelected} className="pointer-events-none" tabIndex={-1} />
+                <span className="truncate">{option.label}</span>
+              </div>
+            );
+          })}
         </div>
       </PopoverContent>
     </Popover>
@@ -288,7 +297,7 @@ function DateField({
     <Field label={label}>
       <Popover>
         <PopoverTrigger asChild>
-          <Button type="button" variant="outline" size="sm" className="w-full justify-start px-2 font-normal">
+      <Button type="button" variant="outline" size="sm" className="h-9 w-full justify-start rounded-lg border-slate-200 bg-white px-2.5 font-normal shadow-sm">
             <CalendarIcon />
             <span className="truncate">{value ? format(value, "dd MMM yyyy") : "Any date"}</span>
           </Button>

@@ -68,7 +68,7 @@ type BarLabelProps = {
 const chartConfig = {
   value: {
     label: "Revenue",
-    color: "hsl(238 84% 63%)",
+    color: "#1976D2",
   },
 } satisfies ChartConfig;
 
@@ -185,7 +185,7 @@ function CustomTooltip({ active, payload }: TooltipProps) {
         <span className="text-xs font-medium uppercase tracking-[0.16em] text-slate-400">
           Revenue
         </span>
-        <span className="font-mono text-sm font-semibold text-indigo-600">
+        <span className="font-mono text-sm font-semibold text-[#1976D2]">
           {formatCurrency(datum.value)}
         </span>
       </div>
@@ -292,14 +292,14 @@ export function TotalBilledChart({
     chartStats.trend === null
       ? "text-slate-400"
       : chartStats.trend >= 0
-        ? "text-emerald-600"
-        : "text-rose-600";
+        ? "text-[#15966A]"
+        : "text-[#DC4545]";
 
   return (
     <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-col gap-4 border-b border-slate-100 px-5 py-5 sm:flex-row sm:items-start sm:justify-between sm:px-6">
         <div className="flex items-start gap-3">
-          <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-3 text-indigo-600 shadow-sm">
+          <div className="rounded-2xl border border-[#1976D2]/20 bg-[#1976D2]/5 p-3 text-[#1976D2] shadow-sm">
             <BarChart3 className="h-4 w-4" />
           </div>
           <div className="space-y-1">
@@ -310,7 +310,7 @@ export function TotalBilledChart({
           </div>
         </div>
 
-        <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700">
+        <div className="rounded-2xl border border-[#1976D2]/20 bg-[#1976D2]/5 px-3 py-2 text-sm font-medium text-[#17365D]">
           FY {selectedYear}-{String(selectedYear + 1).slice(-2)}
         </div>
       </div>
@@ -397,8 +397,8 @@ export function TotalBilledChart({
                 >
                   <defs>
                     <linearGradient id="revenueGrad" x1="0" y1="0" x2="1" y2="0">
-                      <stop offset="0%" stopColor="#7C89FF" />
-                      <stop offset="100%" stopColor="#4F46E5" />
+                      <stop offset="0%" stopColor="#9ECBF5" />
+                      <stop offset="100%" stopColor="#1976D2" />
                     </linearGradient>
                   </defs>
 
@@ -442,9 +442,9 @@ export function TotalBilledChart({
                         fill = "#E2E8F0";
                         opacity = 0.8;
                       } else if (isActive) {
-                        fill = "#3730A3";
+                        fill = "#155EA8";
                       } else if (isHovered) {
-                        fill = "#6366F1";
+                        fill = "#3689D8";
                       }
 
                       return (
@@ -476,11 +476,11 @@ export function TotalBilledChart({
       </div>
 
       {activeIndex !== null && data[activeIndex] ? (
-        <div className="mx-4 mb-4 flex items-center gap-2 rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm sm:mx-5">
-          <span className="h-2 w-2 shrink-0 rounded-full bg-indigo-500" />
+        <div className="mx-4 mb-4 flex items-center gap-2 rounded-2xl border border-[#1976D2]/20 bg-[#1976D2]/5 px-4 py-3 text-sm sm:mx-5">
+          <span className="h-2 w-2 shrink-0 rounded-full bg-[#1976D2]" />
           <span className="text-slate-600">
             Drill-down loaded for{" "}
-            <span className="font-semibold text-indigo-700">
+            <span className="font-semibold text-[#17365D]">
               {data[activeIndex].month} {data[activeIndex].year}
             </span>
           </span>

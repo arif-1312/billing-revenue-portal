@@ -146,17 +146,55 @@ export async function persistDrafts(drafts: NotificationDraft[]) {
   )
 }
 
-export async function syncStateNotificationsIfDue() {
+export async function syncStateNotificationsIfDue(force = false) {
   const now = Date.now()
-  if (now - lastStateSyncAt < STATE_SYNC_INTERVAL_MS) return
+  if (!force && now - lastStateSyncAt < STATE_SYNC_INTERVAL_MS) return
   lastStateSyncAt = now
 
   try {
     const orders = await loadPurchaseOrderSnapshots(prisma)
-    await persistDrafts(orders.flatMap((order) => stateNotificationDrafts(order)))
+    const drafts = orders.flatMap((order) => stateNotificationDrafts(order))
+    await persistDrafts(drafts)
+    await retireStalePurchaseOrderExpiryNotifications(orders)
   } catch (error) {
     lastStateSyncAt = 0
     throw error
+  }
+}
+
+async function retireStalePurchaseOrderExpiryNotifications(
+  orders: PurchaseOrderSnapshot[],
+) {
+  if (orders.length === 0) return
+
+  const byId = new Map(orders.map((order) => [order.id, order]))
+  const notifications = await prisma.notification.findMany({
+    where: {
+      entityType: "PurchaseOrder",
+      entityId: { in: orders.map((order) => order.id) },
+      OR: [
+        { eventType: { startsWith: "PO_EXPIRY_" } },
+        { eventType: { in: ["PO_EXPIRING_SOON", "PO_EXPIRED"] } },
+      ],
+    },
+    select: { id: true, entityId: true, eventType: true, dedupeKey: true },
+  })
+
+  const staleIds = notifications.flatMap((notification) => {
+    const order = byId.get(notification.entityId)
+    const isCurrent =
+      notification.eventType.startsWith("PO_EXPIRY_") &&
+      order?.status === "LIVE" &&
+      order.endOn != null &&
+      notification.dedupeKey.endsWith(`|${order.endOn}`)
+    return isCurrent ? [] : [notification.id]
+  })
+
+  if (staleIds.length > 0) {
+    await prisma.notificationReceipt.updateMany({
+      where: { notificationId: { in: staleIds }, deletedAt: null },
+      data: { deletedAt: new Date() },
+    })
   }
 }
 

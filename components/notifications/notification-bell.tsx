@@ -122,12 +122,12 @@ export function NotificationBell() {
           variant="outline"
           size="icon"
           className={cn(
-            "relative h-10 w-10 shrink-0 rounded-xl border-sky-100 bg-white/90 shadow-sm hover:bg-sky-50",
-            badge && "ring-2 ring-sky-200",
+            "relative h-9 w-9 shrink-0 rounded-lg border-slate-200 bg-white shadow-sm hover:bg-slate-50",
+            badge && "ring-2 ring-blue-100",
           )}
           aria-label={badge ? `Notifications, ${unreadCount} unread` : "Notifications"}
         >
-          <Bell className="h-4 w-4 text-sky-800" />
+          <Bell className="h-4 w-4 text-slate-700" />
           {badge ? (
             <span className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-semibold text-white">
               {badge}
@@ -139,7 +139,7 @@ export function NotificationBell() {
         align="end"
         sideOffset={8}
         collisionPadding={12}
-        className="w-[min(calc(100vw-1.5rem),26.5rem)] rounded-xl border-sky-100 p-0 shadow-lg"
+        className="w-[min(calc(100vw-1.5rem),26.5rem)] rounded-xl border-slate-200 p-0 shadow-xl shadow-slate-900/10"
       >
         <div className="flex items-start justify-between gap-3 px-4 py-3">
           <div>
@@ -150,7 +150,7 @@ export function NotificationBell() {
           </div>
           <button
             type="button"
-            className="text-xs font-semibold text-sky-800 disabled:opacity-40"
+            className="text-xs font-semibold text-blue-700 disabled:opacity-40"
             disabled={!unreadCount}
             onClick={() => void onReadAll()}
           >
@@ -168,7 +168,7 @@ export function NotificationBell() {
               className={cn(
                 "rounded-md px-2.5 py-1 text-xs font-semibold capitalize",
                 scope === item
-                  ? "bg-sky-50 text-sky-900"
+                  ? "bg-blue-50 text-blue-800"
                   : "text-slate-500 hover:bg-slate-50",
               )}
               onClick={() => {
@@ -183,7 +183,7 @@ export function NotificationBell() {
           ))}
         </div>
 
-        <div className="max-h-[min(24rem,calc(100svh-12rem))] overflow-y-auto border-t border-sky-100">
+        <div className="max-h-[min(24rem,calc(100svh-12rem))] overflow-y-auto border-t border-slate-100">
           {showSkeleton ? <PreviewSkeleton /> : null}
           {status === "error" ? (
             <div className="px-4 py-8 text-center">
@@ -225,7 +225,7 @@ export function NotificationBell() {
 
         <Link
           href="/admin/notifications"
-          className="block border-t border-sky-100 px-4 py-3 text-center text-sm font-semibold text-sky-800 hover:bg-sky-50"
+          className="block border-t border-slate-100 px-4 py-3 text-center text-sm font-semibold text-blue-700 hover:bg-blue-50"
           onClick={() => setOpen(false)}
         >
           View all
