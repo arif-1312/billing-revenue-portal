@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Download } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import type { BillingInvoiceLine, DashboardKpiDetailRecord } from "@/lib/actions/dashboard";
-import { formatInr } from "@/lib/revenue-metrics";
+import { downloadCsv, formatInr } from "@/lib/revenue-metrics";
 
 import type { KpiDetailKey } from "./kpi-card";
 
@@ -27,6 +28,8 @@ const titles: Record<KpiDetailKey, string> = {
   notYetDue: "Not Yet Due",
   overdueAmount: "Overdue Amount",
   collectionEfficiency: "Collection Efficiency",
+  overdueInvoiceCount: "Overdue Invoice Count",
+  pendingCollection: "Pending Collection",
 };
 
 function invoiceRows(lines: BillingInvoiceLine[]): DetailRow[] {
@@ -83,6 +86,26 @@ function rowsForKpi(
       return invoices.filter((row) => row.notYetDueAmount > 0);
     case "overdueAmount":
       return invoices.filter((row) => row.overdueAmount > 0);
+    case "overdueInvoiceCount": {
+      const toKolkataDate = (value: string) => {
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return "";
+        return new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Asia/Kolkata",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(date);
+      };
+      const today = toKolkataDate(new Date().toISOString());
+      return actualInvoices.filter((row) => {
+        const dueDate = row.dueDate ? toKolkataDate(row.dueDate) : "";
+        return dueDate !== "" && dueDate < today &&
+          row.notYetDueAmount + row.overdueAmount + row.undatedOutstanding > 0;
+      });
+    }
+    case "pendingCollection":
+      return invoices.filter((row) => row.notYetDueAmount + row.undatedOutstanding > 0);
     case "collectionEfficiency":
       return [...invoices, ...creditNotes.map((row) => ({ ...row, source: "credit-note" as const }))];
   }
@@ -100,6 +123,7 @@ function formatDate(value: string | null | undefined) {
 }
 
 function formatMetricValue(key: KpiDetailKey, value: number) {
+  if (key === "overdueInvoiceCount") return value.toLocaleString("en-IN");
   return key === "billingAchievement" || key === "collectionEfficiency"
     ? `${value.toFixed(2)}%`
     : formatInr(value);
@@ -114,6 +138,7 @@ function amountForKpi(row: DetailRow, key: KpiDetailKey, collectionUsesFilteredR
   }
   if (key === "notYetDue") return row.notYetDueAmount;
   if (key === "overdueAmount") return row.overdueAmount;
+  if (key === "pendingCollection") return row.notYetDueAmount + row.undatedOutstanding;
   if ((key === "netBilledAmount" || key === "collectionEfficiency") && row.source === "credit-note") {
     return -row.amount;
   }
@@ -176,6 +201,8 @@ export function KpiDetailsDialog({
   const [selectedRecord, setSelectedRecord] = useState<DetailRow | null>(null);
 
   useEffect(() => {
+    // Reset filters whenever the selected KPI opens a new record context.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSearch("");
     setCompany("all");
     setCustomer("all");
@@ -265,6 +292,22 @@ export function KpiDetailsDialog({
       row.paymentStatus,
     ];
   };
+  const exportRows = sortedRows.map((row) => {
+    const values = amountCells(row, metric!, collectionUsesFilteredRows);
+    return {
+      "Record Type": row.source,
+      "Invoice Number": row.invoiceNumber,
+      "PO Number": row.poNumber,
+      "Company Name": row.companyName,
+      "Customer Name": row.customerName,
+      "Invoice Date": row.invoiceDate ?? "",
+      "Due Date": row.dueDate ?? "",
+      Amount: values.amount,
+      GST: values.gst ?? "Not stored",
+      "Total Amount": values.total ?? "Not stored",
+      "Payment Status": row.paymentStatus,
+    };
+  });
 
   return (
     <>
@@ -302,6 +345,26 @@ export function KpiDetailsDialog({
               <Input type="date" aria-label="From record date" value={fromDate} onChange={(event) => { setFromDate(event.target.value); resetPage(); }} />
               <Input type="date" aria-label="To record date" value={toDate} onChange={(event) => { setToDate(event.target.value); resetPage(); }} />
             </div>
+          </div>
+
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!exportRows.length || !metric}
+              onClick={() => {
+                if (metric) {
+                  downloadCsv(
+                    `${titles[metric].toLowerCase().replaceAll(/[^a-z0-9]+/g, "-")}-details.csv`,
+                    exportRows,
+                  );
+                }
+              }}
+            >
+              <Download />
+              Export CSV
+            </Button>
           </div>
 
           <div className="max-w-full overflow-auto rounded-md border">

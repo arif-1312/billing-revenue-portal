@@ -1,15 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { Table2 } from "lucide-react";
+import { Download, Table2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
 import { FyBadge } from "./fy-badge";
+import { downloadCsv } from "@/lib/revenue-metrics";
 
 export function ChartCard({
   title,
   description,
+  filename,
   rows,
   children,
   loading,
@@ -43,6 +45,16 @@ export function ChartCard({
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {extra}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Export ${title} as CSV`}
+            disabled={!rows.length}
+            onClick={() => downloadCsv(filename ?? `${title.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-")}.csv`, rows)}
+          >
+            <Download />
+          </Button>
           <Button
             type="button"
             variant="ghost"

@@ -57,7 +57,9 @@ export type KpiDetailKey =
   | "totalReceivables"
   | "notYetDue"
   | "overdueAmount"
-  | "collectionEfficiency";
+  | "collectionEfficiency"
+  | "overdueInvoiceCount"
+  | "pendingCollection";
 
 export function HoverAmount({
   value,

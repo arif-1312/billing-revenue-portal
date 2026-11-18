@@ -14,7 +14,6 @@ import {
   applyRecordFilters,
   efficiencyOf,
   filterTokens,
-  formatInr,
   formatPercent,
   percentDelta,
   toggleFilterToken,
@@ -51,6 +50,17 @@ function focusMonthLabels(month: string, quarter: string) {
   let indexes = selectedMonths.length > 0 ? selectedMonths : months.map((_, index) => index);
   if (quarterMonths.length > 0) indexes = indexes.filter((index) => quarterMonths.includes(index));
   return indexes.map((index) => months[index]).filter((label) => label);
+}
+
+function dateInKolkata(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
 }
 
 function financialYearLabel(year: string) {
@@ -170,6 +180,21 @@ export function ManagementReport({
   const outstanding = notYetDue + totals.pastDue + totals.undated;
   const overdue = totals.pastDue;
   const collectionEfficiency = efficiencyOf(collected, netBilled);
+  const today = dateInKolkata(new Date().toISOString());
+  const overdueInvoices = new Map<string, { dueDate: string; outstanding: number }>();
+  for (const line of visibleLines) {
+    if (!line.invoiceNumber || line.invoiceNumber === "-" || !line.invoiceDate || !line.dueDate) continue;
+    const identity = line.invoiceIdentity || `${line.companyName}|${line.invoiceNumber}|${line.invoiceDate}`;
+    const current = overdueInvoices.get(identity) ?? { dueDate: dateInKolkata(line.dueDate), outstanding: 0 };
+    current.dueDate = current.dueDate && dateInKolkata(line.dueDate)
+      ? (current.dueDate < dateInKolkata(line.dueDate) ? current.dueDate : dateInKolkata(line.dueDate))
+      : current.dueDate || dateInKolkata(line.dueDate);
+    current.outstanding += line.notYetDueAmount + line.overdueAmount + line.undatedOutstanding;
+    overdueInvoices.set(identity, current);
+  }
+  const overdueInvoiceCount = [...overdueInvoices.values()].filter((invoice) =>
+    invoice.dueDate < today && invoice.outstanding > 0,
+  ).length;
   const kpiValues: Record<KpiDetailKey, number> = {
     plannedBilling: billingOverview?.plannedBilling ?? 0,
     billedAmount: billedGross,
@@ -182,6 +207,8 @@ export function ManagementReport({
     notYetDue,
     overdueAmount: overdue ?? 0,
     collectionEfficiency,
+    overdueInvoiceCount,
+    pendingCollection: Math.max(outstanding - (overdue ?? 0), 0),
   };
   const kpiUnavailable = selectedKpi === "plannedBilling"
     ? billingOverview?.plannedBilling == null
@@ -204,13 +231,14 @@ export function ManagementReport({
   const slices = overdue == null
     ? [
         { name: "Collected", value: collected },
-        { name: "Outstanding", value: outstanding },
+        { name: "Pending", value: outstanding },
       ]
     : [
         { name: "Collected", value: Math.max(collected, 0) },
-        { name: "Outstanding", value: Math.max(outstanding, 0) },
+        { name: "Pending", value: Math.max(outstanding - overdue, 0) },
         { name: "Overdue", value: Math.max(overdue, 0) },
       ];
+  const collectionStatusTotal = slices.reduce((total, slice) => total + slice.value, 0);
   const previous = comparison;
   const comparisonLabel = previous?.label ?? null;
   const comparisonRecords = previous
@@ -237,6 +265,24 @@ export function ManagementReport({
       "higher-is-better",
     ),
     billed: moneyDelta(billedGross, previous ? comparisonBilled : null, comparisonLabel, "higher-is-better"),
+    billingDone: moneyDelta(
+      billingOverview?.billingDoneWithGst ?? 0,
+      previous?.billingOverview?.billingDoneWithGst ?? null,
+      comparisonLabel,
+      "higher-is-better",
+    ),
+    billingAchievement: moneyDelta(
+      billingOverview?.billingAchievement ?? 0,
+      previous?.billingOverview?.billingAchievement ?? null,
+      comparisonLabel,
+      "higher-is-better",
+    ),
+    creditNotes: moneyDelta(
+      creditNotes?.amount ?? 0,
+      previous?.creditNotes?.amount ?? null,
+      comparisonLabel,
+      "lower-is-better",
+    ),
     netBilled: moneyDelta(netBilled, comparisonNetBilled, comparisonLabel, "higher-is-better"),
     collected: moneyDelta(collected, previous ? comparisonCollected : null, comparisonLabel, "higher-is-better"),
     outstanding: moneyDelta(
@@ -245,14 +291,12 @@ export function ManagementReport({
       comparisonLabel,
       "lower-is-better",
     ),
+    notYetDue: moneyDelta(notYetDue, previous ? comparisonTotals.due : null, comparisonLabel, "lower-is-better"),
     overdue: previous
       ? moneyDelta(overdue ?? 0, comparisonTotals.pastDue, comparisonLabel, "lower-is-better")
       : { text: "Comparison unavailable", tone: "neutral" as const },
     efficiency: moneyDelta(collectionEfficiency, comparisonEfficiency, comparisonLabel, "higher-is-better"),
   };
-  const overdueNote = totals.undated > 0
-    ? `${formatInr(totals.undated, true)} unpaid balance has no due date.`
-      : null;
   const statuses = [...new Set(records.map((record) => record.status || "Unknown"))].sort();
   const fyLabel = financialYearLabel(filters.year);
   const currentYear = String(getFiscalYear(new Date()));
@@ -323,7 +367,7 @@ export function ManagementReport({
         <header className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-xl font-semibold tracking-tight text-[#1c2430]">Billing &amp; revenue overview</h1>
+              <h1 className="text-xl font-semibold tracking-tight text-[#17365D]">Management Dashboard</h1>
               <span className="rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-[#1F6FB5]">
                 {fyLabel}
               </span>
@@ -391,22 +435,22 @@ export function ManagementReport({
       notYetDue={notYetDue}
               overdue={overdue}
       collectionEfficiency={collectionEfficiency}
+              overdueInvoiceCount={overdueInvoiceCount}
       collectionEfficiencyAvailable={netBilled > 0 && Boolean(creditNotes) && !error}
       netBilledAvailable={Boolean(creditNotes) && !error}
               creditNotes={creditNotes}
-              creditNotesLoading={loading}
+              creditNoteRecords={creditNoteRecords}
               creditNotesError={Boolean(error)}
               partial={partial}
               projected={summary.totalRevenueProjected}
               dueForBilling={summary.dueForBillingTillNow}
               billingOverview={billingOverview}
-              overdueNote={overdueNote}
               deltas={deltas}
               slices={slices}
+              collectionStatusTotal={collectionStatusTotal}
               monthly={monthly}
               recordRows={filtered}
               invoiceLines={visibleLines}
-              creditNoteRecords={creditNoteRecords}
               onKpiClick={setSelectedKpi}
               loading={loading}
               error={error}
