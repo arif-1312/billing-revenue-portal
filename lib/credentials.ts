@@ -1,4 +1,5 @@
 import bcrypt from "bcrypt"
+import { randomBytes } from "node:crypto"
 
 import { prisma } from "@/lib/prisma"
 import {
@@ -8,8 +9,6 @@ import {
 } from "@/lib/login-rate-limit"
 import { recordSecurityEvent } from "@/lib/security-event"
 import { passwordFingerprint } from "@/lib/password"
-import { claimActiveLogin } from "@/lib/active-login"
-import { AccountAlreadySignedIn } from "@/lib/login-errors"
 
 type Credentials = {
   username?: unknown
@@ -66,16 +65,8 @@ export async function authorizeCredentials(
 
   await clearSharedLoginFailures(username, ip)
   const credentialVersion = passwordFingerprint(user.password)
-  const sessionId = await claimActiveLogin(user.id, credentialVersion)
-  if (!sessionId) {
-    await recordSecurityEvent({
-      event: "LOGIN_FAILURE",
-      username: user.username,
-      userId: user.id,
-      result: "failure",
-    })
-    throw new AccountAlreadySignedIn()
-  }
+  // Each login has its own identifier; concurrent devices are allowed.
+  const sessionId = randomBytes(32).toString("hex")
 
   await recordSecurityEvent({
     event: "LOGIN_SUCCESS",

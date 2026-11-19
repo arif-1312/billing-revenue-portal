@@ -190,16 +190,17 @@ describe("credential authorization", () => {
     }
   });
 
-  it("rejects a second device only after validating its password", async () => {
+  it("allows separate sessions after validating the password", async () => {
     findFirst.mockResolvedValue({
       id: userId, username: "ada", status: "ACTIVE",
       password: await bcrypt.hash(password, 4), role: { name: "Finance" },
     });
-    claimActiveLogin.mockResolvedValue(null);
     expect(await authorizeCredentials({ username: "ada", password: "wrong-password" }, "")).toBeNull();
+    const first = await authorizeCredentials({ username: "ada", password }, "");
+    const second = await authorizeCredentials({ username: "ada", password }, "");
+    expect(first?.sessionId).toBeTruthy();
+    expect(second?.sessionId).toBeTruthy();
+    expect(first?.sessionId).not.toBe(second?.sessionId);
     expect(claimActiveLogin).not.toHaveBeenCalled();
-    await expect(authorizeCredentials({ username: "ada", password }, "")).rejects.toMatchObject({
-      code: "account_already_signed_in",
-    });
   });
 });

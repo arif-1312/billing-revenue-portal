@@ -27,10 +27,23 @@ export default async function DashboardPage({
   const activeTab = Array.isArray(resolvedSearchParams.tab)
     ? resolvedSearchParams.tab[0]
     : resolvedSearchParams.tab;
-  const projects = await getProjects();
+  const currentTab = activeTab === "revenue" ? "revenue" : "pl";
   const companies = await getCompanys();
-  const customers = await getCustomers();
-  const financialYears = await getRevenueDashboardFinancialYears();
+
+  if (currentTab === "pl") {
+    const projects = await getProjects();
+    return (
+      <PLDashboardComponent
+        companies={JSON.parse(JSON.stringify(companies))}
+        projects={JSON.parse(JSON.stringify(projects))}
+      />
+    );
+  }
+
+  const [customers, financialYears] = await Promise.all([
+    getCustomers(),
+    getRevenueDashboardFinancialYears(),
+  ]);
   const customerOptions = customers
     .map((customer) => {
       const fullName = [customer.firstName, customer.lastName]
@@ -51,11 +64,7 @@ export default async function DashboardPage({
     .filter((customer) => customer.name)
     .sort((left, right) => left.name.localeCompare(right.name));
 
-  const currentTab =
-    activeTab === "revenue" ? "revenue" : "pl";
-
-  if (currentTab === "revenue") {
-    return (
+  return (
       <Suspense fallback={<div className="h-40 animate-pulse rounded-2xl bg-slate-100" />}>
         <RevenueDashboard
           defaultYear={getFiscalYear(new Date())}
@@ -69,13 +78,5 @@ export default async function DashboardPage({
           customers={JSON.parse(JSON.stringify(customerOptions))}
         />
       </Suspense>
-    );
-  }
-
-  return (
-    <PLDashboardComponent
-      companies={JSON.parse(JSON.stringify(companies))}
-      projects={JSON.parse(JSON.stringify(projects))}
-    />
   );
 }

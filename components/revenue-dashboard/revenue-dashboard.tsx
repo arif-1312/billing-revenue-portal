@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { ManagementReport } from "@/components/revenue-management/management-report";
@@ -72,7 +72,6 @@ export function RevenueDashboard({
   const report = useQuery({
     queryKey: ["revenue-dashboard", payload],
     queryFn: () => getRevenueDashboard(payload),
-    placeholderData: keepPreviousData,
     staleTime: 0,
   });
 

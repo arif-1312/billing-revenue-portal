@@ -24,7 +24,7 @@ describe("session configuration", () => {
     const source = readFileSync(path.join(process.cwd(), "auth.ts"), "utf8");
 
     expect(source).toContain("maxAge: TWELVE_HOURS");
-    expect(source).toContain("token.role = user.role");
+    expect(source).toContain("token.role = text(user.role)");
     expect(source).toContain("httpOnly: true");
     expect(source).toContain("sameSite: \"lax\"");
     expect(source).not.toContain("prisma.user.update");

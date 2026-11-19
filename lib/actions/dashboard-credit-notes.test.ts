@@ -126,6 +126,14 @@ describe("projected revenue after credit notes", () => {
 });
 
 describe("dashboard credit note summary", () => {
+  it("rejects an unauthorized dashboard request before reading data", async () => {
+    requirePermission.mockResolvedValue({ ok: false, message: "Unauthorized" });
+    await expect(getRevenueDashboard(query)).rejects.toThrow("Unauthorized");
+    expect(findNotes).not.toHaveBeenCalled();
+    expect(findCycles).not.toHaveBeenCalled();
+    expect(findPurchaseOrders).not.toHaveBeenCalled();
+  });
+
   it("requires dashboard permission before reading financial data", async () => {
     requirePermission.mockResolvedValue({ ok: false, message: "Unauthorized" });
     await expect(getCreditNoteDashboardSummary(query)).rejects.toThrow("Unauthorized");
@@ -138,7 +146,7 @@ describe("dashboard credit note summary", () => {
     await expect(getCreditNoteDashboardSummary(query)).resolves.toEqual({
       amount: 1000,
       count: 4,
-      comparison: { amount: 110, count: 2, label: "prior FY" },
+      comparison: { amount: 110, count: 2, label: "FY 2024–25" },
     });
     expect(findNotes).toHaveBeenCalledWith({
       where: { OR: [
@@ -194,7 +202,7 @@ describe("dashboard credit note summary", () => {
     expect(await getCreditNoteDashboardSummary({ ...query, customer: "customer-1,customer-2" })).toEqual({
       amount: 400,
       count: 2,
-      comparison: { amount: 50, count: 1, label: "prior FY" },
+      comparison: { amount: 50, count: 1, label: "FY 2024–25" },
     });
     expect(findCustomers.mock.calls[0][0].where).toEqual({ id: { in: ["customer-1", "customer-2"] } });
   });
@@ -207,7 +215,7 @@ describe("dashboard credit note summary", () => {
     expect(await getCreditNoteDashboardSummary({ ...query, company: "co-1,co-2", customer: "c-1", status: "LIVE" })).toEqual({
       amount: 200,
       count: 1,
-      comparison: { amount: 60, count: 1, label: "prior FY" },
+      comparison: { amount: 60, count: 1, label: "FY 2024–25" },
     });
     expect(findCustomers.mock.calls[0][0].where).toEqual({
       id: "c-1",

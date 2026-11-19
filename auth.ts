@@ -4,7 +4,6 @@ import { authorizeCredentials } from "./lib/credentials"
 import { clientAddress } from "./lib/client-address"
 import { readSessionDecision } from "./lib/session-revocation"
 import { IDLE_TIMEOUT_MS, SESSION_MAX_AGE_SECONDS, idleExpired } from "./lib/session-decision"
-import { releaseActiveLogin } from "./lib/active-login"
 
 const TWELVE_HOURS = SESSION_MAX_AGE_SECONDS
 const secureCookies = process.env.NODE_ENV === "production"
@@ -48,16 +47,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             }
         })
     ],
-    events: {
-        async signOut(message) {
-            if ("token" in message && message.token) {
-                await releaseActiveLogin(
-                    text(message.token.id) || text(message.token.sub),
-                    text(message.token.sessionId),
-                )
-            }
-        },
-    },
     callbacks: {
         async session({ session, token }) {
             if (token.invalid) {

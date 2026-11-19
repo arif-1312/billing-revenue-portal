@@ -98,11 +98,11 @@ function rowsForKpi(
         }).format(date);
       };
       const today = toKolkataDate(new Date().toISOString());
-      return actualInvoices.filter((row) => {
+      return distinctActualInvoices(invoices.filter((row) => {
         const dueDate = row.dueDate ? toKolkataDate(row.dueDate) : "";
-        return dueDate !== "" && dueDate < today &&
+        return dueDate !== "" && dueDate <= today &&
           row.notYetDueAmount + row.overdueAmount + row.undatedOutstanding > 0;
-      });
+      }));
     }
     case "pendingCollection":
       return invoices.filter((row) => row.notYetDueAmount + row.undatedOutstanding > 0);

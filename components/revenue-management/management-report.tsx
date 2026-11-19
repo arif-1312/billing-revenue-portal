@@ -173,7 +173,7 @@ export function ManagementReport({
   const totals = sumRecords(filtered);
   const usingRows = selectedStatuses.length > 0 || (crossFilter != null && crossFilter.kind !== "month");
   const billedGross = totals.billed;
-  const creditNoteAmount = creditNotes?.amount ?? 0;
+    const creditNoteAmount = creditNotes?.amount ?? 0;
   const netBilled = billedGross - creditNoteAmount;
   const collected = usingRows ? totals.collected : summary?.collectedAmountTillNow ?? 0;
   const notYetDue = totals.due;
@@ -193,7 +193,7 @@ export function ManagementReport({
     overdueInvoices.set(identity, current);
   }
   const overdueInvoiceCount = [...overdueInvoices.values()].filter((invoice) =>
-    invoice.dueDate < today && invoice.outstanding > 0,
+    invoice.dueDate <= today && invoice.outstanding > 0,
   ).length;
   const kpiValues: Record<KpiDetailKey, number> = {
     plannedBilling: billingOverview?.plannedBilling ?? 0,
@@ -415,7 +415,12 @@ export function ManagementReport({
         </div>
 
         {error ? (
-          <p className="rounded-md border border-[#f3c7c9] bg-[#fdf2f2] px-3 py-2 text-sm text-[#C5363C]">{error}</p>
+          <p role="alert" className="rounded-md border border-[#f3c7c9] bg-[#fdf2f2] px-3 py-2 text-sm text-[#C5363C]">{error}</p>
+        ) : null}
+        {(filterTokens(filters.company).length > 0 || selectedStatuses.length > 0 || crossFilter?.kind === "company" || crossFilter?.kind === "status") && summary ? (
+          <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            Credit notes have no company or purchase order status. These filters match notes through customers with matching purchase orders, so credit note and net billed amounts are estimates for this selection.
+          </p>
         ) : null}
         <FyLabelProvider label={fyLabel}>
         <div role="tabpanel" id={`panel-${view}`} aria-labelledby={`tab-${view}`} className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">

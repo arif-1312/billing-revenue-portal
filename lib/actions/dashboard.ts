@@ -2033,18 +2033,7 @@ async function getBillingOverviewMetrics(
 
 export async function getRevenueDashboard(query: RevenueDashboardQuery) {
   const access = await requirePermission("/admin/dashboard", "view");
-  if (!access.ok) {
-    return {
-      summary: emptyDashboardSummary(),
-      comparison: null,
-      records: [],
-      lines: [],
-      monthly: [],
-      creditNotes: null,
-      creditNoteRecords: [],
-      billingOverview: null,
-    };
-  }
+  if (!access.ok) throw new Error(access.message);
   const { selectedYears, filters, year, earlier, comparisonFilters, comparisonYear } = dashboardPeriods(query);
   if (query.crossFilter?.kind === "company" || query.crossFilter?.kind === "customer") {
     const { purchaseOrderIds } = await dashboardPartyScope(query);

@@ -287,6 +287,7 @@ function agreementStateDrafts(order: PurchaseOrderSnapshot, today: Date) {
 
   if (order.status === "LIVE") {
     const stages = [
+      { days: 45, eventType: "PO_EXPIRY_45_DAYS", title: "PO renewal approaching", priority: "NORMAL" as const },
       { days: 30, eventType: "PO_EXPIRY_30_DAYS", title: "Upcoming PO expiry", priority: "NORMAL" as const },
       { days: 15, eventType: "PO_EXPIRY_15_DAYS", title: "PO expiring soon", priority: "HIGH" as const },
       { days: 7, eventType: "PO_EXPIRY_7_DAYS", title: "Critical PO expiry", priority: "CRITICAL" as const },

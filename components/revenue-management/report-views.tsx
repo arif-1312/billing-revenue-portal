@@ -43,7 +43,8 @@ import {
 } from "@/lib/revenue-metrics";
 
 import { ChartCard } from "./chart-card";
-import { FyBadge } from "./fy-badge";
+import { FyBadge, FyLabelProvider } from "./fy-badge";
+import { PoRenewalTable } from "./po-renewal-table";
 import { DataTable } from "./data-table";
 import { HoverAmount, KpiCard, type KpiDetailKey } from "./kpi-card";
 import { StatusBadge } from "./status-badge";
@@ -366,7 +367,7 @@ export function OverviewView({
     invoiceBalances.set(identity, current);
   }
   const distinctInvoices = [...invoiceBalances.values()].filter((invoice) => invoice.outstanding > 0);
-  const overdueInvoices = distinctInvoices.filter((invoice) => invoice.dueDate && invoice.dueDate < todayDate);
+  const overdueInvoices = distinctInvoices.filter((invoice) => invoice.dueDate && invoice.dueDate <= todayDate);
   const overdueAmount = overdueInvoices.reduce((total, invoice) => total + invoice.outstanding, 0);
   const overdueCustomers = new Map<string, {
     amount: number;
@@ -389,7 +390,7 @@ export function OverviewView({
     .sort((left, right) => right.amount - left.amount)[0] ?? null;
   const upcomingInvoices = distinctInvoices.filter((invoice) => {
     const dueTimestamp = Date.parse(`${invoice.dueDate}T00:00:00Z`);
-    return invoice.dueDate >= todayDate && dueTimestamp <= todayTimestamp + 30 * 86_400_000;
+    return invoice.dueDate > todayDate && dueTimestamp <= todayTimestamp + 30 * 86_400_000;
   });
   const upcomingAmount = upcomingInvoices.reduce((total, invoice) => total + invoice.outstanding, 0);
   const upcomingCustomers = new Set(upcomingInvoices.map((invoice) => invoice.customerName));
@@ -398,7 +399,7 @@ export function OverviewView({
     .sort()[0] ?? null;
   const agingBuckets = [
     { label: "Not Due", amount: 0, invoices: 0, color: "#1976D2" },
-    { label: "1–15 Days", amount: 0, invoices: 0, color: "#D99520" },
+    { label: "0–15 Days", amount: 0, invoices: 0, color: "#D99520" },
     { label: "16–30 Days", amount: 0, invoices: 0, color: "#E69A23" },
     { label: "31–45 Days", amount: 0, invoices: 0, color: "#C66A1B" },
     { label: "Above 45 Days", amount: 0, invoices: 0, color: "#DC4545" },
@@ -409,7 +410,7 @@ export function OverviewView({
     let label = "No Due Date";
     if (invoice.dueDate) {
       const daysLate = Math.floor((todayTimestamp - Date.parse(`${invoice.dueDate}T00:00:00Z`)) / 86_400_000);
-      label = daysLate <= 0 ? "Not Due" : daysLate <= 15 ? "1–15 Days" : daysLate <= 30 ? "16–30 Days" : daysLate <= 45 ? "31–45 Days" : "Above 45 Days";
+      label = daysLate < 0 ? "Not Due" : daysLate <= 15 ? "0–15 Days" : daysLate <= 30 ? "16–30 Days" : daysLate <= 45 ? "31–45 Days" : "Above 45 Days";
     }
     const bucket = agingByLabel.get(label)!;
     bucket.amount += invoice.outstanding;
@@ -426,7 +427,7 @@ export function OverviewView({
   }>();
   const companyOutstanding = new Map<string, number>();
   for (const invoice of distinctInvoices) {
-    const isOverdue = Boolean(invoice.dueDate && invoice.dueDate < todayDate);
+    const isOverdue = Boolean(invoice.dueDate && invoice.dueDate <= todayDate);
     const age = isOverdue ? Math.floor((todayTimestamp - Date.parse(`${invoice.dueDate}T00:00:00Z`)) / 86_400_000) : 0;
     const customer = customerOutstanding.get(invoice.customerName) ?? {
       amount: 0, overdue: 0, invoices: 0, overdueInvoices: 0, oldestOverdueDays: 0, companies: new Map<string, number>(),
@@ -477,7 +478,7 @@ export function OverviewView({
           if (!bucket) return false;
           if (!invoice.dueDate) return selectedAgingBucket === "No Due Date";
           const daysLate = Math.floor((todayTimestamp - Date.parse(`${invoice.dueDate}T00:00:00Z`)) / 86_400_000);
-          const label = daysLate <= 0 ? "Not Due" : daysLate <= 15 ? "1–15 Days" : daysLate <= 30 ? "16–30 Days" : daysLate <= 45 ? "31–45 Days" : "Above 45 Days";
+          const label = daysLate < 0 ? "Not Due" : daysLate <= 15 ? "0–15 Days" : daysLate <= 30 ? "16–30 Days" : daysLate <= 45 ? "31–45 Days" : "Above 45 Days";
           return label === selectedAgingBucket;
         })
         : [];
@@ -620,7 +621,7 @@ export function OverviewView({
             deltaTone={deltas.notYetDue.tone}
           />
           <KpiCard
-            label="Not Yet Due (without GST)"
+            label="Outstanding Amount (without GST)"
             detailKey="notYetDue"
             onOpenDetails={onKpiClick}
             value={notYetDue}
@@ -839,6 +840,9 @@ export function OverviewView({
               </ul>
             </div>
           </ChartCard>
+          <FyLabelProvider label="">
+            <PoRenewalTable />
+          </FyLabelProvider>
         </div>
       </section>
 
@@ -993,7 +997,7 @@ export function OverviewView({
         </ChartCard>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
         <RankChart
           title="Revenue by company"
           description="Top companies by billed amount. Select a bar to focus that company."

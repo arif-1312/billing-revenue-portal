@@ -50,18 +50,18 @@ describe("session revocation lookup", () => {
     })).resolves.toBe("invalid");
   });
 
-  it("rejects a missing, expired, or replaced active-login record", async () => {
-    touchActiveLogin.mockResolvedValue(false);
+  it("allows a session without a single-device registry entry", async () => {
     expect(await readSessionDecision({
       userId: "11111111-1111-4111-8111-111111111111",
       issuedAt: new Date(),
       tokenFingerprint: passwordFingerprint("$2b$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuuabcdefghij"),
       sessionId: "old-session-id",
-    })).toBe("invalid");
+    })).toBe("valid");
+    expect(touchActiveLogin).not.toHaveBeenCalled();
   });
 
-  it("fails closed when the active-login database lookup fails", async () => {
-    touchActiveLogin.mockRejectedValue(new Error("database unavailable"));
+  it("fails closed when the user lookup fails", async () => {
+    findUnique.mockRejectedValue(new Error("database unavailable"));
     await expect(readSessionDecision({
       userId: "11111111-1111-4111-8111-111111111111",
       issuedAt: new Date(),
@@ -70,8 +70,7 @@ describe("session revocation lookup", () => {
     })).rejects.toThrow("database unavailable");
   });
 
-  it("uses session ownership for logout, permitting a fresh login in the same second", async () => {
-    touchActiveLogin.mockResolvedValue(true);
+  it("keeps independently identified sessions valid", async () => {
     expect(await readSessionDecision({
       userId: "11111111-1111-4111-8111-111111111111",
       issuedAt: new Date(),

@@ -17,22 +17,21 @@ vi.mock("@/lib/active-login", () => ({ releaseActiveLogin }))
 import "../auth"
 
 type JwtCallback = NonNullable<NonNullable<NextAuthConfig["callbacks"]>["jwt"]>
-type SignOutEvent = NonNullable<NonNullable<NextAuthConfig["events"]>["signOut"]>
 
 beforeEach(() => {
   vi.resetAllMocks()
   readSessionDecision.mockResolvedValue("valid")
 })
 
-describe("Auth.js single-session integration", () => {
+describe("Auth.js session integration", () => {
   it("copies the server-issued session identifier into the JWT", async () => {
     const jwt = captured.config!.callbacks!.jwt!
     const result = await jwt({
       token: {},
-      user: { id: "user-1", sessionId: "owned-session", credentialVersion: "version-1" },
+      user: { id: "user-1", role: "Finance", sessionId: "owned-session", credentialVersion: "version-1" },
       trigger: "signIn",
     } as Parameters<JwtCallback>[0])
-    expect(result).toMatchObject({ sessionId: "owned-session", credentialVersion: "version-1", invalid: false })
+    expect(result).toMatchObject({ role: "Finance", sessionId: "owned-session", credentialVersion: "version-1", invalid: false })
   })
 
   it("rejects legacy JWTs without a registered session", async () => {
@@ -52,9 +51,4 @@ describe("Auth.js single-session integration", () => {
     expect(result).toMatchObject({ invalid: true })
   })
 
-  it("releases exactly the logging-out token's session", async () => {
-    const signOut = captured.config!.events!.signOut!
-    await signOut({ token: { id: "user-1", sessionId: "owned-session" } } as Parameters<SignOutEvent>[0])
-    expect(releaseActiveLogin).toHaveBeenCalledWith("user-1", "owned-session")
-  })
 })

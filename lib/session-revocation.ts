@@ -2,7 +2,6 @@ import { prisma } from "@/lib/prisma"
 import { passwordFingerprint } from "@/lib/password"
 import { requestCache } from "@/lib/request-cache"
 import { decideSession } from "@/lib/session-decision"
-import { touchActiveLogin } from "@/lib/active-login"
 
 const loadSessionDecision = requestCache(
   async (userId: string, issuedAtMs: number, tokenFingerprint: string, sessionId: string) => {
@@ -19,8 +18,7 @@ const loadSessionDecision = requestCache(
         tokenFingerprint,
         loggedOutAfterIssue: false,
       })
-      if (decision !== "valid") return decision
-      return await touchActiveLogin(userId, sessionId, tokenFingerprint) ? "valid" : "invalid"
+      return decision
     }
 
     const logout = await prisma.auditLog.findFirst({

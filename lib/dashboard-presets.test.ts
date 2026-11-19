@@ -134,7 +134,7 @@ describe("previous period", () => {
       year: "2025",
       month: "all",
       quarter: "all",
-      label: "prior FY",
+      label: "FY 2025–26",
     });
   });
 

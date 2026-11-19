@@ -1,10 +1,12 @@
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import { IconUserCircle } from "@tabler/icons-react";
 
 import { ProfileTabs } from "@/components/profile/profile-tabs";
 import { getCurrentUserProfile } from "@/lib/actions/users";
 
 export default async function ProfilePage() {
+  await connection();
   const user = await getCurrentUserProfile();
 
   if (!user) {
