@@ -24,6 +24,10 @@ beforeEach(() => {
 })
 
 describe("Auth.js session integration", () => {
+  it("uses the login page for authentication and errors", () => {
+    expect(captured.config!.pages).toMatchObject({ signIn: "/", error: "/" })
+  })
+
   it("copies the server-issued session identifier into the JWT", async () => {
     const jwt = captured.config!.callbacks!.jwt!
     const result = await jwt({

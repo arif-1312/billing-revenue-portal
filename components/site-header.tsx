@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { ChevronDown } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useDispatch, useSelector } from "react-redux";
 
 import { Separator } from "@/components/ui/separator";
@@ -25,7 +24,6 @@ type HeaderUser = {
 };
 
 export function SiteHeader() {
-  const router = useRouter();
   const user = useSelector((state: RootState) => state.user.user as HeaderUser | undefined);
   const dispatch = useDispatch();
   const isMounted = React.useSyncExternalStore(
@@ -37,7 +35,6 @@ export function SiteHeader() {
   const handleLogout = async () => {
     dispatch(userLogoutRequest());
     await logoutUser();
-    router.push("/login");
   };
 
   return (

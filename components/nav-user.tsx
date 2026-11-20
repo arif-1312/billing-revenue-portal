@@ -2,7 +2,6 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import {
   IconLogout,
   IconSettings,
@@ -35,7 +34,6 @@ export function NavUser({
     email?: string
   }
 }) {
-  const router = useRouter()
   const { isMobile } = useSidebar()
   const isMounted = React.useSyncExternalStore(
     () => () => {},
@@ -45,7 +43,6 @@ export function NavUser({
 
   const handleLogout = async () => {
     await logoutUser()
-    router.push("/login")
   }
 
   if (!isMounted) {

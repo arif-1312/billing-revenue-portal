@@ -1,14 +1,15 @@
 import { CredentialsSignin } from "@auth/core/errors"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-const { signIn, state } = vi.hoisted(() => ({ signIn: vi.fn(), state: vi.fn() }))
-vi.mock("@/auth", () => ({ auth: vi.fn(), signIn, signOut: vi.fn() }))
+const { signIn, signOut, state } = vi.hoisted(() => ({ signIn: vi.fn(), signOut: vi.fn(), state: vi.fn() }))
+vi.mock("@/auth", () => ({ auth: vi.fn(), signIn, signOut }))
+vi.mock("@/lib/security-event", () => ({ recordSecurityEvent: vi.fn() }))
 vi.mock("@/lib/prisma", () => ({ prisma: {} }))
 vi.mock("@/lib/rbac", () => ({ requirePermission: vi.fn(), getUserPermissions: vi.fn() }))
 vi.mock("@/lib/login-rate-limit", () => ({ loginLimitState: state }))
 vi.mock("next/headers", () => ({ headers: async () => new Headers() }))
 
-import { loginFormUser } from "./users"
+import { loginFormUser, logoutUser } from "./users"
 
 beforeEach(() => vi.resetAllMocks())
 
@@ -20,6 +21,22 @@ function form() {
 }
 
 describe("login form feedback", () => {
+  it("sends users to the root login page after logout", async () => {
+    await logoutUser()
+    expect(signOut).toHaveBeenCalledWith({ redirectTo: "/" })
+  })
+
+  it("opens the PO renewal dialog after a successful login", async () => {
+    signIn.mockResolvedValue(undefined)
+
+    await loginFormUser(null, form())
+
+    expect(signIn).toHaveBeenCalledWith("credentials", expect.objectContaining({
+      username: "ada",
+      redirectTo: "/admin/home?showPoRenewals=1",
+    }))
+  })
+
   it.each([4, 3, 2, 1])("shows %i attempts remaining after a wrong password", async (attemptsRemaining) => {
     signIn.mockRejectedValue(new CredentialsSignin())
     state.mockResolvedValue({ locked: false, attemptsRemaining, retryAfterSeconds: 0 })

@@ -542,7 +542,7 @@ export async function loginFormUser(prevState: unknown, formData: FormData) {
   const user = result.data;
 
   try {
-    await signIn("credentials", user);
+    await signIn("credentials", { ...user, redirectTo: "/admin/home?showPoRenewals=1" });
 
     return {
       success: true,
@@ -579,7 +579,7 @@ export async function logoutUser() {
       userId: identity?.userId ?? null,
       result: "success",
     });
-    await signOut()
+    await signOut({ redirectTo: "/" })
     return {
       success: true,
       message: "logout successfully"

@@ -10,7 +10,7 @@ type ClearedCookie = {
 
 export async function GET(request: Request) {
   const result = await signOut({ redirect: false })
-  const response = NextResponse.redirect(new URL("/login", request.url))
+  const response = NextResponse.redirect(new URL("/", request.url))
   const clearedCookies =
     result && typeof result === "object" && "cookies" in result
       ? (result.cookies as ClearedCookie[] | undefined)
