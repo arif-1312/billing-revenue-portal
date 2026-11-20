@@ -391,6 +391,9 @@ async function requireNotificationUser() {
   if (!user) {
     return { ok: false as const, message: "Sign in again to load notifications." }
   }
+  if (!await canAccess("/admin/notifications", "view")) {
+    return { ok: false as const, message: "You do not have permission to view notifications." }
+  }
   return { ok: true as const, user }
 }
 

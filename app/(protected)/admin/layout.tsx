@@ -3,7 +3,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { SiteHeader } from "@/components/site-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { getConfiguration } from "@/lib/actions/configuration";
-import { getUserPermissions, visibleRoute } from "@/lib/rbac";
+import { canAccess, getUserPermissions, visibleRoute } from "@/lib/rbac";
 import { isSignedInSession } from "@/lib/session-decision";
 import { redirect } from "next/navigation";
 
@@ -75,7 +75,7 @@ export default async function AdminLayout({
         className="min-w-0 bg-[#F5F7FA] transition-[margin] duration-300 ease-in-out"
       >
         <div className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl">
-          <SiteHeader />
+          <SiteHeader canViewNotifications={await canAccess("/admin/notifications", "view")} />
         </div>
 
         <div className="flex min-h-[calc(100svh-var(--header-height))] min-w-0 flex-1 flex-col">

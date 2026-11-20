@@ -617,8 +617,8 @@ export function OverviewView({
             value={outstanding}
             hint="Not yet due plus overdue plus unpaid balances without a due date, using the existing invoice balance calculation."
             accent="receivables"
-            deltaText={deltas.notYetDue.text}
-            deltaTone={deltas.notYetDue.tone}
+            deltaText={deltas.outstanding.text}
+            deltaTone={deltas.outstanding.tone}
           />
           <KpiCard
             label="Outstanding Amount (without GST)"
@@ -627,8 +627,8 @@ export function OverviewView({
             value={notYetDue}
             hint="Unpaid invoice balances with a due date that has not passed."
             accent="notDue"
-            deltaText={deltas.outstanding.text}
-            deltaTone={deltas.outstanding.tone}
+            deltaText={deltas.notYetDue.text}
+            deltaTone={deltas.notYetDue.tone}
           />
           <KpiCard
             label="Overdue Amount (without GST)"

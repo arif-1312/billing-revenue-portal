@@ -126,6 +126,20 @@ describe("projected revenue after credit notes", () => {
 });
 
 describe("dashboard credit note summary", () => {
+  it("compares current FY notes with the same date last FY", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-20T06:00:00Z"));
+    try {
+      findNotes.mockResolvedValue([
+        note("A", "2026-11-20", "10"), note("A", "2026-11-21", "100"),
+        note("A", "2025-11-20", "20"), note("A", "2025-11-21", "200"),
+      ]);
+      const result = await getCreditNoteDashboardSummary({ ...query, year: "2026", monthlyYear: 2026 });
+      expect(result).toMatchObject({ amount: 10, comparison: { amount: 20, label: "FY 2025–26 YTD" } });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it("rejects an unauthorized dashboard request before reading data", async () => {
     requirePermission.mockResolvedValue({ ok: false, message: "Unauthorized" });
     await expect(getRevenueDashboard(query)).rejects.toThrow("Unauthorized");

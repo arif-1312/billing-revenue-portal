@@ -3,8 +3,9 @@
 import { format } from "date-fns";
 import { PaymentReceived, POStatus, Prisma } from "@prisma/client";
 
-import { formatFilterDate, parseFilterDate, previousPeriod } from "@/lib/dashboard-presets";
+import { fiscalYearToDateWindows, formatFilterDate, parseFilterDate, previousPeriod } from "@/lib/dashboard-presets";
 import {
+  FIRST_FISCAL_YEAR,
   calendarDaysBetween,
   formatKolkataDate,
   getFiscalYear,
@@ -107,6 +108,7 @@ interface BillingStatusFilters {
   quarter?: string;
   years?: number[];
   timeZone?: "Asia/Kolkata";
+  asOfReceivables?: boolean;
 }
 
 export type RevenueDashboardQuery = {
@@ -548,9 +550,12 @@ function paymentReceipts(
 function collectedByReceiptDate(
   cycle: Parameters<typeof paymentReceipts>[0],
   asOfDate: Date,
+  timeZone?: BillingStatusFilters["timeZone"],
 ) {
   return paymentReceipts(cycle)
-    .filter((receipt) => normalizeDate(receipt.receivedDate) <= asOfDate)
+    .filter((receipt) => timeZone === "Asia/Kolkata"
+      ? formatKolkataDate(receipt.receivedDate) <= formatKolkataDate(asOfDate)
+      : normalizeDate(receipt.receivedDate) <= asOfDate)
     .reduce((total, receipt) => total + receipt.amount, 0);
 }
 
@@ -937,7 +942,7 @@ export async function getRevenueDashboardSummary(
   });
 
   const asOfDate = getSummaryAsOfDate(year, filters);
-  const referenceToday = new Date();
+  const referenceToday = filters?.asOfReceivables ? asOfDate : new Date();
 
   let totalRevenueProjected = 0;
   let totalRevenueTillNow = 0;
@@ -975,10 +980,12 @@ export async function getRevenueDashboardSummary(
         ) {
           totalRevenueTillNow += billedAmount;
 
-          const collectedTillNow = collectedByReceiptDate(cycle, asOfDate);
+          const collectedTillNow = collectedByReceiptDate(cycle, asOfDate, filters?.timeZone);
 
           collectedAmountTillNow += collectedTillNow;
-          const receivable = classifyInvoiceReceivable(cycle, referenceToday);
+          const receivable = filters?.asOfReceivables
+            ? classifyInvoiceReceivable({ ...cycle, payments: [], collectedAmount: collectedTillNow }, referenceToday)
+            : classifyInvoiceReceivable(cycle, referenceToday);
           pendingCollectionTillNow += receivable.outstanding;
           overdueAmountTillNow += receivable.overdue;
 
@@ -1219,9 +1226,11 @@ export async function getBillingStatusDetails(
     }
 
     const billed = billedInvoiceAmount(cycle);
-    const collected = getEffectiveCollectedAmount(cycle);
-    const collectedAsOfDate = collectedByReceiptDate(cycle, asOfDate);
-    const receivable = classifyInvoiceReceivable(cycle);
+    const collectedAsOfDate = collectedByReceiptDate(cycle, asOfDate, filters?.timeZone);
+    const collected = filters?.asOfReceivables ? collectedAsOfDate : getEffectiveCollectedAmount(cycle);
+    const receivable = filters?.asOfReceivables
+      ? classifyInvoiceReceivable({ ...cycle, payments: [], collectedAmount: collectedAsOfDate }, asOfDate)
+      : classifyInvoiceReceivable(cycle);
     const pendingAmount = receivable.outstanding;
     const overdueBalance = receivable.overdue;
     const financialYear = filters?.timeZone === "Asia/Kolkata"
@@ -1487,7 +1496,22 @@ function dashboardPeriods(query: RevenueDashboardQuery) {
     quarter: query.quarter || "all",
     year: query.year || "all",
   };
-  const earlier = previousPeriod(currentFilters);
+  const ytd = fiscalYearToDateWindows(new Date());
+  const useYtd = year === ytd.financialYear && !query.startDate && !query.endDate &&
+    (!query.month || query.month === "all") && (!query.quarter || query.quarter === "all");
+  if (useYtd) {
+    filters.startDate = ytd.currentStart;
+    filters.endDate = ytd.currentEnd;
+    filters.asOfReceivables = true;
+  }
+  const earlier = useYtd && year - 1 >= FIRST_FISCAL_YEAR
+    ? {
+        year: String(year - 1), month: "all", quarter: "all",
+        startDate: parseFilterDate(ytd.previousStart),
+        endDate: parseFilterDate(ytd.previousEnd),
+        label: `FY ${year - 1}–${String(year).slice(-2)} YTD`,
+      }
+    : previousPeriod(currentFilters);
   const comparisonFilters: BillingStatusFilters | null = earlier
     ? {
         company: query.company,
@@ -1499,10 +1523,11 @@ function dashboardPeriods(query: RevenueDashboardQuery) {
         month: earlier.month,
         quarter: earlier.quarter,
         timeZone: "Asia/Kolkata",
+        asOfReceivables: useYtd,
       }
     : null;
   const comparisonYear = earlier ? Number(earlier.year) : undefined;
-  return { selectedYears, filters, year, earlier, comparisonFilters, comparisonYear };
+  return { selectedYears, filters, year, earlier, comparisonFilters, comparisonYear, useYtd };
 }
 
 // Credit notes contain a free-text customer name. Match the existing customer
@@ -1915,7 +1940,7 @@ async function getBillingOverviewMetrics(
         : "-",
       collectedAmount: roundMoney(collectedAmount),
       collectedAsOfDate: cycle
-        ? roundMoney(collectedByReceiptDate(cycle, asOfDate))
+        ? roundMoney(collectedByReceiptDate(cycle, asOfDate, filters?.timeZone))
         : 0,
       outstanding: roundMoney(Math.max(invoiceAmount - collectedAmount, 0)),
       notYetDueAmount: 0,
@@ -2034,7 +2059,7 @@ async function getBillingOverviewMetrics(
 export async function getRevenueDashboard(query: RevenueDashboardQuery) {
   const access = await requirePermission("/admin/dashboard", "view");
   if (!access.ok) throw new Error(access.message);
-  const { selectedYears, filters, year, earlier, comparisonFilters, comparisonYear } = dashboardPeriods(query);
+  const { selectedYears, filters, year, earlier, comparisonFilters, comparisonYear, useYtd } = dashboardPeriods(query);
   if (query.crossFilter?.kind === "company" || query.crossFilter?.kind === "customer") {
     const { purchaseOrderIds } = await dashboardPartyScope(query);
     filters.purchaseOrderIds = purchaseOrderIds ?? [];
@@ -2059,10 +2084,10 @@ export async function getRevenueDashboard(query: RevenueDashboardQuery) {
           : undefined,
       }
     : null;
-  const [summary, billingDetails, monthlySeries, comparisonSummary, creditNotes, creditNoteRecords, billingOverview, comparisonDetails, comparisonBillingOverview, comparisonCreditNotes] = await Promise.all([
+  const [summary, billingDetails, monthlySeries, comparisonSummary, creditNotes, creditNoteRecords, billingOverview, comparisonDetails, comparisonBillingOverview, comparisonCreditNotes, fullYearBillingOverview] = await Promise.all([
     getRevenueDashboardSummary(year, filters),
     getBillingStatusDetails(year, filters),
-    Promise.all(monthlyYears.map((item) => getMonthlyBillingData(item, filters))),
+    Promise.all(monthlyYears.map((item) => getMonthlyBillingData(item, useYtd ? { ...filters, startDate: undefined, endDate: undefined } : filters))),
     comparisonFilters
       ? getRevenueDashboardSummary(comparisonYear, comparisonFilters)
       : Promise.resolve(null),
@@ -2084,6 +2109,12 @@ export async function getRevenueDashboard(query: RevenueDashboardQuery) {
     comparisonQuery
       ? getCreditNoteDashboardSummary(comparisonQuery).catch((error: unknown) => {
           console.error("Comparison credit notes could not be loaded", error);
+          return null;
+        })
+      : Promise.resolve(null),
+    useYtd
+      ? getBillingOverviewMetrics(year, { ...filters, startDate: undefined, endDate: undefined }).catch((error: unknown) => {
+          console.error("Full-year billing overview could not be loaded", error);
           return null;
         })
       : Promise.resolve(null),
@@ -2116,7 +2147,9 @@ export async function getRevenueDashboard(query: RevenueDashboardQuery) {
     monthly,
     creditNotes,
     creditNoteRecords,
-    billingOverview,
+    billingOverview: billingOverview && useYtd
+      ? { ...billingOverview, upcomingBilling: fullYearBillingOverview?.upcomingBilling ?? null }
+      : billingOverview,
   };
 }
 

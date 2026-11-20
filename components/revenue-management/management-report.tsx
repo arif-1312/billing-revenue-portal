@@ -422,6 +422,11 @@ export function ManagementReport({
             Credit notes have no company or purchase order status. These filters match notes through customers with matching purchase orders, so credit note and net billed amounts are estimates for this selection.
           </p>
         ) : null}
+        {view === "overview" && comparisonLabel?.endsWith(" YTD") ? (
+          <p className="text-xs text-[#667085]">
+            Financial year to date through today; comparisons use the same date in the previous financial year.
+          </p>
+        ) : null}
         <FyLabelProvider label={fyLabel}>
         <div role="tabpanel" id={`panel-${view}`} aria-labelledby={`tab-${view}`} className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
           {!summary && loading ? (

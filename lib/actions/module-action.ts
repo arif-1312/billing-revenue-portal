@@ -59,15 +59,15 @@ export async function getModules(): Promise<Module[]> {
   return modules.map(mapModule);
 }
 
-export async function createModule(data: any): Promise<ActionResponse> {
+export async function createModule(data: unknown): Promise<ActionResponse> {
   try {
     const access = await requirePermission("/admin/module", "create");
     if (!access.ok) {
       return { success: false, message: access.message };
     }
 
-    const module = moduleSchema.parse(data);
-    const payload = normalizeModulePayload(module);
+    const parsedModule = moduleSchema.parse(data);
+    const payload = normalizeModulePayload(parsedModule);
 
     await prisma.module.create({
       data: payload,
@@ -94,11 +94,11 @@ export async function getModuleById(id: string) {
       return { success: false, message: access.message };
     }
 
-    const module = await prisma.module.findUnique({
+    const foundModule = await prisma.module.findUnique({
       where: { id },
     });
 
-    if (!module) {
+    if (!foundModule) {
       return {
         success: false,
         message: "Module not found",
@@ -107,7 +107,7 @@ export async function getModuleById(id: string) {
 
     return {
       success: true,
-      data: mapModule(module),
+      data: mapModule(foundModule),
       message: "Module fetched successfully",
     };
   } catch (error) {
@@ -119,7 +119,7 @@ export async function getModuleById(id: string) {
 }
 
 export async function updateModule(
-  data: any,
+  data: unknown,
   id: string,
 ): Promise<ActionResponse> {
   try {
@@ -128,12 +128,12 @@ export async function updateModule(
       return { success: false, message: access.message };
     }
 
-    const module = moduleSchema.parse(data);
-    const payload = normalizeModulePayload(module);
+    const parsedModule = moduleSchema.parse(data);
+    const payload = normalizeModulePayload(parsedModule);
 
     await prisma.module.update({
       where: { id },
-      data: payload,
+      data: { name: payload.name, description: payload.description, status: payload.status },
     });
 
     return {
@@ -155,18 +155,18 @@ export async function deleteModule(id: string): Promise<ActionResponse> {
       return { success: false, message: access.message };
     }
 
-    const module = await prisma.module.findUnique({
+    const foundModule = await prisma.module.findUnique({
       where: { id },
     });
 
-    if (!module) {
+    if (!foundModule) {
       return {
         success: false,
         message: "Module not found",
       };
     }
 
-    if (module.route === "/admin") {
+    if (foundModule.route === "/admin") {
       return {
         success: false,
         message: "Core module cannot be deleted",

@@ -167,13 +167,8 @@ type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
 
 function filterNav<
   T extends { url?: string; permissionUrl?: string; items?: { url: string }[] },
->(navMain: T[], allowedRoutes: string[], role?: string): T[] {
-  const isAdmin = role?.toLowerCase().includes("admin");
+>(navMain: T[], allowedRoutes: string[]): T[] {
   const normalizedAllowedRoutes = allowedRoutes.filter(Boolean);
-
-  if (isAdmin) {
-    return navMain;
-  }
 
   return navMain
     .map((item) => {
@@ -189,7 +184,7 @@ function filterNav<
       };
     })
     .filter((item) => {
-      if (item.url === "/admin/home" || item.url === "/admin/notifications") {
+      if (item.url === "/admin/home") {
         return true;
       }
 
@@ -210,8 +205,8 @@ export function AppSidebar({
 
   const allowedRoutes = user?.allowedRoutes || [];
 
-  const filteredNav = filterNav(data.navMain, allowedRoutes, user?.role);
-  const filteredSettings = filterNav(data.settings, allowedRoutes, user?.role);
+  const filteredNav = filterNav(data.navMain, allowedRoutes);
+  const filteredSettings = filterNav(data.settings, allowedRoutes);
 
   React.useEffect(() => {
     dispatch(userLoginRequest(user));

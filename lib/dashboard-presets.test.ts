@@ -4,6 +4,7 @@ import { parseKolkataDate } from "./fiscal-year";
 import {
   applyFilterChange,
   effectivePeriodFilters,
+  fiscalYearToDateWindows,
   matchingPreset,
   periodMode,
   presetLabels,
@@ -14,6 +15,22 @@ import type { DashboardFilters } from "./revenue-metrics";
 
 const march31 = parseKolkataDate("2026-03-31");
 const april1 = parseKolkataDate("2026-04-01");
+
+describe("financial year to date windows", () => {
+  it("aligns the previous year to the same Kolkata calendar day", () => {
+    expect(fiscalYearToDateWindows(parseKolkataDate("2026-11-20"))).toEqual({
+      financialYear: 2026, currentStart: "2026-04-01", currentEnd: "2026-11-20",
+      previousStart: "2025-04-01", previousEnd: "2025-11-20",
+    });
+  });
+
+  it("clamps leap day to the last day of February in the previous year", () => {
+    expect(fiscalYearToDateWindows(parseKolkataDate("2028-02-29"))).toEqual({
+      financialYear: 2027, currentStart: "2027-04-01", currentEnd: "2028-02-29",
+      previousStart: "2026-04-01", previousEnd: "2027-02-28",
+    });
+  });
+});
 
 const base: DashboardFilters = {
   company: "all",

@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { requirePermission, findNotes, findCustomers, findCycles, findPurchaseOrders } = vi.hoisted(() => ({
   requirePermission: vi.fn(),
@@ -55,6 +55,8 @@ function order(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-11-20T06:00:00Z"));
   vi.resetAllMocks();
   requirePermission.mockResolvedValue({ ok: true });
   findNotes.mockResolvedValue([]);
@@ -63,18 +65,48 @@ beforeEach(() => {
   findPurchaseOrders.mockResolvedValue([]);
 });
 
+afterEach(() => vi.useRealTimers());
+
 describe("management dashboard billing overview", () => {
-  it("allocates a multi-year monthly PO only to the cycles in each FY", async () => {
+  it("compares invoices and receivables at the same date in each FY", async () => {
+    const cycle = (year: number, amount: number) => ({
+      id: `cycle-${year}`,
+      purchaseOrderId: `po-${year}`,
+      invoiceNumber: `INV-${year}`,
+      invoiceDate: parseKolkataDate(`${year}-11-15`),
+      billingSubmittedDate: null,
+      paymentDueDate: parseKolkataDate(`${year}-11-18`),
+      paymentReceivedDate: parseKolkataDate(`${year}-11-21`),
+      paymentReceived: "YES",
+      invoiceAmount: new Prisma.Decimal(amount),
+      creditNote: new Prisma.Decimal(0),
+      collectedAmount: new Prisma.Decimal(amount),
+      payments: [{ receivedDate: parseKolkataDate(`${year}-11-21`), amount: new Prisma.Decimal(amount) }],
+      purchaseOrder: {
+        id: `po-${year}`, customerPONumber: `PO-${year}`, status: "LIVE",
+        company: { id: "company-1", name: "SY Associates" }, customer: null,
+        ServiceType: null, billingPlan: null, contractDuration: null,
+      },
+    });
+    findCycles.mockResolvedValue([cycle(2025, 500), cycle(2026, 1000), cycle(2027, 2000)]);
+
+    const result = await getRevenueDashboard(query("2026"));
+
+    expect(result.records).toHaveLength(1);
+    expect(result.records[0]).toMatchObject({ amount: 1000, collectedAmount: 0, pastDueAmount: 1000 });
+    expect(result.comparison?.label).toBe("FY 2025–26 YTD");
+    expect(result.comparison?.records).toHaveLength(1);
+    expect(result.comparison?.records[0]).toMatchObject({ amount: 500, collectedAmount: 0, pastDueAmount: 500 });
+  });
+
+  it("limits current FY planned billing to date while retaining the full future FY", async () => {
     findPurchaseOrders.mockResolvedValue([order()]);
 
     const fy2026 = await getRevenueDashboard(query("2026"));
     const fy2027 = await getRevenueDashboard(query("2027"));
 
-    expect(fy2026.billingOverview!.plannedBilling).toBe(4_999_999.98);
+    expect(fy2026.billingOverview!.plannedBilling).toBe(1_666_666.66);
     expect(fy2027.billingOverview!.plannedBilling).toBe(5_000_000.02);
-    expect(
-      fy2026.billingOverview!.plannedBilling! + fy2027.billingOverview!.plannedBilling!,
-    ).toBe(10_000_000);
   });
 
   it("sums actual invoiced cycles with GST and excludes them from upcoming billing", async () => {
@@ -102,9 +134,9 @@ describe("management dashboard billing overview", () => {
 
     expect(result.billingOverview!.billingDoneWithoutGst).toBe(200);
     expect(result.billingOverview!.billingDoneWithGst).toBe(236);
-    expect(result.billingOverview!.plannedBilling).toBe(300);
+    expect(result.billingOverview!.plannedBilling).toBe(200);
     expect(result.billingOverview!.upcomingBilling).toBe(100);
-    expect(result.billingOverview!.billingAchievement).toBe(66.67);
+    expect(result.billingOverview!.billingAchievement).toBe(100);
   });
 
   it("does not estimate upcoming billing when future schedule rows were never generated", async () => {

@@ -4,12 +4,29 @@ import {
   fiscalMonthIndex,
   fiscalQuarter,
   getFiscalYear,
+  kolkataCalendar,
   quarterContainsMonth,
 } from "@/lib/fiscal-year";
 import { filterTokens, type DashboardFilters } from "@/lib/revenue-metrics";
 
 export type DashboardPreset = "month" | "quarter" | "fy" | "last-fy";
 export type PeriodMode = "dates" | "month" | "quarter" | "year";
+
+/** Comparable financial-year-to-date windows, using the Kolkata calendar. */
+export function fiscalYearToDateWindows(today: Date) {
+  const { year, month, day } = kolkataCalendar(today);
+  const financialYear = getFiscalYear(today);
+  const previousDay = Math.min(day, new Date(Date.UTC(year - 1, month, 0)).getUTCDate());
+  const date = (y: number, m: number, d: number) =>
+    `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  return {
+    financialYear,
+    currentStart: `${financialYear}-04-01`,
+    currentEnd: date(year, month, day),
+    previousStart: `${financialYear - 1}-04-01`,
+    previousEnd: date(year - 1, month, previousDay),
+  };
+}
 
 export function presetLabels(today: Date): Record<DashboardPreset, string> {
   const year = getFiscalYear(today);

@@ -23,7 +23,7 @@ type HeaderUser = {
   name?: string;
 };
 
-export function SiteHeader() {
+export function SiteHeader({ canViewNotifications }: { canViewNotifications: boolean }) {
   const user = useSelector((state: RootState) => state.user.user as HeaderUser | undefined);
   const dispatch = useDispatch();
   const isMounted = React.useSyncExternalStore(
@@ -53,7 +53,7 @@ export function SiteHeader() {
           </p>
         </div>
 
-        <NotificationBell />
+        {canViewNotifications ? <NotificationBell /> : null}
 
         {isMounted ? (
           <DropdownMenu modal={false}>
