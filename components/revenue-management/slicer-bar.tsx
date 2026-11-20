@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { CalendarIcon, ChevronDown, SlidersHorizontal } from "lucide-react";
 
@@ -16,7 +16,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { matchingPreset, type PeriodMode } from "@/lib/dashboard-presets";
+import { matchingPreset, presetLabels, type PeriodMode } from "@/lib/dashboard-presets";
 import { filterTokens, toggleFilterToken, type DashboardFilters } from "@/lib/revenue-metrics";
 import { cn } from "@/lib/utils";
 
@@ -61,7 +61,17 @@ export function SlicerFields({
   collapsed?: boolean;
   onToggle?: () => void;
 }) {
-  const active = matchingPreset(filters, new Date());
+  const [today, setToday] = useState<Date | null>(null);
+
+  useEffect(() => {
+    const updateToday = () => setToday(new Date());
+    updateToday();
+    const timer = window.setInterval(updateToday, 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const active = today ? matchingPreset(filters, today) : null;
+  const labels = today ? presetLabels(today) : null;
   const periodLabel =
     periodMode === "dates"
       ? "Custom dates override month and quarter."
@@ -87,7 +97,7 @@ export function SlicerFields({
             )}
             onClick={() => onPreset(preset)}
           >
-            {label}
+            {labels?.[preset] ?? label}
           </Button>
         ))}
         {onToggle ? (

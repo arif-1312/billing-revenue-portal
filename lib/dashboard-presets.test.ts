@@ -6,6 +6,7 @@ import {
   effectivePeriodFilters,
   matchingPreset,
   periodMode,
+  presetLabels,
   presetPatch,
   previousPeriod,
 } from "./dashboard-presets";
@@ -25,6 +26,21 @@ const base: DashboardFilters = {
 };
 
 describe("dashboard presets", () => {
+  it("updates labels across the financial year boundary", () => {
+    expect(presetLabels(march31)).toEqual({
+      month: "This Month (Mar 2026)",
+      quarter: "This Quarter (Q4, FY 2025–26)",
+      fy: "This FY 2025–26",
+      "last-fy": "Last FY 2024–25",
+    });
+    expect(presetLabels(april1)).toEqual({
+      month: "This Month (Apr 2026)",
+      quarter: "This Quarter (Q1, FY 2026–27)",
+      fy: "This FY 2026–27",
+      "last-fy": "Last FY 2025–26",
+    });
+  });
+
   it("selects March of the ending financial year on 31 March", () => {
     expect(presetPatch("month", march31)).toMatchObject({
       year: "2025",

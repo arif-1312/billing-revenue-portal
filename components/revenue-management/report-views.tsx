@@ -534,19 +534,6 @@ export function OverviewView({
             deltaTone={deltas.billed.tone}
           />
 
-          {/* Net Billed - Indigo */}
-          <KpiCard
-            label="Net Billed Amount"
-            detailKey="netBilledAmount"
-            onOpenDetails={onKpiClick}
-            value={netBilled}
-            unavailable={!netBilledAvailable}
-            hint="Existing calculation: invoice amounts before GST minus the credit-note register amount for the selected period. The credit-note table does not record GST treatment."
-            accent="billing"
-            deltaText={deltas.netBilled.text}
-            deltaTone={deltas.netBilled.tone}
-          />
-
           {/* Credit Notes - Purple */}
           <KpiCard
             label="Credit Note Amount"
@@ -558,6 +545,19 @@ export function OverviewView({
             accent="billing"
             deltaText={deltas.creditNotes.text}
             deltaTone={deltas.creditNotes.tone}
+          />
+
+          {/* Net Billed - Indigo */}
+          <KpiCard
+            label="Net Billed Amount"
+            detailKey="netBilledAmount"
+            onOpenDetails={onKpiClick}
+            value={netBilled}
+            unavailable={!netBilledAvailable}
+            hint="Existing calculation: invoice amounts before GST minus the credit-note register amount for the selected period. The credit-note table does not record GST treatment."
+            accent="billing"
+            deltaText={deltas.netBilled.text}
+            deltaTone={deltas.netBilled.tone}
           />
 
           {/* Billing Done Including GST - Teal */}

@@ -65,13 +65,17 @@ export function HoverAmount({
   value,
   className,
   onClick,
+  displayInCrores = false,
 }: {
   value: number;
   className?: string;
   onClick?: () => void;
+  displayInCrores?: boolean;
 }) {
   const exact = formatInr(value);
-  const display = formatInr(value, true);
+  const display = displayInCrores
+    ? `${value < 0 ? "-" : ""}₹${(Math.abs(value) / 1_00_00_000).toFixed(2)} Cr`
+    : formatInr(value, true);
 
   return (
     <Tooltip>
@@ -188,6 +192,7 @@ export function KpiCard({
       ) : (
         <HoverAmount
           value={value}
+          displayInCrores
           onClick={openDetails}
           className="mt-1 block w-full truncate text-left font-mono text-[23px] leading-7 font-semibold tracking-tight text-[var(--kpi-value)] tabular-nums"
         />

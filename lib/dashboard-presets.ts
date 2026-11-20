@@ -1,4 +1,5 @@
 import {
+  BUSINESS_TIME_ZONE,
   FIRST_FISCAL_YEAR,
   fiscalMonthIndex,
   fiscalQuarter,
@@ -9,6 +10,23 @@ import { filterTokens, type DashboardFilters } from "@/lib/revenue-metrics";
 
 export type DashboardPreset = "month" | "quarter" | "fy" | "last-fy";
 export type PeriodMode = "dates" | "month" | "quarter" | "year";
+
+export function presetLabels(today: Date): Record<DashboardPreset, string> {
+  const year = getFiscalYear(today);
+  const fy = (start: number) => `FY ${start}–${String(start + 1).slice(-2)}`;
+  const month = new Intl.DateTimeFormat("en-IN", {
+    timeZone: BUSINESS_TIME_ZONE,
+    month: "short",
+    year: "numeric",
+  }).format(today);
+
+  return {
+    month: `This Month (${month})`,
+    quarter: `This Quarter (Q${fiscalQuarter(today)}, ${fy(year)})`,
+    fy: `This ${fy(year)}`,
+    "last-fy": `Last ${fy(year - 1)}`,
+  };
+}
 
 export function periodMode(filters: DashboardFilters): PeriodMode {
   if (filters.startDate || filters.endDate) return "dates";
