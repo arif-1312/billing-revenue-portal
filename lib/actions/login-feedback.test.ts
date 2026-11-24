@@ -27,14 +27,14 @@ describe("login form feedback", () => {
     expect(signOut).toHaveBeenCalledWith({ redirectTo: "/" })
   })
 
-  it("redirects to the home page after a successful login", async () => {
+  it("opens the PO renewal dialog after a successful login", async () => {
     signIn.mockResolvedValue(undefined)
 
     await loginFormUser(null, form())
 
     expect(signIn).toHaveBeenCalledWith("credentials", expect.objectContaining({
       username: "ada@example.com",
-      redirectTo: "/admin/home",
+      redirectTo: "/admin/home?showPoRenewals=1",
     }))
   })
 

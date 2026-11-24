@@ -608,7 +608,7 @@ export async function loginFormUser(prevState: unknown, formData: FormData) {
   const user = result.data;
 
   try {
-    await signIn("credentials", { username: user.email, password: user.password, companyId: user.companyId, redirectTo: "/admin/home" });
+    await signIn("credentials", { username: user.email, password: user.password, companyId: user.companyId, redirectTo: "/admin/home?showPoRenewals=1" });
 
     return {
       success: true,
