@@ -1,8 +1,9 @@
 import bcrypt from "bcrypt";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { findFirst, updateUser, createAuditLog, claimActiveLogin } = vi.hoisted(() => ({
+const { findFirst, findMembership, updateUser, createAuditLog, claimActiveLogin } = vi.hoisted(() => ({
   findFirst: vi.fn(),
+  findMembership: vi.fn(),
   updateUser: vi.fn(),
   createAuditLog: vi.fn(),
   claimActiveLogin: vi.fn(),
@@ -16,24 +17,31 @@ vi.mock("@/lib/prisma", () => ({
       findFirst,
       update: updateUser,
     },
+    userCompany: { findFirst: findMembership },
     auditLog: {
       create: createAuditLog,
     },
   },
 }));
 
-import { authorizeCredentials } from "./credentials";
+import { authorizeCredentials as authorizeCredentialsImpl } from "./credentials";
 import { resetLoginThrottleForTests } from "./login-throttle";
 import { resetLoginRateLimitForTests } from "./login-rate-limit";
 
 const password = "correct-horse";
 const userId = "11111111-1111-4111-8111-111111111111";
+const companyId = "22222222-2222-4222-8222-222222222222";
+function authorizeCredentials(credentials: { username: string; password: string; companyId?: string }, ip?: string) {
+  return authorizeCredentialsImpl({ ...credentials, companyId: credentials.companyId ?? companyId }, ip);
+}
 
 beforeEach(async () => {
   vi.stubEnv("APP_ENV", "development");
   resetLoginThrottleForTests();
   resetLoginRateLimitForTests();
   findFirst.mockReset();
+  findMembership.mockReset();
+  findMembership.mockResolvedValue({ role: { name: "Finance" } });
   updateUser.mockReset();
   createAuditLog.mockReset();
   createAuditLog.mockResolvedValue({ id: userId });
@@ -48,10 +56,12 @@ afterEach(() => {
 
 describe("credential authorization", () => {
   it("returns an active user without the password hash", async () => {
+    findMembership.mockResolvedValue({ role: { name: "Admin" } });
     findFirst.mockResolvedValue({
       id: userId,
       username: "ada",
       firstName: "Ada",
+      activeCompanyId: companyId,
       lastName: "Lovelace",
       email: "ada@example.com",
       status: "ACTIVE",
@@ -73,6 +83,26 @@ describe("credential authorization", () => {
     expect(result).not.toHaveProperty("password");
     expect(updateUser).not.toHaveBeenCalled();
     expect(JSON.stringify(createAuditLog.mock.calls)).not.toContain(password);
+  });
+
+  it("requires a company selection before authenticating", async () => {
+    await expect(authorizeCredentialsImpl({ username: "ada", password })).resolves.toBeNull();
+    expect(findFirst).not.toHaveBeenCalled();
+  });
+
+  it("rejects a valid password when the user has no selected-company membership", async () => {
+    findFirst.mockResolvedValue({
+      id: userId,
+      username: "ada",
+      status: "ACTIVE",
+      password: await bcrypt.hash(password, 4),
+      role: { name: "Finance" },
+    });
+    findMembership.mockResolvedValue(null);
+
+    await expect(authorizeCredentials({ username: "ada", password })).rejects.toMatchObject({
+      code: "company_access_denied",
+    });
   });
 
   it("rejects an inactive account with the same result as a bad password", async () => {

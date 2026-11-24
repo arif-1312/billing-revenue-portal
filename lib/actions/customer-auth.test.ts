@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { requirePermission, findUnique, deleteCustomerRecord } = vi.hoisted(() => ({
+const { requirePermission, getActiveCompanyContext, findFirst, deleteCustomerRecord } = vi.hoisted(() => ({
   requirePermission: vi.fn(),
-  findUnique: vi.fn(),
+  getActiveCompanyContext: vi.fn(),
+  findFirst: vi.fn(),
   deleteCustomerRecord: vi.fn(),
 }));
 
@@ -13,11 +14,12 @@ vi.mock("@/lib/rbac", () => ({
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     customer: {
-      findUnique,
-      delete: deleteCustomerRecord,
+      findFirst,
+      deleteMany: deleteCustomerRecord,
     },
   },
 }));
+vi.mock("@/lib/company-context", () => ({ getActiveCompanyContext }));
 
 vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
@@ -27,7 +29,9 @@ import { deleteCustomer } from "./customer";
 
 beforeEach(() => {
   requirePermission.mockReset();
-  findUnique.mockReset();
+  findFirst.mockReset();
+  getActiveCompanyContext.mockReset();
+  getActiveCompanyContext.mockResolvedValue({ companyId: "company-1" });
   deleteCustomerRecord.mockReset();
 });
 
@@ -43,12 +47,12 @@ describe("deleteCustomer", () => {
       message: "Unauthorized",
     });
     expect(deleteCustomerRecord).not.toHaveBeenCalled();
-    expect(findUnique).not.toHaveBeenCalled();
+    expect(findFirst).not.toHaveBeenCalled();
   });
 
   it("keeps a customer that is linked to purchase orders", async () => {
     requirePermission.mockResolvedValue({ ok: true });
-    findUnique.mockResolvedValue({
+    findFirst.mockResolvedValue({
       id: "customer-1",
       _count: { purchaseOrders: 2 },
     });

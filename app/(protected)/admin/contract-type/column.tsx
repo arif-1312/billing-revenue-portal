@@ -1,18 +1,24 @@
 "use client";
 
 import { ColumnDef } from "@tanstack/react-table";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { DeleteDialog } from "@/components/ui/delete-dailog";
 import { EditIcon, Trash } from "lucide-react";
+import type { ContractType } from "@/types";
 
 export const getUsersColumns = ({
   canEdit,
   canDelete,
+  onEdit,
   onDelete,
-}: any): ColumnDef<any>[] => {
-  const columns: ColumnDef<any>[] = [
+}: {
+  canEdit: boolean;
+  canDelete: boolean;
+  onEdit: (contractType: ContractType) => void;
+  onDelete: (id: string) => void;
+}): ColumnDef<ContractType>[] => {
+  const columns: ColumnDef<ContractType>[] = [
     {
       accessorKey: "name",
       header: () => (
@@ -85,40 +91,37 @@ export const getUsersColumns = ({
           Action
         </div>
       ),
-      cell: ({ row }) => {
-        const id = row.original.id as string;
-
-        return (
-          <div className="flex items-center gap-2">
-            {canEdit && (
+      cell: ({ row }) => (
+        <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
+          {canEdit && (
+            <Button
+              size="icon"
+              className="h-9 w-9 rounded-lg bg-amber-500 shadow-sm hover:bg-amber-600"
+              aria-label={`Edit ${row.original.name}`}
+              onClick={() => onEdit(row.original)}
+            >
+              <EditIcon size={16} />
+            </Button>
+          )}
+          {canDelete && (
+            <DeleteDialog
+              onConfirm={() => onDelete(row.original.id ?? "")}
+              title="Delete Contract Type?"
+              description={`Are you sure you want to delete ${row.original.name}? This action cannot be undone.`}
+              preventOutsideDismiss
+            >
               <Button
-                asChild
                 size="icon"
-                className="h-9 w-9 rounded-lg bg-amber-500 hover:bg-amber-600 shadow-sm"
+                variant="destructive"
+                aria-label={`Delete ${row.original.name}`}
+                onClick={(event) => event.stopPropagation()}
               >
-                <Link href={`/admin/contract-type/edit/${id}`}>
-                  <EditIcon size={16} />
-                </Link>
+                <Trash size={16} />
               </Button>
-            )}
-
-            {canDelete && (
-              <DeleteDialog
-                onConfirm={() => onDelete(id)}
-                title="Delete Contract Type?"
-                description="Are you sure you want to delete this contract type? This action cannot be undone."
-              >
-                <Button
-                  size="icon"
-                  className="h-9 w-9 rounded-lg bg-red-500 hover:bg-red-600 shadow-sm"
-                >
-                  <Trash size={16} />
-                </Button>
-              </DeleteDialog>
-            )}
-          </div>
-        );
-      },
+            </DeleteDialog>
+          )}
+        </div>
+      ),
     });
   }
 

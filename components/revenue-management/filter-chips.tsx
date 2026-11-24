@@ -20,20 +20,20 @@ export function FilterChips({
           key={chip.id}
           type="button"
           onClick={chip.onRemove}
-          className="inline-flex items-center gap-1 rounded-lg border border-blue-100 bg-blue-50/70 px-2.5 py-1.5 text-xs font-medium text-blue-800 hover:bg-blue-50"
+          className="inline-flex items-center gap-1 rounded-full border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100"
         >
           {chip.label}
           <X className="size-3" aria-hidden="true" />
           <span className="sr-only">Remove {chip.label}</span>
         </button>
       ))}
-      <span className="text-xs font-medium text-[#667085]" aria-live="polite">
+      <span className="ml-auto rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600" aria-live="polite">
         {formatCount(count)} records
       </span>
       <button
         type="button"
         onClick={onReset}
-        className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+        className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
       >
         Reset filters
       </button>

@@ -39,7 +39,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 
-import { userLoginRequest } from "@/store/actions/user-actions";
+import { userLoginRequest, userLogoutRequest } from "@/store/actions/user-actions";
 
 const data = {
   navMain: [
@@ -209,7 +209,11 @@ export function AppSidebar({
   const filteredSettings = filterNav(data.settings, allowedRoutes);
 
   React.useEffect(() => {
-    dispatch(userLoginRequest(user));
+    if (user) {
+      dispatch(userLoginRequest(user));
+    } else {
+      dispatch(userLogoutRequest());
+    }
   }, [dispatch, user]);
 
   return (

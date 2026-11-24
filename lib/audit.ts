@@ -58,9 +58,11 @@ type WriteArgs = {
 type Actor = {
   userId: string | null
   userName: string | null
+  companyId: string | null
 }
 
 type AuditDraft = {
+  companyId: string | null
   userId: string | null
   userName: string | null
   action: AuditAction
@@ -123,6 +125,7 @@ export function stageFinancialAuditForTests() {
   if (!state) throw new Error("Audit buffer is not open")
 
   state.events.push({
+    companyId: null,
     userId: null,
     userName: "auditor",
     action: "UPDATE",
@@ -142,7 +145,7 @@ type ModelDelegate = {
 const bufferStore = new AsyncLocalStorage<BufferState>()
 const actorLookup = new AsyncLocalStorage<true>()
 
-const EMPTY_ACTOR: Actor = { userId: null, userName: null }
+const EMPTY_ACTOR: Actor = { userId: null, userName: null, companyId: null }
 
 export async function runInAuditBuffer<T>(
   base: PrismaClient,
@@ -599,6 +602,7 @@ function makeEvent({
   const afterPlain = after == null ? null : toPlain(after)
 
   return {
+    companyId: actor.companyId,
     userId: actor.userId,
     userName: actor.userName,
     action,
@@ -647,14 +651,19 @@ async function currentActor(): Promise<Actor> {
 async function resolveActor(): Promise<Actor> {
   try {
     const { auth } = await import("@/auth")
+    const { getActiveCompanyContext } = await import("@/lib/company-context")
     const session = await auth()
+    const company = await getActiveCompanyContext()
     const user = session?.user as
-      | { id?: string; name?: string | null; email?: string | null }
+      | { id?: string; name?: string | null; email?: string | null; activeCompanyId?: string | null }
       | undefined
 
     return {
       userId: user?.id && UUID_PATTERN.test(user.id) ? user.id : null,
       userName: user?.name?.trim() || user?.email?.trim() || null,
+      companyId: company?.companyId && UUID_PATTERN.test(company.companyId)
+        ? company.companyId
+        : null,
     }
   } catch {
     return EMPTY_ACTOR

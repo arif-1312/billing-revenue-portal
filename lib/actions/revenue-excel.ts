@@ -28,6 +28,7 @@ import {
   safeNotify,
 } from "@/lib/notifications/publish";
 import { loadPurchaseOrderSnapshots } from "@/lib/notifications/store";
+import { getActiveCompanyContext } from "@/lib/company-context";
 
 const REVENUE_ROUTE = "/admin/revenue";
 const MAX_FILE_BYTES = 1024 * 1024;
@@ -116,9 +117,11 @@ async function readUpload(formData: FormData) {
 async function loadRevenueImportContext(
   db: ImportDb,
   candidates: RevenueImportCandidate[],
+  companyId: string,
 ): Promise<RevenueImportContext> {
   const [purchaseOrders, billingCycles] = await Promise.all([
     db.purchaseOrder.findMany({
+      where: { companyId },
       select: {
         id: true,
         customerPONumber: true,
@@ -128,6 +131,7 @@ async function loadRevenueImportContext(
       },
     }),
     db.billingCycle.findMany({
+      where: { purchaseOrder: { companyId } },
       select: { id: true, purchaseOrderId: true, invoiceNumber: true },
     }),
   ]);
@@ -202,12 +206,12 @@ async function authorizeImportMutations(assessed: AssessedRevenueImport) {
   };
 }
 
-async function assessUpload(buffer: Buffer, db: ImportDb = prisma) {
+async function assessUpload(buffer: Buffer, db: ImportDb, companyId: string) {
   const parsed = await parseRevenueWorkbook(buffer);
   const assessed = assessRevenueImport(
     parsed,
     parsed.candidates.length
-      ? await loadRevenueImportContext(db, parsed.candidates)
+      ? await loadRevenueImportContext(db, parsed.candidates, companyId)
       : {
           purchaseOrdersByNumber: new Map(),
           purchaseOrdersByCustomerAndNumber: new Map(),
@@ -226,6 +230,8 @@ export async function exportRevenueWorkbook(
     if (!access.ok) {
       return { success: false, message: access.message };
     }
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
     if (!(await withinActionLimit("revenue-export"))) {
       return { success: false, message: "Too many requests. Try again shortly." };
     }
@@ -241,7 +247,7 @@ export async function exportRevenueWorkbook(
 
     const purchaseOrders = orderedIds.length
       ? await prisma.purchaseOrder.findMany({
-          where: { id: { in: orderedIds } },
+          where: { id: { in: orderedIds }, companyId: company.companyId },
           include: {
             customer: true,
             company: true,
@@ -333,6 +339,8 @@ export async function previewRevenueImport(
     if (!access.ok) {
       return emptyImportResult(access.message);
     }
+    const company = await getActiveCompanyContext();
+    if (!company) return emptyImportResult("Unauthorized");
     if (!(await withinActionLimit("revenue-import"))) {
       return emptyImportResult("Too many requests. Try again shortly.");
     }
@@ -345,7 +353,7 @@ export async function previewRevenueImport(
       return emptyImportResult("Choose an .xlsx file.");
     }
 
-    return toImportResult(await assessUpload(upload.buffer));
+    return toImportResult(await assessUpload(upload.buffer, prisma, company.companyId));
   } catch (error) {
     return emptyImportResult(formatError(error));
   }
@@ -359,6 +367,8 @@ export async function commitRevenueImport(
     if (!access.ok) {
       return emptyImportResult(access.message);
     }
+    const company = await getActiveCompanyContext();
+    if (!company) return emptyImportResult("Unauthorized");
     if (!(await withinActionLimit("revenue-import"))) {
       return emptyImportResult("Too many requests. Try again shortly.");
     }
@@ -374,7 +384,17 @@ export async function commitRevenueImport(
     const buffer = upload.buffer;
     const importedCount = await prisma.$transaction(
       async (tx) => {
-        const assessed = await assessUpload(buffer, tx);
+        const assessed = await assessUpload(buffer, tx, company.companyId);
+        const unauthorizedOrderIds = [...new Set(assessed.inserts.flatMap((row) => row.purchaseOrderId ? [row.purchaseOrderId] : []))];
+        if (unauthorizedOrderIds.length) {
+          const allowed = await tx.purchaseOrder.findMany({
+            where: { id: { in: unauthorizedOrderIds }, companyId: company.companyId },
+            select: { id: true },
+          });
+          if (allowed.length !== unauthorizedOrderIds.length) {
+            throw new Error("Import contains purchase orders outside the active company.");
+          }
+        }
 
         if (assessed.inserts.length === 0) {
           throw new ImportRejected(assessed);

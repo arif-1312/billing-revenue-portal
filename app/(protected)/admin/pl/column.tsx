@@ -5,7 +5,7 @@ import { ColumnDef } from "@tanstack/react-table";
 import { EditIcon, Eye, Trash } from "lucide-react";
 import Link from "next/link";
 
-type ProjectRow = {
+export type ProjectRow = {
   id: string;
 
   company: {
@@ -14,13 +14,13 @@ type ProjectRow = {
 
   projectName?: string | null;
 
-  poValue?: number | string | null;
+  poValue?: unknown;
 
-  totalRevenue?: number | string | null;
+  totalRevenue?: unknown;
 
-  totalCost?: number | string | null;
+  totalCost?: unknown;
 
-  projectedProfit?: number | string | null;
+  projectedProfit?: unknown;
 
   status?: string | null;
 };
@@ -33,7 +33,7 @@ type ProjectColumnsProps = {
 };
 
 function formatCurrency(
-  value: number | string | null | undefined,
+  value: unknown,
 ) {
   return `₹ ${Number(value || 0).toLocaleString("en-IN", {
     minimumFractionDigits: 2,
@@ -180,7 +180,7 @@ export const getUsersColumns = ({
 
       cell: ({ row }) => (
         <p className="font-semibold text-blue-600">
-          {row.original.projectedProfit || 0} %
+          {Number(row.original.projectedProfit) || 0} %
         </p>
       ),
     },

@@ -8,6 +8,7 @@ import { requirePermission, type PermissionRule } from "@/lib/rbac";
 import { fingerprint } from "@/lib/notifications/model";
 import { safePublishSystem } from "@/lib/notifications/publish";
 import { canonicalCompanyName, isAllowedCompanyName } from "@/lib/company-names";
+import { getActiveCompanyContext } from "@/lib/company-context";
 
 const companyReaders: PermissionRule[] = [
   { route: "/admin/revenue", action: "view" },
@@ -50,8 +51,11 @@ function normalizeCompanyPayload(company: Company) {
 export async function getCompanys() {
   const access = await requirePermission("/admin/company", "view", companyReaders);
   if (!access.ok) return [];
+  const activeCompany = await getActiveCompanyContext();
+  if (!activeCompany) return [];
 
   return await prisma.company.findMany({
+    where: { id: activeCompany.companyId },
     orderBy: {
       createdAt: 'desc'
     }
@@ -65,6 +69,8 @@ export async function createCompany(data: Company) {
     if (!access.ok) {
       return { success: false, message: access.message };
     }
+    const activeCompany = await getActiveCompanyContext();
+    if (!activeCompany) return { success: false, message: "Unauthorized" };
 
     const totalCompanies = await prisma.company.count()
 
@@ -80,6 +86,16 @@ export async function createCompany(data: Company) {
       },
       select: { id: true },
     })
+    await prisma.userCompany.upsert({
+      where: { userId_companyId: { userId: activeCompany.userId, companyId: created.id } },
+      create: {
+        userId: activeCompany.userId,
+        companyId: created.id,
+        roleId: activeCompany.role.id,
+        status: "ACTIVE",
+      },
+      update: { roleId: activeCompany.role.id, status: "ACTIVE" },
+    });
 
     await safePublishSystem({
       eventType: "SYSTEM_RECORD_CHANGE",
@@ -112,9 +128,11 @@ export async function getcompanyById(id: string) {
     if (!access.ok) {
       return { success: false, message: access.message };
     }
+    const activeCompany = await getActiveCompanyContext();
+    if (!activeCompany) return { success: false, message: "Unauthorized" };
 
-    let company = await prisma.company.findFirst({
-      where: { id }
+    const company = await prisma.company.findFirst({
+      where: { id, userMemberships: { some: { userId: activeCompany.userId, status: "ACTIVE" } } }
     })
 
     if (company) {
@@ -144,14 +162,17 @@ export async function updateCompany(data: Company, id: string) {
     if (!access.ok) {
       return { success: false, message: access.message };
     }
+    const activeCompany = await getActiveCompanyContext();
+    if (!activeCompany || activeCompany.companyId !== id) return { success: false, message: "Company not found" };
 
     const company = companySchema.parse(data)
     const payload = normalizeCompanyPayload(company)
 
-    await prisma.company.update({
-      where: { id },
+    const result = await prisma.company.updateMany({
+      where: { id, userMemberships: { some: { userId: activeCompany.userId, status: "ACTIVE" } } },
       data: payload
     })
+    if (!result.count) return { success: false, message: "Company not found" };
 
     await safePublishSystem({
       eventType: "SYSTEM_RECORD_CHANGE",
@@ -184,21 +205,21 @@ export async function updateCompany(data: Company, id: string) {
   }
 }
 
-export async function deleteCompany(id: any) {
+export async function deleteCompany(id: string) {
   try {
     const access = await requirePermission("/admin/company", "delete");
     if (!access.ok) {
       return { success: false, message: access.message };
     }
+    const activeCompany = await getActiveCompanyContext();
+    if (!activeCompany || activeCompany.companyId !== id) return { success: false, message: "Company not found" };
 
     const existing = await prisma.company.findUnique({
       where: { id },
       select: { id: true, name: true },
     })
 
-    await prisma.company.delete({
-      where: { id }
-    })
+    await prisma.company.deleteMany({ where: { id, userMemberships: { some: { userId: activeCompany.userId, status: "ACTIVE" } } } })
 
     if (existing) {
       await safePublishSystem({

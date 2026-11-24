@@ -16,6 +16,7 @@ import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/rbac";
 import { formatError } from "@/lib/utils";
 import { creditNoteSchema } from "@/lib/validators";
+import { getActiveCompanyContext } from "@/lib/company-context";
 
 const ROUTE = "/admin/credit-note";
 const MAX_FILE_BYTES = 1024 * 1024;
@@ -62,8 +63,11 @@ async function withinActionLimit(scope: string) {
 export async function getCreditNotes() {
   const access = await requirePermission(ROUTE, "view");
   if (!access.ok) return [];
+  const company = await getActiveCompanyContext();
+  if (!company) return [];
 
   const notes = await prisma.creditNote.findMany({
+    where: { companyId: company.companyId },
     orderBy: [{ date: "desc" }, { vchNo: "asc" }],
   });
 
@@ -76,8 +80,10 @@ export async function getCreditNoteById(id: string) {
       { route: ROUTE, action: "edit" },
     ]);
     if (!access.ok) return { success: false, message: access.message };
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
-    const note = await prisma.creditNote.findFirst({ where: { id } });
+    const note = await prisma.creditNote.findFirst({ where: { id, companyId: company.companyId } });
     if (!note) return { success: false, message: "Credit note not found" };
 
     return {
@@ -96,8 +102,11 @@ export async function createCreditNote(data: unknown) {
     if (!access.ok) return { success: false, message: access.message };
 
     const note = creditNoteSchema.parse(data);
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
     await prisma.creditNote.create({
       data: {
+        companyId: company.companyId,
         customerName: note.customerName,
         date: parseKolkataDate(note.date),
         vchType: note.vchType,
@@ -119,8 +128,10 @@ export async function updateCreditNote(data: unknown, id: string) {
     if (!access.ok) return { success: false, message: access.message };
 
     const note = creditNoteSchema.parse(data);
-    await prisma.creditNote.update({
-      where: { id },
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
+    const result = await prisma.creditNote.updateMany({
+      where: { id, companyId: company.companyId },
       data: {
         customerName: note.customerName,
         date: parseKolkataDate(note.date),
@@ -129,6 +140,7 @@ export async function updateCreditNote(data: unknown, id: string) {
         amount: new Prisma.Decimal(note.amount.toFixed(2)),
       },
     });
+    if (!result.count) return { success: false, message: "Credit note not found" };
 
     revalidateCreditNotes();
     return { success: true, message: "Credit note updated successfully" };
@@ -141,8 +153,10 @@ export async function deleteCreditNote(id: string) {
   try {
     const access = await requirePermission(ROUTE, "delete");
     if (!access.ok) return { success: false, message: access.message };
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
-    await prisma.creditNote.delete({ where: { id } });
+    await prisma.creditNote.deleteMany({ where: { id, companyId: company.companyId } });
     revalidateCreditNotes();
     return { success: true, message: "Credit note deleted successfully" };
   } catch (error) {
@@ -193,6 +207,8 @@ export async function importCreditNoteWorkbook(
   try {
     const access = await requirePermission(ROUTE, "create");
     if (!access.ok) return { success: false, message: access.message, errors: [] };
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized", errors: [] };
     if (!(await withinActionLimit("credit-note-import"))) {
       return { success: false, message: "Too many requests. Try again shortly.", errors: [] };
     }
@@ -225,6 +241,7 @@ export async function importCreditNoteWorkbook(
 
     await prisma.$transaction(async (tx) => {
       const existing = await tx.creditNote.findMany({
+        where: { companyId: company.companyId },
         select: { id: true, date: true, vchType: true, vchNo: true },
       });
       const byKey = new Map<string, string>();
@@ -245,10 +262,10 @@ export async function importCreditNoteWorkbook(
         };
         const id = byKey.get(creditNoteKey(row.vchType, row.vchNo, row.date));
         if (id) {
-          await tx.creditNote.update({ where: { id }, data });
+          await tx.creditNote.updateMany({ where: { id, companyId: company.companyId }, data });
           updatedCount += 1;
         } else {
-          const created = await tx.creditNote.create({ data });
+          const created = await tx.creditNote.create({ data: { ...data, companyId: company.companyId } });
           byKey.set(creditNoteKey(row.vchType, row.vchNo, row.date), created.id);
           importedCount += 1;
         }

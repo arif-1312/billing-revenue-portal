@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { requirePermission, findPlan, createParent, createCycle, findInvoices, transaction, after, revalidatePath, safeNotify, publishChange } = vi.hoisted(() => ({
+const { requirePermission, getActiveCompanyContext, findPlan, createParent, createCycle, findInvoices, transaction, after, revalidatePath, safeNotify, publishChange } = vi.hoisted(() => ({
   requirePermission: vi.fn(),
+  getActiveCompanyContext: vi.fn(),
   findPlan: vi.fn(),
   createParent: vi.fn(),
   createCycle: vi.fn(),
@@ -14,6 +15,7 @@ const { requirePermission, findPlan, createParent, createCycle, findInvoices, tr
 }));
 
 vi.mock("@/lib/rbac", () => ({ requirePermission }));
+vi.mock("@/lib/company-context", () => ({ getActiveCompanyContext }));
 vi.mock("next/server", () => ({ after }));
 vi.mock("next/cache", () => ({ revalidatePath }));
 vi.mock("@/lib/notifications/publish", () => ({
@@ -23,7 +25,7 @@ vi.mock("@/lib/notifications/publish", () => ({
 vi.mock("@/lib/notifications/store", () => ({ loadPurchaseOrderSnapshots: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    billingPlan: { findUnique: findPlan },
+    billingPlan: { findUnique: findPlan, findFirst: findPlan },
     purchaseOrder: { create: createParent },
     $transaction: transaction,
   },
@@ -34,6 +36,7 @@ import { createPurchaseOrder } from "./purschase-order";
 const records: string[] = [];
 let inTransaction = false;
 const input = {
+  companyId: "company-1",
   customerPONumber: "PO-TEST",
   billingCycles: [{ invoiceNumber: "INV-TEST", invoiceAmount: 100, creditNote: 0, payments: [] }],
   scope: "",
@@ -44,6 +47,7 @@ beforeEach(() => {
   records.length = 0;
   inTransaction = false;
   requirePermission.mockResolvedValue({ ok: true });
+  getActiveCompanyContext.mockResolvedValue({ companyId: "company-1", company: { id: "company-1" } });
   findInvoices.mockResolvedValue([]);
   createParent.mockImplementation(async () => {
     records.push("po-created");

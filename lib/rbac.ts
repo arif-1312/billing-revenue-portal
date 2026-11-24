@@ -1,5 +1,5 @@
 import { auth } from "@/auth"
-import { prisma } from "@/lib/prisma"
+import { getActiveCompanyMembership } from "@/lib/company-context"
 import { requestCache } from "@/lib/request-cache"
 import { recordSecurityEvent } from "@/lib/security-event"
 
@@ -16,34 +16,23 @@ type PermissionUser = NonNullable<Awaited<ReturnType<typeof loadPermissionUser>>
 
 async function readPermissionUser() {
   const session = await auth()
-  const email = session?.user?.email
+  if (!session?.user?.id || !session.user.activeCompanyId) return
 
-  if (!email) return
-
-  return loadPermissionUser(email)
+  return loadPermissionUser()
 }
 
 export const getUserPermissions = requestCache(readPermissionUser)
 
-async function loadPermissionUser(email: string) {
-  const user = await prisma.user.findUnique({
-    where: { email },
-    include: {
-      role: {
-        include: {
-          roleModules: {
-            include: {
-              module: true,
-            },
-          },
-        },
-      },
-    },
-  })
+async function loadPermissionUser() {
+  const membership = await getActiveCompanyMembership()
+  if (!membership) return
 
-  if (!user || user.status !== "ACTIVE") return
-
-  return user
+  return {
+    ...membership.user,
+    role: membership.role,
+    activeCompanyId: membership.companyId,
+    activeCompany: membership.company,
+  }
 }
 
 export async function canAccess(route: string, action: string) {
@@ -58,8 +47,9 @@ export async function requirePermission(
 ) {
   const session = await auth()
   const email = session?.user?.email
+  const companyId = session?.user?.activeCompanyId
 
-  if (!email) {
+  if (!email || !companyId) {
     await recordSecurityEvent({
       event: "PERMISSION_DENIED",
       result: "failure",

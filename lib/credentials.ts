@@ -1,5 +1,7 @@
 import bcrypt from "bcrypt"
 import { randomBytes } from "node:crypto"
+import { CredentialsSignin } from "@auth/core/errors"
+import type { CredentialInput } from "@auth/core/providers/credentials"
 
 import { prisma } from "@/lib/prisma"
 import {
@@ -13,7 +15,17 @@ import { passwordFingerprint } from "@/lib/password"
 type Credentials = {
   username?: unknown
   password?: unknown
+  companyId?: unknown
 } | null | undefined
+
+export class CompanyAccessDeniedError extends CredentialsSignin {
+  code = "company_access_denied"
+}
+
+export class CompanySelectionRequiredError extends CredentialsSignin {
+  code = "company_required"
+  static credentials: Record<string, CredentialInput> = {}
+}
 
 const DUMMY_PASSWORD_HASH =
   "$2b$12$fhISTPUZkdjPrgA9UY6Ux.sRWDp9AjSK8s/eJMrMOnLC3R0oQ9xbS"
@@ -26,8 +38,10 @@ export async function authorizeCredentials(
     typeof credentials?.username === "string" ? credentials.username.trim() : ""
   const password =
     typeof credentials?.password === "string" ? credentials.password : ""
+  const companyId =
+    typeof credentials?.companyId === "string" ? credentials.companyId.trim() : ""
 
-  if (!username || !password) {
+  if (!username || !password || !companyId) {
     return null
   }
 
@@ -41,7 +55,7 @@ export async function authorizeCredentials(
   }
 
   const user = await prisma.user.findFirst({
-    where: { username },
+    where: { OR: [{ username }, { email: username }] },
     include: { role: true },
   })
 
@@ -58,6 +72,29 @@ export async function authorizeCredentials(
       result: "failure",
     })
     return null
+  }
+
+  const membership = await prisma.userCompany.findFirst({
+    where: {
+      userId: user.id,
+      companyId,
+      status: "ACTIVE",
+      company: { status: "ACTIVE", isActive: true },
+      role: { status: "ACTIVE" },
+    },
+    select: { role: { select: { name: true } } },
+  })
+
+  if (!membership) {
+    await recordSecurityEvent({
+      event: "PERMISSION_DENIED",
+      username: user.username,
+      userId: user.id,
+      result: "failure",
+      route: "/login",
+      action: "select-company",
+    })
+    throw new CompanyAccessDeniedError()
   }
 
   // A failure may have reached the threshold while bcrypt was running.
@@ -81,7 +118,8 @@ export async function authorizeCredentials(
     firstName: user.firstName ?? "",
     lastName: user.lastName ?? "",
     email: user.email ?? "",
-    role: user.role?.name ?? "USER",
+    role: membership.role.name,
+    activeCompanyId: companyId,
     credentialVersion,
     sessionId,
   }

@@ -1,55 +1,33 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
 import moment from "moment";
 import { AccordionItem, AccordionContent, AccordionTrigger } from "../ui/accordion";
 import { FormField, FormItem, FormLabel, FormControl, FormMessage } from "../ui/form";
 import { Input } from "../ui/input";
-import { useFieldArray } from "react-hook-form";
+import { useFieldArray, type UseFormReturn } from "react-hook-form";
 import { Button } from "../ui/button";
 import { Card, CardContent } from "../ui/card";
+import { Trash2 } from "lucide-react";
+import { z } from "zod";
+import { projectMonthlyPLSchema, projectSchema } from "@/lib/validators";
 
 interface OtherCost {
   key: string;
   value: number | string;
 }
 
-interface BillingCycleField {
-  month?: number;
-  year?: number;
-  billedAmount: number;
-  otherCost: OtherCost[];
-}
+type BillingCycleField = z.infer<typeof projectMonthlyPLSchema>;
 
 interface PLBillingCycleProps {
   field: BillingCycleField;
   index: number;
-  form: {
-    control: any; // react-hook-form control object
-    watch: any;
-  } | null;
+  form: UseFormReturn<z.infer<typeof projectSchema>>;
 }
 
 const PLBillingCycle = ({ field, index, form }: PLBillingCycleProps) => {
-  if (!form) {
-  
-    return (
-      <AccordionItem value={`billing-cycle-${index}`}>
-        <AccordionTrigger>Data not available</AccordionTrigger>
-        <AccordionContent>
-          <p className="text-red-500">Form control is missing</p>
-        </AccordionContent>
-      </AccordionItem>
-    );
-  }
-
-  const monthIndex = field?.month ?? 0;
-  const year = field?.year ?? new Date().getFullYear();
+  const monthIndex = Number(field?.month ?? 0);
+  const year = Number(field?.year ?? new Date().getFullYear());
   const monthName = moment().month(monthIndex).format("MMMM");
-
-  const [totalOtherBillAmount, setTotalOtherBillAmount] = useState(0);
-  const [monthlyGMPercentage, setMonthlyGMPercentage] = useState(0);
-  const hasInitialized = useRef(false);
 
   const { fields: otherFields, append, remove } = useFieldArray({
     control: form.control,
@@ -58,37 +36,15 @@ const PLBillingCycle = ({ field, index, form }: PLBillingCycleProps) => {
 
   const addMiscellaneousAmount = () => append({ key: "", value: 0 });
 
-  const otherBills: OtherCost[] = form.watch(`billingCycle.${index}.otherCost`) || [];
-  const billedAmount: number = form.watch(`billingCycle.${index}.billedAmount`) || 0;
-
-  useEffect(() => {
-    if (otherBills.length > 0) {
-      const totalAmount = otherBills.reduce((sum, bill) => sum + Number(bill.value || 0), 0);
-      setTotalOtherBillAmount(totalAmount);
-      const gmPercent = billedAmount > 0 ? (totalAmount / billedAmount) * 100 : 0;
-      setMonthlyGMPercentage(Number(gmPercent.toFixed(2)));
-    } else {
-      setTotalOtherBillAmount(0);
-      setMonthlyGMPercentage(0);
-    }
-
-    if (!hasInitialized.current && field?.otherCost) {
-      hasInitialized.current = true;
-      let otherCostData: OtherCost[] = [];
-
-      if (typeof field.otherCost === "string") {
-        try {
-          otherCostData = JSON.parse(field.otherCost);
-        } catch {
-          console.error("Invalid JSON in otherCost:", field.otherCost);
-        }
-      } else {
-        otherCostData = field.otherCost;
-      }
-
-      if (otherCostData.length > 0) append(otherCostData);
-    }
-  }, [JSON.stringify(otherBills), billedAmount, append, field.otherCost]);
+  const otherBills: OtherCost[] = form.watch(`billingCycle.${index}.otherCost`) ?? [];
+  const billedAmount = Number(form.watch(`billingCycle.${index}.billedAmount`) ?? 0);
+  const totalOtherBillAmount = otherBills.reduce(
+    (sum, bill) => sum + Number(bill.value || 0),
+    0,
+  );
+  const monthlyGMPercentage = billedAmount > 0
+    ? Number(((totalOtherBillAmount / billedAmount) * 100).toFixed(2))
+    : 0;
 
   return (
     <AccordionItem value={`billing-cycle-${index}`}>
@@ -125,6 +81,17 @@ const PLBillingCycle = ({ field, index, form }: PLBillingCycleProps) => {
             {otherFields.map((field, ind) => (
               <Card key={ind}>
                 <CardContent>
+                  <div className="mb-3 flex justify-end">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Remove miscellaneous amount ${ind + 1}`}
+                      onClick={() => remove(ind)}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </div>
                   <div className="grid grid-cols-2 gap-4">
                     <FormField
                       control={form.control}

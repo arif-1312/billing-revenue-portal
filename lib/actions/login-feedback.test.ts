@@ -15,8 +15,9 @@ beforeEach(() => vi.resetAllMocks())
 
 function form() {
   const data = new FormData()
-  data.set("username", "ada")
+  data.set("email", "ada@example.com")
   data.set("password", "test-password")
+  data.set("companyId", "22222222-2222-4222-8222-222222222222")
   return data
 }
 
@@ -26,14 +27,14 @@ describe("login form feedback", () => {
     expect(signOut).toHaveBeenCalledWith({ redirectTo: "/" })
   })
 
-  it("opens the PO renewal dialog after a successful login", async () => {
+  it("redirects to the home page after a successful login", async () => {
     signIn.mockResolvedValue(undefined)
 
     await loginFormUser(null, form())
 
     expect(signIn).toHaveBeenCalledWith("credentials", expect.objectContaining({
-      username: "ada",
-      redirectTo: "/admin/home?showPoRenewals=1",
+      username: "ada@example.com",
+      redirectTo: "/admin/home",
     }))
   })
 

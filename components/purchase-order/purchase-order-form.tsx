@@ -45,7 +45,7 @@ import {
 import BillingCycleForm from "./billing-cycle-form";
 import { Calendar } from "../ui/calendar";
 import { Loader2, ArrowRight, CalendarIcon, Plus } from "lucide-react";
-import { cn, formatError } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import {
   themedFieldClassName,
   themedInputClassName,
@@ -78,14 +78,17 @@ import { Card, CardContent } from "../ui/card";
 import { Skeleton } from "../ui/skeleton";
 import {
   formatBillingCycleLabel,
-  isOtsName,
   MONTH_NAMES,
   generatePurchaseOrderBillingCycles,
   resolveBillingPlanInterval,
   resolveCycleInvoiceAmount,
 } from "@/lib/billing-cycle-utils";
 
+import ContractTypeForm from "@/components/contract-type/contract-type-form";
+
 type PurchaseOrderFormValues = z.infer<typeof purchaseOrderSchema>;
+const ADD_CONTRACT_TYPE_OPTION = "__add_contract_type__";
+const PENDING_CONTRACT_TYPE_STORAGE_KEY = "billing-revenue:pending-po-contract-type";
 type PurchaseOrderFormData = Partial<PurchaseOrderFormValues> & {
   billingCycles?: Array<
     Partial<PurchaseOrderFormValues["billingCycles"][number]>
@@ -241,70 +244,6 @@ const paymentDrafts = (cycle?: {
   return [];
 };
 
-const formatPurchaseOrderFormValues = (
-  data?: PurchaseOrderFormData,
-): PurchaseOrderFormValues => {
-  if (!data) return defaultPurchaseOrderValues;
-
-  const billingCycles = (data.billingCycles ?? []).map((cycle) => ({
-    id: cycle.id,
-    invoiceNumber: cycle.invoiceNumber ?? "",
-    invoiceAmount: Number(cycle.invoiceAmount ?? 0),
-    creditNote: Number(cycle.creditNote ?? 0),
-    collectedAmount: Number(cycle.collectedAmount ?? 0),
-    invoiceDate: cycle.invoiceDate
-      ? new Date(cycle.invoiceDate)
-      : cycle.billingSubmittedDate
-        ? new Date(cycle.billingSubmittedDate)
-        : undefined,
-    billingSubmittedDate: cycle.invoiceDate
-      ? new Date(cycle.invoiceDate)
-      : cycle.billingSubmittedDate
-        ? new Date(cycle.billingSubmittedDate)
-        : undefined,
-    paymentReceivedDate: cycle.paymentReceivedDate
-      ? new Date(cycle.paymentReceivedDate)
-      : undefined,
-    payments: paymentDrafts(cycle),
-    paymentDueDate:
-      getDefaultPaymentDueDate({
-        billingSubmittedDate: cycle.billingSubmittedDate
-          ? new Date(cycle.billingSubmittedDate)
-          : undefined,
-        invoiceDate: cycle.invoiceDate ? new Date(cycle.invoiceDate) : undefined,
-        paymentDueDate: cycle.paymentDueDate
-          ? new Date(cycle.paymentDueDate)
-          : undefined,
-      }) ?? undefined,
-    paymentReceived: cycle.paymentReceived,
-    billingRemark: cycle.billingRemark ?? "",
-    tds: Number(cycle.tds ?? 0),
-  }));
-
-  return {
-    ...defaultPurchaseOrderValues,
-    customerPONumber: data.customerPONumber ?? "",
-    poAmount: Number(data.poAmount ?? 0),
-    serviceTypeId: String(data.serviceTypeId ?? ""),
-    contractDurationId: String(data.contractDurationId ?? ""),
-    companyId: String(data.companyId ?? ""),
-    contractId: String(data.contractId ?? ""),
-    billingPlanId: String(data.billingPlanId ?? ""),
-    customerId: String(data.customerId ?? ""),
-    vendorId: String(data.vendorId ?? ""),
-    paymentTerms: data.paymentTerms ?? "",
-    poOwner: data.poOwner ?? "",
-    status: data.status ?? defaultPurchaseOrderValues.status,
-    purchaseOrderType: normalizePurchaseOrderType(data.purchaseOrderType),
-    startFrom: data.startFrom ? new Date(data.startFrom) : undefined,
-    endDate: data.endDate ? new Date(data.endDate) : undefined,
-    ageingDays: Number(data.ageingDays ?? 0),
-    remark: data.remark ?? "",
-    scope: data.scope ?? "",
-    billingCycles,
-  };
-};
-
 const getBillingSubmittedDate = (
   cycle?: Partial<PurchaseOrderBillingCycle> | null,
   anchorDate?: Date | null,
@@ -371,6 +310,18 @@ const distributeInvoiceAmounts = (
   });
 };
 
+const isOTSContractType = (name?: string | null) => {
+  const normalizedName = name?.trim().toLowerCase() ?? "";
+
+  return (
+    normalizedName === "ots" ||
+    /\bots\b/.test(normalizedName) ||
+    normalizedName.includes("one time") ||
+    normalizedName.includes("one-time") ||
+    normalizedName.includes("onetime")
+  );
+};
+
 const POForm = ({
   billingPlan,
   serviceType,
@@ -395,7 +346,7 @@ const POForm = ({
   const router = useRouter();
   const id = data?.id;
   const isMounted = React.useSyncExternalStore(
-    () => () => {},
+    () => () => { },
     () => true,
     () => false,
   );
@@ -403,7 +354,10 @@ const POForm = ({
   // ---------------- FORM ----------------
   const form = useForm<PurchaseOrderFormValues>({
     resolver: zodResolver(purchaseOrderSchema) as Resolver<PurchaseOrderFormValues>,
-    defaultValues: formatPurchaseOrderFormValues(data),
+    defaultValues: {
+      ...(data ?? defaultPurchaseOrderValues),
+      purchaseOrderType: normalizePurchaseOrderType(data?.purchaseOrderType),
+    } as PurchaseOrderFormValues,
   });
 
   const { fields, append, remove, replace } = useFieldArray({
@@ -414,12 +368,18 @@ const POForm = ({
   const [selectedCycleIndex, setSelectedCycleIndex] = useState(0);
   const [isAddCycleDialogOpen, setIsAddCycleDialogOpen] = useState(false);
 
+  const [contractTypeOptions, setContractTypeOptions] = useState<
+    Array<Pick<ContractType, "id" | "name">>
+  >(contractType);
+  const [selectedContractTypeId, setSelectedContractTypeId] = useState(
+    String(data?.contractId ?? ""),
+  );
+  const [isAddContractTypeDialogOpen, setIsAddContractTypeDialogOpen] = useState(false)
   // ---------------- WATCHERS ----------------
   const [
     watchBillingPlan,
     watchPOAmount,
     watchContractId,
-    watchServiceTypeId,
     startFrom,
     endDate,
     watchPurchaseOrderType,
@@ -429,7 +389,6 @@ const POForm = ({
       "billingPlanId",
       "poAmount",
       "contractId",
-      "serviceTypeId",
       "startFrom",
       "endDate",
       "purchaseOrderType",
@@ -456,23 +415,25 @@ const POForm = ({
   );
   const selectedContractType = React.useMemo(
     () =>
-      contractType.find(
+      contractTypeOptions.find(
         (value) => String(value.id) === String(watchContractId ?? ""),
       ),
-    [contractType, watchContractId],
+    [contractTypeOptions, watchContractId],
   );
-  const selectedServiceType = React.useMemo(
-    () =>
-      serviceType.find(
-        (value) => String(value.id) === String(watchServiceTypeId ?? ""),
-      ),
-    [serviceType, watchServiceTypeId],
-  );
+  const selectedContractTypeName = contractTypeOptions.find(
+    (contract) => String(contract.id) === selectedContractTypeId,
+  )?.name;
+  console.log("[contract type display]", {
+    selectedId: selectedContractTypeId,
+    formContractId: watchContractId,
+    update,
+    purchaseOrderId: id,
+    selectedName: selectedContractTypeName,
+    options: contractTypeOptions.map(({ id, name }) => ({ id, name })),
+  });
   const isOTSSelected = React.useMemo(
-    () =>
-      isOtsName(selectedContractType?.name) ||
-      isOtsName(selectedServiceType?.name),
-    [selectedContractType?.name, selectedServiceType?.name],
+    () => isOTSContractType(selectedContractType?.name),
+    [selectedContractType?.name],
   );
   const isManualPurchaseOrderType = React.useMemo(
     () => supportsManualPurchaseOrderBillingCycles(watchPurchaseOrderType),
@@ -493,9 +454,6 @@ const POForm = ({
       selectedBillingPlan.name,
     ).autoGenerate;
   }, [selectedBillingPlan]);
-  const schedulesBillingCycles = Boolean(
-    selectedBillingPlan && !isFlexibleBillingPlan,
-  );
   const canManageManualBillingCycles = React.useMemo(
     () => isOTSSelected || isManualPurchaseOrderType || isFlexibleBillingPlan,
     [isFlexibleBillingPlan, isManualPurchaseOrderType, isOTSSelected],
@@ -514,7 +472,7 @@ const POForm = ({
       Number(watchPOAmount ?? 0) === Number(data.poAmount ?? 0) &&
       String(watchContractId ?? "") === String(data.contractId ?? "") &&
       normalizePurchaseOrderType(watchPurchaseOrderType) ===
-        normalizePurchaseOrderType(data.purchaseOrderType) &&
+      normalizePurchaseOrderType(data.purchaseOrderType) &&
       areDatesEquivalent(startFrom, data.startFrom) &&
       areDatesEquivalent(endDate, data.endDate)
     );
@@ -530,9 +488,9 @@ const POForm = ({
   ]);
 
   const [isPending, startTransition] = React.useTransition();
-  const submissionInFlightRef = React.useRef(false);
   const skipInitialAutoGenerationRef = React.useRef(update);
   const lastGeneratedInvoiceAmountsRef = React.useRef(new Map<string, number>());
+  const initializedPurchaseOrderIdRef = React.useRef<string | null>(null);
 
   const billingCycleYearOptions = React.useMemo(() => {
     const years = new Set<number>([
@@ -618,7 +576,7 @@ const POForm = ({
   );
 
   useEffect(() => {
-    if (!canManageManualBillingCycles || schedulesBillingCycles) return;
+    if (!canManageManualBillingCycles) return;
 
     const existingCycles = form.getValues("billingCycles") ?? [];
 
@@ -641,7 +599,6 @@ const POForm = ({
     replace,
     startFrom,
     watchPOAmount,
-    schedulesBillingCycles,
   ]);
 
   useEffect(() => {
@@ -655,7 +612,7 @@ const POForm = ({
   }, [endDate, form, startFrom]);
 
   useEffect(() => {
-    if (!canManageManualBillingCycles || schedulesBillingCycles) return;
+    if (!canManageManualBillingCycles) return;
 
     const existingCycles = form.getValues("billingCycles") ?? [];
 
@@ -679,209 +636,48 @@ const POForm = ({
     form,
     replace,
     startFrom,
-    schedulesBillingCycles,
   ]);
 
   // ---------------- SUBMIT ----------------
   const onSubmit: SubmitHandler<PurchaseOrderFormValues> = (values) => {
-    if (submissionInFlightRef.current) return;
-    submissionInFlightRef.current = true;
+    try {
+      window.sessionStorage.removeItem(
+        `${PENDING_CONTRACT_TYPE_STORAGE_KEY}:${id ?? "create"}`,
+      );
+    } catch {
+      // Ignore unavailable session storage.
+    }
+
     startTransition(async () => {
-      try {
-        const res =
-          update && id
-            ? await updatePurchaseOrder(values, id)
-            : await createPurchaseOrder(values);
+      const res =
+        update && id
+          ? await updatePurchaseOrder(values, id)
+          : await createPurchaseOrder(values);
 
-        if (!res?.success) {
-          toast.error("Error", { description: res?.message });
-          return;
-        }
-
-        toast.success(res.message);
+      if (!res?.success) {
+        toast.error("Error", { description: res?.message });
+      } else {
         router.push("/admin/revenue");
-      } catch (error) {
-        toast.error("Error", { description: formatError(error) });
-      } finally {
-        submissionInFlightRef.current = false;
       }
     });
   };
 
   // ---------------- AUTO BILLING CYCLES ----------------
-  const syncGeneratedBillingCycles = React.useCallback(
-    (mode: "apply" | "track") => {
-      if (isManualPurchaseOrderType && !isOTSSelected) return 0;
-      if (!startFrom || !endDate) return 0;
-
-      const start = moment(startFrom);
-      const end = moment(endDate);
-
-      if (!start.isValid() || !end.isValid() || end.isBefore(start, "day")) {
-        return 0;
-      }
-
-      const plans = Array.isArray(billingPlan) ? billingPlan : [];
-      const selectedPlan = plans.find(
-        (value) => String(value.id) === String(watchBillingPlan ?? ""),
-      );
-
-      if (!selectedPlan) return 0;
-
-      const planInterval = resolveBillingPlanInterval(
-        Number(selectedPlan.totalBillingCycles || 0),
-        selectedPlan.name,
-      );
-      const generatedCycles = planInterval.autoGenerate
-        ? generatePurchaseOrderBillingCycles({
-            startDate: start.toDate(),
-            endDate: end.toDate(),
-            totalBillingCycles: Number(selectedPlan.totalBillingCycles || 0),
-            planName: selectedPlan.name,
-            type: selectedPlan.billingCycleType ?? "START",
-          })
-        : isOTSSelected
-          ? [
-              {
-                invoiceDate: start.clone().startOf("day").toDate(),
-                billingSubmittedDate: start.clone().startOf("day").toDate(),
-              },
-            ]
-          : [];
-
-      if (generatedCycles.length === 0) return 0;
-
-      const generatedInvoiceAmounts = distributeInvoiceAmounts(
-        watchPOAmount,
-        generatedCycles.length,
-      );
-      const existingCycles = form.getValues("billingCycles") ?? [];
-      const trackedInvoiceAmounts = new Map<string, number>();
-      const cycles = generatedCycles.flatMap((cycleDates, index) => {
-        const targetDate =
-          cycleDates.invoiceDate ?? cycleDates.billingSubmittedDate;
-
-        if (!targetDate) return [];
-
-        const targetMonth = targetDate.getMonth();
-        const targetYear = targetDate.getFullYear();
-        const cycleKey = `${targetYear}-${targetMonth}`;
-        const existingCycle = existingCycles.find((cycle) => {
-          const monthYear = getCycleMonthYear(cycle);
-
-          return (
-            monthYear?.month === targetMonth && monthYear?.year === targetYear
-          );
-        });
-        const resolvedInvoiceAmount = resolveCycleInvoiceAmount(
-          existingCycle?.invoiceAmount,
-          generatedInvoiceAmounts[index] ?? 0,
-          lastGeneratedInvoiceAmountsRef.current.get(cycleKey),
-        );
-
-        trackedInvoiceAmounts.set(
-          cycleKey,
-          resolvedInvoiceAmount.trackedGeneratedAmount,
-        );
-
-        return [
-          {
-            id: existingCycle?.id,
-            invoiceNumber: existingCycle?.invoiceNumber ?? "",
-            invoiceAmount: resolvedInvoiceAmount.amount,
-            creditNote: Number(existingCycle?.creditNote ?? 0),
-            collectedAmount: Number(existingCycle?.collectedAmount ?? 0),
-            invoiceDate:
-              existingCycle?.invoiceDate ??
-              existingCycle?.billingSubmittedDate ??
-              cycleDates.invoiceDate,
-            billingSubmittedDate:
-              existingCycle?.invoiceDate ??
-              existingCycle?.billingSubmittedDate ??
-              cycleDates.invoiceDate ??
-              cycleDates.billingSubmittedDate,
-            paymentReceived: existingCycle?.paymentReceived ?? PaymentReceived.NO,
-            paymentReceivedDate: existingCycle?.paymentReceivedDate ?? null,
-            payments: paymentDrafts(existingCycle),
-            paymentDueDate:
-              getDefaultPaymentDueDate(existingCycle) ??
-              cycleDates.invoiceDate ??
-              cycleDates.billingSubmittedDate ??
-              null,
-            billingRemark: existingCycle?.billingRemark ?? "",
-            tds: Number(existingCycle?.tds ?? 0),
-          },
-        ];
-      });
-
-      if (cycles.length === 0) return 0;
-
-      lastGeneratedInvoiceAmountsRef.current = trackedInvoiceAmounts;
-
-      if (mode === "apply") {
-        replace(cycles);
-      }
-
-      return cycles.length;
-    },
-    [
-      billingPlan,
-      endDate,
-      form,
-      isManualPurchaseOrderType,
-      isOTSSelected,
-      replace,
-      startFrom,
-      watchBillingPlan,
-      watchPOAmount,
-    ],
-  );
-
-  const generateBillingCycles = React.useCallback(() => {
-    if (!startFrom || !endDate) {
-      toast.error("Select a start date and an end date before generating billing cycles.");
-      return;
-    }
-
-    if (!watchBillingPlan) {
-      toast.error("Select a billing plan before generating billing cycles.");
-      return;
-    }
-
-    const count = syncGeneratedBillingCycles("apply");
-
-    if (!count) {
-      toast.error("No billing cycles could be generated for these dates.");
-      return;
-    }
-
-    toast.success(
-      count === 1
-        ? "Generated 1 billing cycle."
-        : `Generated ${count} billing cycles.`,
-    );
-  }, [startFrom, endDate, syncGeneratedBillingCycles, watchBillingPlan]);
-
   useEffect(() => {
-    if (isManualPurchaseOrderType && !isOTSSelected) return;
+    if (isManualPurchaseOrderType) return;
     if (!watchBillingPlan || watchPOAmount == null || !startFrom || !endDate) {
       return;
     }
 
-    const existingCycles = form.getValues("billingCycles") ?? [];
+    const start = moment(startFrom);
+    const end = moment(endDate);
 
-    if (skipInitialAutoGenerationRef.current) {
-      skipInitialAutoGenerationRef.current = false;
-
-      if (isInitialUpdateGenerationState && existingCycles.length > 0) {
-        syncGeneratedBillingCycles("track");
-        return;
-      }
+    if (!start.isValid() || !end.isValid() || end.isBefore(start, "day")) {
+      return;
     }
 
-    const plans = Array.isArray(billingPlan) ? billingPlan : [];
-    const selectedPlan = plans.find(
-      (value) => String(value.id) === String(watchBillingPlan ?? ""),
+    const selectedPlan = billingPlan.find(
+      (value) => value.id === watchBillingPlan,
     );
 
     if (!selectedPlan) return;
@@ -891,41 +687,284 @@ const POForm = ({
       selectedPlan.name,
     );
 
-    if (
-      !planInterval.autoGenerate &&
-      !(isOTSSelected && existingCycles.length === 0)
-    ) {
-      return;
+    if (!planInterval.autoGenerate) return;
+
+    const generatedCycles = generatePurchaseOrderBillingCycles({
+      startDate: start.toDate(),
+      endDate: end.toDate(),
+      totalBillingCycles: Number(selectedPlan.totalBillingCycles || 0),
+      planName: selectedPlan.name,
+      type: selectedPlan.billingCycleType ?? "START",
+    });
+    const generatedInvoiceAmounts = distributeInvoiceAmounts(
+      watchPOAmount,
+      generatedCycles.length,
+    );
+    const trackGeneratedAmounts = () => {
+      const tracked = new Map<string, number>();
+
+      generatedCycles.forEach((cycleDates, index) => {
+        const targetDate =
+          cycleDates.invoiceDate ?? cycleDates.billingSubmittedDate;
+
+        if (!targetDate) return;
+
+        tracked.set(
+          `${targetDate.getFullYear()}-${targetDate.getMonth()}`,
+          Number(generatedInvoiceAmounts[index] ?? 0),
+        );
+      });
+
+      lastGeneratedInvoiceAmountsRef.current = tracked;
+    };
+
+    if (skipInitialAutoGenerationRef.current) {
+      skipInitialAutoGenerationRef.current = false;
+
+      if (isInitialUpdateGenerationState) {
+        trackGeneratedAmounts();
+        return;
+      }
     }
 
-    syncGeneratedBillingCycles("apply");
+    const existingCycles = form.getValues("billingCycles") ?? [];
+    const trackedInvoiceAmounts = new Map<string, number>();
+
+    const cycles = generatedCycles.map((cycleDates, index) => {
+      const targetDate = cycleDates.invoiceDate ?? cycleDates.billingSubmittedDate;
+      const targetMonth = targetDate.getMonth();
+      const targetYear = targetDate.getFullYear();
+      const cycleKey = `${targetYear}-${targetMonth}`;
+      const existingCycle = existingCycles.find((cycle) => {
+        const monthYear = getCycleMonthYear(cycle);
+
+        return (
+          monthYear?.month === targetMonth &&
+          monthYear?.year === targetYear
+        );
+      });
+      const resolvedInvoiceAmount = resolveCycleInvoiceAmount(
+        existingCycle?.invoiceAmount,
+        generatedInvoiceAmounts[index] ?? 0,
+        lastGeneratedInvoiceAmountsRef.current.get(cycleKey),
+      );
+
+      trackedInvoiceAmounts.set(
+        cycleKey,
+        resolvedInvoiceAmount.trackedGeneratedAmount,
+      );
+
+      return {
+        id: existingCycle?.id,
+        invoiceNumber: existingCycle?.invoiceNumber ?? "",
+        invoiceAmount: resolvedInvoiceAmount.amount,
+        creditNote: Number(existingCycle?.creditNote ?? 0),
+        collectedAmount: Number(existingCycle?.collectedAmount ?? 0),
+        invoiceDate:
+          existingCycle?.invoiceDate ??
+          existingCycle?.billingSubmittedDate ??
+          cycleDates.invoiceDate,
+        billingSubmittedDate:
+          existingCycle?.invoiceDate ??
+          existingCycle?.billingSubmittedDate ??
+          cycleDates.invoiceDate ??
+          cycleDates.billingSubmittedDate,
+        paymentReceived: existingCycle?.paymentReceived ?? PaymentReceived.NO,
+        paymentReceivedDate: existingCycle?.paymentReceivedDate ?? null,
+        payments: paymentDrafts(existingCycle),
+        paymentDueDate:
+          getDefaultPaymentDueDate(existingCycle) ??
+          cycleDates.invoiceDate ??
+          cycleDates.billingSubmittedDate ??
+          null,
+        billingRemark: existingCycle?.billingRemark ?? "",
+        tds: Number(existingCycle?.tds ?? 0),
+      };
+    });
+
+    lastGeneratedInvoiceAmountsRef.current = trackedInvoiceAmounts;
+    replace(cycles);
   }, [
     billingPlan,
     endDate,
     form,
-    isInitialUpdateGenerationState,
-    isManualPurchaseOrderType,
-    isOTSSelected,
+    replace,
     startFrom,
-    syncGeneratedBillingCycles,
+    update,
     watchBillingPlan,
+    watchContractId,
     watchPOAmount,
+    watchPurchaseOrderType,
+    isManualPurchaseOrderType,
+    isInitialUpdateGenerationState,
   ]);
-
-  const didHydratePurchaseOrderRef = React.useRef(false);
 
   // ---------------- UPDATE MODE ----------------
   useEffect(() => {
-    if (!update || !data || didHydratePurchaseOrderRef.current) return;
+    if (!update || !data) return;
 
-    didHydratePurchaseOrderRef.current = true;
+    const purchaseOrderId = String(data.id ?? "");
+    console.log("[purchase order update reset]", {
+      purchaseOrderId,
+      contractId: data.contractId,
+      alreadyInitialized:
+        initializedPurchaseOrderIdRef.current === purchaseOrderId,
+    });
+    if (initializedPurchaseOrderIdRef.current === purchaseOrderId) return;
+    initializedPurchaseOrderIdRef.current = purchaseOrderId;
+
     skipInitialAutoGenerationRef.current = true;
 
-    const values = formatPurchaseOrderFormValues(data);
+    const formattedCycles = (data.billingCycles ?? []).map((bc) => {
+      return {
+        id: bc.id,
+        invoiceNumber: bc.invoiceNumber ?? "",
+        invoiceAmount: Number(bc.invoiceAmount ?? 0),
+        creditNote: Number(bc.creditNote ?? 0),
+        collectedAmount: Number(bc.collectedAmount ?? 0),
 
-    form.reset(values);
-    replace(values.billingCycles ?? []);
+        invoiceDate: bc.invoiceDate
+          ? new Date(bc.invoiceDate)
+          : bc.billingSubmittedDate
+            ? new Date(bc.billingSubmittedDate)
+            : undefined,
+        billingSubmittedDate: bc.invoiceDate
+          ? new Date(bc.invoiceDate)
+          : bc.billingSubmittedDate
+            ? new Date(bc.billingSubmittedDate)
+            : undefined,
+        paymentReceivedDate: bc.paymentReceivedDate
+          ? new Date(bc.paymentReceivedDate)
+          : undefined,
+        payments: paymentDrafts(bc),
+        paymentDueDate: getDefaultPaymentDueDate({
+          billingSubmittedDate: bc.billingSubmittedDate
+            ? new Date(bc.billingSubmittedDate)
+            : undefined,
+          invoiceDate: bc.invoiceDate
+            ? new Date(bc.invoiceDate)
+            : undefined,
+          paymentDueDate: bc.paymentDueDate
+            ? new Date(bc.paymentDueDate)
+            : undefined,
+        }) ?? undefined,
+        paymentReceived: bc.paymentReceived,
+        billingRemark: bc.billingRemark ?? "",
+        tds: Number(bc.tds ?? 0),
+      };
+    });
+
+    form.reset({
+      ...defaultPurchaseOrderValues,
+
+      customerPONumber: data.customerPONumber ?? "",
+      poAmount: Number(data.poAmount ?? 0),
+
+      serviceTypeId: String(data.serviceTypeId ?? ""),
+      contractDurationId: String(data.contractDurationId ?? ""),
+      companyId: String(data.companyId ?? ""),
+      contractId: String(data.contractId ?? ""),
+      billingPlanId: String(data.billingPlanId ?? ""),
+      customerId: String(data.customerId ?? ""),
+      vendorId: String(data.vendorId ?? ""),
+
+      paymentTerms: data.paymentTerms ?? "",
+      poOwner: data.poOwner ?? "",
+      status: data.status,
+      purchaseOrderType: normalizePurchaseOrderType(data.purchaseOrderType),
+
+      startFrom: data.startFrom ? new Date(data.startFrom) : undefined,
+      endDate: data.endDate ? new Date(data.endDate) : undefined,
+      ageingDays: Number(data.ageingDays ?? 0),
+
+      remark: data.remark ?? "",
+      scope: data.scope ?? "",
+
+      billingCycles: formattedCycles ?? [],
+    });
+    setSelectedContractTypeId(String(data.contractId ?? ""));
+
+    replace(formattedCycles);
   }, [data, update, form, replace]);
+
+  // Preserve the new selection if the server action refreshes and remounts this form.
+  useEffect(() => {
+    const storageKey = `${PENDING_CONTRACT_TYPE_STORAGE_KEY}:${id ?? "create"}`;
+    let intervalId: ReturnType<typeof setInterval> | undefined;
+    let restoredForThisMount = false;
+
+    const restorePendingSelection = () => {
+      if (restoredForThisMount) return true;
+
+      try {
+        const storedValue = window.sessionStorage.getItem(storageKey);
+        if (!storedValue) return false;
+
+        const pendingSelection = JSON.parse(storedValue) as {
+          id?: string;
+          name?: string;
+          expiresAt?: number;
+        };
+
+        if (
+          !pendingSelection.id ||
+          !pendingSelection.name ||
+          !pendingSelection.expiresAt ||
+          pendingSelection.expiresAt < Date.now()
+        ) {
+          window.sessionStorage.removeItem(storageKey);
+          return true;
+        }
+
+        setContractTypeOptions((currentOptions) =>
+          currentOptions.some(
+            (option) => String(option.id) === pendingSelection.id,
+          )
+            ? currentOptions
+            : [
+                ...currentOptions,
+                { id: pendingSelection.id!, name: pendingSelection.name! },
+              ],
+        );
+        setSelectedContractTypeId(pendingSelection.id);
+        form.setValue("contractId", pendingSelection.id, {
+          shouldDirty: true,
+          shouldValidate: true,
+        });
+        // Keep the value briefly so a second RSC remount can restore it too.
+        // The key expires after 30 seconds and is removed on manual selection
+        // or when the Purchase Order is submitted.
+        restoredForThisMount = true;
+        return true;
+      } catch {
+        try {
+          window.sessionStorage.removeItem(storageKey);
+        } catch {
+          // Ignore unavailable session storage.
+        }
+        return true;
+      }
+    };
+
+    if (!restorePendingSelection()) {
+      // A server action can refresh this form before its success callback writes
+      // the pending selection, so keep checking briefly after mount.
+      intervalId = setInterval(() => {
+        if (restorePendingSelection() && intervalId) {
+          clearInterval(intervalId);
+        }
+      }, 100);
+    }
+
+    const timeoutId = setTimeout(() => {
+      if (intervalId) clearInterval(intervalId);
+    }, 30_000);
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+      clearTimeout(timeoutId);
+    };
+  }, [form, id, update]);
 
   if (!isMounted) {
     return (
@@ -953,30 +992,13 @@ const POForm = ({
 
   return (
     <Form {...form}>
-      {/* <form
-        onSubmit={form.handleSubmit(onSubmit, () => {
+      <form
+        onSubmit={form.handleSubmit(onSubmit, (errors) => {
+          console.log("FORM ERRORS:", errors);
           toast.error("Validation failed");
         })}
         className="space-y-6"
-      > */}
-
-<form
-  onSubmit={(event) => {
-    console.log("[PO DEBUG] Native form submit event", {
-      timestamp: new Date().toISOString(),
-      submitter: (event.nativeEvent as SubmitEvent).submitter,
-    });
-
-    return form.handleSubmit(
-      onSubmit,
-      (errors) => {
-        console.error("[PO DEBUG] Validation failed", errors);
-        toast.error("Validation failed");
-      }
-    )(event);
-  }}
-  className="space-y-6"
->
+      >
         <Tabs defaultValue="general" className="w-full">
           <TabsList
             className="
@@ -1066,7 +1088,6 @@ const POForm = ({
                         placeholder="Enter Customer PO Number"
                         className={themedInputClassName}
                         {...field}
-                        value={field.value ?? ""}
                       />
                     </FormControl>
                     <FormMessage />
@@ -1122,7 +1143,6 @@ const POForm = ({
                         placeholder="Enter PO Amount"
                         className={themedInputClassName}
                         {...field}
-                        value={field.value ?? ""}
                       />
                     </FormControl>
                     <FormMessage />
@@ -1207,15 +1227,42 @@ const POForm = ({
                     <FormLabel className={themedLabelClassName}>Contract Type</FormLabel>
                     <FormControl>
                       <Select
-                        value={field.value ?? ""}
-                        onValueChange={field.onChange}
+                        value={selectedContractTypeId}
+                        onValueChange={(value) => {
+                          if (value === ADD_CONTRACT_TYPE_OPTION) {
+                            setIsAddContractTypeDialogOpen(true);
+                            return;
+                          }
+
+                          try {
+                            window.sessionStorage.removeItem(
+                              `${PENDING_CONTRACT_TYPE_STORAGE_KEY}:${id ?? "create"}`,
+                            );
+                          } catch {
+                            // Ignore unavailable session storage.
+                          }
+                          setSelectedContractTypeId(value);
+                          field.onChange(value);
+                        }}
                       >
-                        <SelectTrigger className={themedSelectTriggerClassName}>
-                          <SelectValue placeholder="Contract Type" />
+                        <SelectTrigger
+                          aria-label={selectedContractTypeName ?? "Contract Type"}
+                          className={`${themedSelectTriggerClassName} relative`}
+                        >
+                          <SelectValue
+                            placeholder="Contract Type"
+                            className="sr-only"
+                          />
+                          <span
+                            aria-hidden="true"
+                            className="pointer-events-none absolute inset-y-0 left-3 right-10 flex items-center truncate"
+                          >
+                            {selectedContractTypeName ?? "Contract Type"}
+                          </span>
                         </SelectTrigger>
                         <SelectContent>
                           <SelectGroup>
-                            {contractType.map((contract) => (
+                            {contractTypeOptions.map((contract) => (
                               <SelectItem
                                 key={contract.id}
                                 value={String(contract.id)}
@@ -1223,6 +1270,15 @@ const POForm = ({
                                 {contract.name}
                               </SelectItem>
                             ))}
+                            <SelectItem
+                              value={ADD_CONTRACT_TYPE_OPTION}
+                              className="mt-1 border-t border-slate-200 pt-2 font-medium text-sky-700 focus:text-sky-800"
+                            >
+                              <span className="flex items-center gap-2">
+                                <Plus className="h-4 w-4" />
+                                Add More Contract Type
+                              </span>
+                            </SelectItem>
                           </SelectGroup>
                         </SelectContent>
                       </Select>
@@ -1320,11 +1376,7 @@ const POForm = ({
                   <FormItem className={themedFieldClassName}>
                     <FormLabel className={themedLabelClassName}>Scope Of Work</FormLabel>
                     <FormControl>
-                      <Input
-                        className={themedInputClassName}
-                        {...field}
-                        value={field.value ?? ""}
-                      />
+                      <Input className={themedInputClassName} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -1359,12 +1411,7 @@ const POForm = ({
                   <FormItem className={themedFieldClassName}>
                     <FormLabel className={themedLabelClassName}>Payment Terms</FormLabel>
                     <FormControl>
-                      <Input
-                        className={themedInputClassName}
-                        placeholder="Enter Payment Terms"
-                        {...field}
-                        value={field.value ?? ""}
-                      />
+                      <Input className={themedInputClassName} placeholder="Enter Payment Terms" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -1379,12 +1426,7 @@ const POForm = ({
                   <FormItem className={themedFieldClassName}>
                     <FormLabel className={themedLabelClassName}>PO Owner</FormLabel>
                     <FormControl>
-                      <Input
-                        className={themedInputClassName}
-                        placeholder="Enter PO Owner"
-                        {...field}
-                        value={field.value ?? ""}
-                      />
+                      <Input className={themedInputClassName} placeholder="Enter PO Owner" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -1526,7 +1568,7 @@ const POForm = ({
                   </FormItem>
                 )}
               />
-              
+
               {/* Remark */}
               <FormField
                 control={form.control}
@@ -1539,7 +1581,6 @@ const POForm = ({
                         placeholder="Additional notes"
                         className={themedTextareaClassName}
                         {...field}
-                        value={field.value ?? ""}
                       />
                     </FormControl>
                     <FormMessage />
@@ -1565,42 +1606,30 @@ const POForm = ({
                       >
                         {formatBillingCycleLabel(
                           watchedBillingCycles[index]?.invoiceDate ??
-                            watchedBillingCycles[index]?.billingSubmittedDate,
+                          watchedBillingCycles[index]?.billingSubmittedDate,
                         )}
                       </Button>
                     ))}
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
-                    {isOTSSelected ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="border-sky-200 text-sky-700 hover:bg-sky-50 hover:text-sky-800"
-                        onClick={generateBillingCycles}
-                      >
-                        Generate billing cycle
-                      </Button>
-                    ) : null}
-                    {canManageManualBillingCycles ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="border-sky-200 text-sky-700 hover:bg-sky-50 hover:text-sky-800"
-                        onClick={openAddBillingCycleDialog}
-                      >
-                        <Plus className="h-4 w-4" />
-                        Add Billing Cycle
-                      </Button>
-                    ) : null}
-                  </div>
+                  {canManageManualBillingCycles ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="border-sky-200 text-sky-700 hover:bg-sky-50 hover:text-sky-800"
+                      onClick={openAddBillingCycleDialog}
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add Billing Cycle
+                    </Button>
+                  ) : null}
                 </div>
 
                 {isOTSSelected ? (
                   <p className="text-sm text-slate-500">
                     OTS billing cycles are created from the billing plan and
-                    the purchase order dates. Use Generate billing cycle if
-                    they do not appear, then edit each invoice amount.
+                    the purchase order dates. You can add another cycle and
+                    edit each invoice amount.
                   </p>
                 ) : isManualPurchaseOrderType ? (
                   <p className="text-sm text-slate-500">
@@ -1646,29 +1675,17 @@ const POForm = ({
                 <CardContent className="py-10 text-center text-slate-500">
                   <div className="space-y-4">
                     <p>No billing cycles generated yet.</p>
-                    <div className="flex flex-wrap justify-center gap-2">
-                      {isOTSSelected ? (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="border-sky-200 text-sky-700 hover:bg-sky-50 hover:text-sky-800"
-                          onClick={generateBillingCycles}
-                        >
-                          Generate billing cycle
-                        </Button>
-                      ) : null}
-                      {canManageManualBillingCycles ? (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="border-sky-200 text-sky-700 hover:bg-sky-50 hover:text-sky-800"
-                          onClick={openAddBillingCycleDialog}
-                        >
-                          <Plus className="h-4 w-4" />
-                          Add Billing Cycle
-                        </Button>
-                      ) : null}
-                    </div>
+                    {canManageManualBillingCycles ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="border-sky-200 text-sky-700 hover:bg-sky-50 hover:text-sky-800"
+                        onClick={openAddBillingCycleDialog}
+                      >
+                        <Plus className="h-4 w-4" />
+                        Add Billing Cycle
+                      </Button>
+                    ) : null}
                   </div>
                 </CardContent>
               </Card>
@@ -1692,6 +1709,73 @@ const POForm = ({
           </Button>
         </div>
       </form>
+      <Dialog
+        open={isAddContractTypeDialogOpen}
+        onOpenChange={setIsAddContractTypeDialogOpen}
+      >
+        <DialogContent
+          scrollBody
+          className="max-h-[90vh] sm:max-w-2xl"
+          onInteractOutside={(event) => event.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle>Add Contract Type</DialogTitle>
+            <DialogDescription>
+              Enter the details to add a contract type.
+            </DialogDescription>
+          </DialogHeader>
+          <ContractTypeForm
+            update={false}
+            onSuccess={(contractTypeId, contractTypeName) => {
+              if (!contractTypeId) return;
+
+              if (contractTypeName) {
+                try {
+                  window.sessionStorage.setItem(
+                    `${PENDING_CONTRACT_TYPE_STORAGE_KEY}:${id ?? "create"}`,
+                    JSON.stringify({
+                      id: contractTypeId,
+                      name: contractTypeName,
+                      expiresAt: Date.now() + 30_000,
+                    }),
+                  );
+                } catch {
+                  // The in-memory selection still works if storage is unavailable.
+                }
+              }
+
+              console.log("[contract type created]", {
+                id: contractTypeId,
+                name: contractTypeName,
+              });
+
+              setContractTypeOptions((currentOptions) =>
+                currentOptions.some(
+                  (option) => String(option.id) === contractTypeId,
+                ) || !contractTypeName
+                  ? currentOptions
+                  : [
+                    ...currentOptions,
+                    { id: contractTypeId, name: contractTypeName },
+                  ],
+              );
+              setSelectedContractTypeId(contractTypeId);
+              form.setValue("contractId", contractTypeId, {
+                shouldDirty: true,
+                shouldValidate: true,
+              });
+
+              console.log(
+                "[PO contractId after setValue]",
+                form.getValues("contractId"),
+              );
+
+              void form.trigger("contractId");
+              setIsAddContractTypeDialogOpen(false);
+            }}
+          />
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={isAddCycleDialogOpen}

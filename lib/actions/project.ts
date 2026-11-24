@@ -1,17 +1,22 @@
 "use server";
 
 import { Project } from "@/types";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 import { projectSchema } from "../validators";
 import { formatError } from "../utils";
 import { buildFilters, buildMonthlyPLFilters } from "../filter";
-import {
-  getFinancialYearRange,
-  toBusinessDateValue,
-} from "../date-utils";
+import { toBusinessDateValue } from "../date-utils";
 import { requirePermission, type PermissionRule } from "@/lib/rbac";
 import { fingerprint } from "@/lib/notifications/model";
 import { safePublishSystem } from "@/lib/notifications/publish";
+import { getActiveCompanyContext } from "@/lib/company-context";
+
+type ProjectFilters = Parameters<typeof buildFilters>[0];
+type ProjectMonthlyRow = Prisma.ProjectMonthlyPLGetPayload<Record<string, never>>;
+type ProjectWithMonthlyPLs = Prisma.ProjectGetPayload<{
+  include: { company: true; monthlyPLs: true };
+}>;
 
 const dashboardView: PermissionRule[] = [
   { route: "/admin/dashboard", action: "view" },
@@ -135,30 +140,18 @@ interface MonthlyDetailsParams {
   year: number;
   company?: string;
   project?: string;
-  startDate?: any;
-  endDate?: any;
+  startDate?: Date | string;
+  endDate?: Date | string;
 }
-
-const monthNames = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-];
 
 export async function getProjects() {
   const access = await requirePermission("/admin/pl", "view", dashboardView);
   if (!access.ok) return [];
+  const company = await getActiveCompanyContext();
+  if (!company) return [];
 
   return await prisma.project.findMany({
+    where: { companyId: company.companyId },
     orderBy: {
       createdAt: "desc",
     },
@@ -175,13 +168,21 @@ export async function createProject(data: Project) {
     if (!access.ok) {
       return { success: false, message: access.message };
     }
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
     const project = projectSchema.parse(data);
+    if (project.companyId !== company.companyId) return { success: false, message: "Unauthorized company access" };
+    const billingPlan = await prisma.billingPlan.findFirst({
+      where: { id: project.billingPlanId, companyId: company.companyId },
+      select: { id: true },
+    });
+    if (!billingPlan) return { success: false, message: "Billing plan not found for the selected company" };
 
-    let amount = getTotalAmount(data.billingCycle);
+    const amount = getTotalAmount(data.billingCycle);
     const payload = normalizeProjectPayload(project, amount);
 
-    let result = await prisma.project.create({
+    const result = await prisma.project.create({
       data: payload,
     });
 
@@ -211,9 +212,11 @@ export async function getprojectById(id: string) {
     if (!access.ok) {
       return { success: false, message: access.message };
     }
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
-    let project = await prisma.project.findFirst({
-      where: { id },
+    const project = await prisma.project.findFirst({
+      where: { id, companyId: company.companyId },
       include: {
         company: true,
       },
@@ -248,14 +251,22 @@ export async function updateProject(data: Project, id: string) {
     if (!access.ok) {
       return { success: false, message: access.message };
     }
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
     const project = projectSchema.parse(data);
+    if (project.companyId !== company.companyId) return { success: false, message: "Unauthorized company access" };
+    const billingPlan = await prisma.billingPlan.findFirst({
+      where: { id: project.billingPlanId, companyId: company.companyId },
+      select: { id: true },
+    });
+    if (!billingPlan) return { success: false, message: "Billing plan not found for the selected company" };
 
-    let amount = getTotalAmount(data.billingCycle);
+    const amount = getTotalAmount(data.billingCycle);
     const payload = normalizeProjectPayload(project, amount);
 
     await prisma.project.update({
-      where: { id },
+      where: { id, companyId: company.companyId },
       data: payload,
     });
 
@@ -279,20 +290,22 @@ export async function updateProject(data: Project, id: string) {
   }
 }
 
-export async function deleteProject(id: any) {
+export async function deleteProject(id: string) {
   try {
     const access = await requirePermission("/admin/pl", "delete");
     if (!access.ok) {
       return { success: false, message: access.message };
     }
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
     const existing = await prisma.project.findUnique({
-      where: { id },
+      where: { id, companyId: company.companyId },
       select: { id: true, projectName: true, companyId: true },
     });
 
     await prisma.project.delete({
-      where: { id },
+      where: { id, companyId: company.companyId },
     });
 
     if (existing) {
@@ -317,10 +330,13 @@ export async function getBillingCyclesByPOID(id: string) {
     if (!access.ok) {
       return { success: false, message: access.message };
     }
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
-    let billingCycles = await prisma.projectMonthlyPL.findMany({
+    const billingCycles = await prisma.projectMonthlyPL.findMany({
       where: {
         projectId: id,
+        project: { companyId: company.companyId },
       },
       orderBy: [
         { year: "asc" },
@@ -348,7 +364,7 @@ export async function getBillingCyclesByPOID(id: string) {
   }
 }
 
-async function createBillingCycle(data: any, id: string) {
+async function createBillingCycle(data: NonNullable<Project["billingCycle"]>, id: string) {
   try {
     await prisma.projectMonthlyPL.deleteMany({
       where: {
@@ -357,17 +373,21 @@ async function createBillingCycle(data: any, id: string) {
     });
 
     for (const projectMonthlyPL of data) {
+      if (projectMonthlyPL.month == null || projectMonthlyPL.year == null) {
+        throw new Error("Billing cycle month and year are required");
+      }
+
       await prisma.projectMonthlyPL.create({
         data: {
           projectId: id,
           month: projectMonthlyPL.month,
           year: projectMonthlyPL.year,
-          billedAmount: projectMonthlyPL.billedAmount,
-          fms: projectMonthlyPL.fms,
-          spare: projectMonthlyPL.spare,
-          otherCost: JSON.stringify(projectMonthlyPL.otherCost),
-          billableAmount: projectMonthlyPL.billableAmount,
-          resourceUsed: projectMonthlyPL.resourceUsed,
+          billedAmount: projectMonthlyPL.billedAmount ?? 0,
+          fms: projectMonthlyPL.fms ?? 0,
+          spare: projectMonthlyPL.spare ?? 0,
+          otherCost: JSON.stringify(projectMonthlyPL.otherCost ?? []),
+          billableAmount: projectMonthlyPL.billableAmount ?? 0,
+          resourceUsed: projectMonthlyPL.resourceUsed ?? 0,
         },
       });
     }
@@ -384,8 +404,8 @@ async function createBillingCycle(data: any, id: string) {
   }
 }
 
-function getTotalAmount(data: any) {
-  let amount = {
+function getTotalAmount(data: Project["billingCycle"] | undefined) {
+  const amount = {
     totalRevenue: 0,
     totalCost: 0,
   };
@@ -401,25 +421,9 @@ function getTotalAmount(data: any) {
 
         amount.totalCost += fms + spare;
 
-        let otherCostData: any[] = [];
-
-        if (typeof billingCycle.otherCost === "string") {
-          try {
-            otherCostData = JSON.parse(billingCycle.otherCost);
-          } catch (e) {
-            console.error("Invalid JSON:", billingCycle.otherCost);
-          }
-        } else {
-          otherCostData = billingCycle.otherCost || [];
-        }
-
-        for (const otherCost of otherCostData) {
-          if (
-            otherCost?.key !== "FMS" &&
-            otherCost?.key !== "SPARE" &&
-            isFinite(otherCost?.value)
-          ) {
-            amount.totalCost += Number(otherCost.value);
+        for (const otherCost of parseOtherCost(billingCycle.otherCost)) {
+          if (otherCost.key !== "FMS" && otherCost.key !== "SPARE") {
+            amount.totalCost += otherCost.value;
           }
         }
       }
@@ -430,25 +434,29 @@ function getTotalAmount(data: any) {
 }
 
 // 🔒 Always returns array (SAFE)
-function parseOtherCost(otherCost: any): { key: string; value: number }[] {
+function parseOtherCost(otherCost: unknown): { key: string; value: number }[] {
   if (!otherCost) return [];
 
   try {
-    if (Array.isArray(otherCost)) return otherCost;
-
     if (typeof otherCost === "string") {
-      const parsed = JSON.parse(otherCost);
-      return Array.isArray(parsed) ? parsed : [];
+      return parseOtherCost(JSON.parse(otherCost) as unknown);
     }
 
-    if (typeof otherCost === "object") {
-      return Object.values(otherCost).map((c: any) => ({
-        key: c?.key || "",
-        value: Number(c?.value || 0),
-      }));
-    }
+    const values = Array.isArray(otherCost)
+      ? otherCost
+      : typeof otherCost === "object"
+        ? Object.values(otherCost as Record<string, unknown>)
+        : [];
 
-    return [];
+    return values.flatMap((value) => {
+      if (!value || typeof value !== "object") return [];
+      const record = value as Record<string, unknown>;
+      const amount = Number(record.value ?? 0);
+      return [{
+        key: typeof record.key === "string" ? record.key : "",
+        value: Number.isFinite(amount) ? amount : 0,
+      }];
+    });
   } catch (err) {
     console.error("parseOtherCost error:", err);
     return [];
@@ -456,29 +464,27 @@ function parseOtherCost(otherCost: any): { key: string; value: number }[] {
 }
 
 // 🔒 Single source of truth for cost calculation
-function calculateCost(rec: any): number {
+function calculateCost(rec: Pick<ProjectMonthlyRow, "otherCost" | "fms" | "spare">): number {
   const parsed = parseOtherCost(rec.otherCost);
 
-  const otherCostTotal = parsed.reduce(
-    (sum, c: any) => sum + Number(c?.value || 0),
-    0,
-  );
+  const otherCostTotal = parsed.reduce((sum, cost) => sum + cost.value, 0);
 
   return otherCostTotal + Number(rec.fms || 0) + Number(rec.spare || 0);
 }
 
 // ================= MAIN =================
 
-export async function getPLData(year: number, filters?: any): Promise<PLData> {
+export async function getPLData(year: number, filters: ProjectFilters = {}): Promise<PLData> {
   const access = await requirePermission("/admin/pl", "view", dashboardView);
   if (!access.ok) {
     return { billingCycle: [], monthly: [], projects: [] };
   }
-
-  const { start, end } = getFinancialYearRange(year);
+  const activeCompany = await getActiveCompanyContext();
+  if (!activeCompany) return { billingCycle: [], monthly: [], projects: [] };
 
   const records = await prisma.projectMonthlyPL.findMany({
     where: {
+      project: { companyId: activeCompany.companyId },
       AND: [
         {
           OR: [
@@ -658,6 +664,8 @@ export async function getPLStatusDetails(
 ) {
   const access = await requirePermission("/admin/pl", "view", dashboardView);
   if (!access.ok) return [];
+  const activeCompany = await getActiveCompanyContext();
+  if (!activeCompany) return [];
 
   // ✅ Convert FY → DB (calendar)
   const dbMonth = month <= 8 ? month + 3 : month - 9;
@@ -665,6 +673,7 @@ export async function getPLStatusDetails(
 
   const records = await prisma.projectMonthlyPL.findMany({
     where: {
+      project: { companyId: activeCompany.companyId },
       year: dbYear,
       month: dbMonth,
     },
@@ -704,7 +713,7 @@ export async function getPLStatusDetails(
     });
 }
 
-function safeNumber(value: any) {
+function safeNumber(value: unknown) {
   const num = Number(value);
   return isNaN(num) ? 0 : num;
 }
@@ -722,12 +731,12 @@ export async function fetchPLPageData(projectId: string) {
     return { success: false, message: "Project not found" };
   }
 
-  const project: any = projectRes.data;
+  const project = projectRes.data;
   const billingCycles =
     billingRes.success && billingRes.data ? billingRes.data : [];
 
   // Map billing cycles with safe numbers and calculate profit
-  const billingCyclesSafe = billingCycles.map((b: any) => {
+  const billingCyclesSafe = billingCycles.map((b) => {
     const billedAmount = safeNumber(b.billedAmount);
     const fms = safeNumber(b.fms);
     const spare = safeNumber(b.spare);
@@ -746,11 +755,11 @@ export async function fetchPLPageData(projectId: string) {
 
         if (!Array.isArray(parsed)) parsed = [];
 
-        otherCost = parsed.reduce(
-          (sum: number, c: any) => sum + safeNumber(c.value),
-          0,
-        );
-      } catch (err) {
+        otherCost = parsed.reduce((sum: number, item: unknown) => {
+          if (!item || typeof item !== "object") return sum;
+          return sum + safeNumber((item as Record<string, unknown>).value);
+        }, 0);
+      } catch {
         otherCost = 0;
       }
     }
@@ -825,11 +834,13 @@ export async function fetchPLPageData(projectId: string) {
   };
 }
 
-export async function filterProjectData(filters: any) {
+export async function filterProjectData(filters: ProjectFilters) {
   const access = await requirePermission("/admin/pl", "view", dashboardView);
   if (!access.ok) return emptyProjectFilter();
+  const activeCompany = await getActiveCompanyContext();
+  if (!activeCompany) return emptyProjectFilter();
 
-  const where = buildFilters(filters);
+  const where = { AND: [buildFilters(filters), { companyId: activeCompany.companyId }] };
   const monthlyPLWhere = buildMonthlyPLFilters(filters);
   const hasFinancialPeriodFilter =
     (filters?.year && filters.year !== "all") ||
@@ -849,7 +860,7 @@ export async function filterProjectData(filters: any) {
 
 
   const projects = await prisma.project.findMany({
-    where,
+    where: { AND: [where, { companyId: activeCompany.companyId }] },
     include: {
       company: true,
       monthlyPLs: {
@@ -939,7 +950,7 @@ export async function filterProjectData(filters: any) {
   };
 }
 
-export async function getMonthlyRevenueCost(year: number, filters: any) {
+export async function getMonthlyRevenueCost(year: number, filters: ProjectFilters) {
   const data = await getPLData(year, filters);
 
   return {
@@ -956,10 +967,12 @@ export async function getMonthlyRevenueCost(year: number, filters: any) {
 
 export async function getBillingDetailsByMonth(
   params: MonthlyDetailsParams,
-  filters: any,
+  filters: ProjectFilters,
 ) {
   const access = await requirePermission("/admin/pl", "view", dashboardView);
   if (!access.ok) return [];
+  const activeCompany = await getActiveCompanyContext();
+  if (!activeCompany) return [];
 
   const { month, year, company, project } = params;
 
@@ -976,6 +989,7 @@ export async function getBillingDetailsByMonth(
         project !== "all" && {
         projectId: project,
       }),
+      project: { is: { companyId: activeCompany.companyId } },
 
       ...(company &&
         company !== "all" && {
@@ -1032,10 +1046,12 @@ export async function getBillingDetailsByMonth(
 // ✅ Cost Details
 export async function getCostDetailsByMonth(
   params: MonthlyDetailsParams,
-  filters: any,
+  filters: ProjectFilters,
 ) {
   const access = await requirePermission("/admin/pl", "view", dashboardView);
   if (!access.ok) return [];
+  const activeCompany = await getActiveCompanyContext();
+  if (!activeCompany) return [];
 
   const { month, year, company, project } = params;
 
@@ -1045,6 +1061,7 @@ export async function getCostDetailsByMonth(
 
   const data = await prisma.projectMonthlyPL.findMany({
     where: {
+      project: { is: { companyId: activeCompany.companyId } },
       month: dbMonth,
       year: dbYear,
 
@@ -1108,7 +1125,7 @@ export async function getCostDetailsByMonth(
   }));
 }
 
-function getDetailsByProject(project: any) {
+function getDetailsByProject(project: ProjectWithMonthlyPLs) {
   let totalBilledValue = 0;
   let totalCostValue = 0;
   let totalFmsValue = 0;
@@ -1137,7 +1154,7 @@ function getDetailsByProject(project: any) {
     }
   }
 
-  let profit =
+  const profit =
     totalBilledValue > 0
       ? (
         ((totalBilledValue - totalCostValue) / totalBilledValue) *

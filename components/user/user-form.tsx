@@ -5,7 +5,7 @@ import { useForm, SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowRight, Loader2 } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, Loader2 } from "lucide-react";
 import { z } from "zod";
 import { Status } from "@prisma/client";
 
@@ -68,7 +68,7 @@ function normalizeUserFormData(data?: User) {
   };
 }
 
-const UserForm = ({ data, update = false }: { data?: User; update: boolean }) => {
+const UserForm = ({ data, update = false, onSuccess }: { data?: User; update: boolean; onSuccess?: () => void }) => {
   const router = useRouter();
   const id = data?.id;
   const isHydrated = useHydrated();
@@ -85,6 +85,7 @@ const UserForm = ({ data, update = false }: { data?: User; update: boolean }) =>
 
   const [isPending, startTransition] = React.useTransition();
   const [allRole, setAllRole] = React.useState<RoleOption[]>([]);
+  const [showPassword, setShowPassword] = React.useState(false);
 
   const onSubmit: SubmitHandler<z.infer<typeof currentSchema>> = async (values) => {
     startTransition(async () => {
@@ -98,7 +99,9 @@ const UserForm = ({ data, update = false }: { data?: User; update: boolean }) =>
           description: res?.message,
         });
       } else {
-        router.push("/admin/users");
+        toast.success(update ? "User updated successfully" : "User created successfully");
+        if (onSuccess) onSuccess();
+        else router.push("/admin/users");
       }
     });
   };
@@ -160,7 +163,23 @@ const UserForm = ({ data, update = false }: { data?: User; update: boolean }) =>
                   <FormItem className={themedFieldClassName}>
                     <FormLabel className={themedLabelClassName}>Password</FormLabel>
                     <FormControl>
-                      <Input className={themedInputClassName} type="password" placeholder="Enter password" {...field} />
+                    <div className="relative">
+                      <Input
+                        className={`${themedInputClassName} pr-10`}
+                        type={showPassword ? "text" : "password"}
+                        placeholder="Enter password"
+                        autoComplete="new-password"
+                        {...field}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((visible) => !visible)}
+                        aria-label={showPassword ? "Hide password" : "Show password"}
+                        className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground"
+                      >
+                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
                     </FormControl>
                     <FormMessage />
                   </FormItem>

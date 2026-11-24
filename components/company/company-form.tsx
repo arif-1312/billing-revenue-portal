@@ -67,9 +67,11 @@ type CompanyFormValues = z.infer<typeof companySchema>;
 export default function CompanyForm({
   data,
   update = false,
+  onSuccess,
 }: {
   data?: Company;
   update: boolean;
+  onSuccess?: () => void;
 }) {
   const router = useRouter();
 
@@ -124,7 +126,11 @@ export default function CompanyForm({
             : "Company created successfully"
         );
 
-        router.push("/admin/company");
+        if (onSuccess) {
+          onSuccess();
+        } else {
+          router.push("/admin/company");
+        }
       } catch (error) {
         console.error(error);
 

@@ -143,20 +143,21 @@ const chartConfig = {
 export function ChartAreaInteractive() {
   const isMobile = useIsMobile()
   const [timeRange, setTimeRange] = React.useState("90d")
-
-  React.useEffect(() => {
-    if (isMobile) {
-      setTimeRange("7d")
-    }
-  }, [isMobile])
+  const [hasChosenTimeRange, setHasChosenTimeRange] = React.useState(false)
+  const visibleTimeRange = isMobile && !hasChosenTimeRange ? "7d" : timeRange
+  const chooseTimeRange = (value: string) => {
+    if (!value) return
+    setTimeRange(value)
+    setHasChosenTimeRange(true)
+  }
 
   const filteredData = chartData.filter((item) => {
     const date = new Date(item.date)
     const referenceDate = new Date("2024-06-30")
     let daysToSubtract = 90
-    if (timeRange === "30d") {
+    if (visibleTimeRange === "30d") {
       daysToSubtract = 30
-    } else if (timeRange === "7d") {
+    } else if (visibleTimeRange === "7d") {
       daysToSubtract = 7
     }
     const startDate = new Date(referenceDate)
@@ -170,15 +171,15 @@ export function ChartAreaInteractive() {
         <CardTitle>Total Visitors</CardTitle>
         <CardDescription>
           <span className="hidden @[540px]/card:block">
-            Total for the last 3 months
+            {visibleTimeRange === "7d" ? "Total for the last 7 days" : visibleTimeRange === "30d" ? "Total for the last 30 days" : "Total for the last 3 months"}
           </span>
           <span className="@[540px]/card:hidden">Last 3 months</span>
         </CardDescription>
         <CardAction>
           <ToggleGroup
             type="single"
-            value={timeRange}
-            onValueChange={setTimeRange}
+            value={visibleTimeRange}
+            onValueChange={chooseTimeRange}
             variant="outline"
             className="hidden *:data-[slot=toggle-group-item]:!px-4 @[767px]/card:flex"
           >
@@ -186,7 +187,7 @@ export function ChartAreaInteractive() {
             <ToggleGroupItem value="30d">Last 30 days</ToggleGroupItem>
             <ToggleGroupItem value="7d">Last 7 days</ToggleGroupItem>
           </ToggleGroup>
-          <Select value={timeRange} onValueChange={setTimeRange}>
+          <Select value={visibleTimeRange} onValueChange={chooseTimeRange}>
             <SelectTrigger
               className="flex w-40 **:data-[slot=select-value]:block **:data-[slot=select-value]:truncate @[767px]/card:hidden"
               size="sm"

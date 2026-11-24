@@ -5,6 +5,7 @@ import { prisma } from "../prisma";
 import { contractTypeSchema } from "../validators";
 import { formatError } from "../utils";
 import { requirePermission, type PermissionRule } from "@/lib/rbac";
+import { getActiveCompanyContext } from "@/lib/company-context";
 
 const revenueReaders: PermissionRule[] = [
   { route: "/admin/revenue", action: "view" },
@@ -33,8 +34,11 @@ function normalizeContractTypePayload(contractType: {
 export async function getContractTypes() {
   const access = await requirePermission("/admin/contract-type", "view", revenueReaders);
   if (!access.ok) return [];
+  const company = await getActiveCompanyContext();
+  if (!company) return [];
 
   return await prisma.contractType.findMany({
+    where: { companyId: company.companyId },
     orderBy: {
       createdAt: 'desc'
     },
@@ -51,15 +55,19 @@ export async function createContractType(data: Role) {
 
     const contractType = contractTypeSchema.parse(data)
     const payload = normalizeContractTypePayload(contractType)
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
-    await prisma.contractType.create({
-      data: payload
+    const createdContractType = await prisma.contractType.create({
+      data: { ...payload, companyId: company.companyId },
+      select: { id: true },
     })
 
     return {
       success: true,
-      message: "contract type created successfully"
-    }
+      message: "Contract type created successfully",
+      contractTypeId: createdContractType.id
+    };
 
   } catch (error) {
     return {
@@ -76,9 +84,11 @@ export async function getContractTypeById(id: string) {
     if (!access.ok) {
       return { success: false, message: access.message };
     }
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
-    let contractType = await prisma.contractType.findFirst({
-      where: { id }
+    const contractType = await prisma.contractType.findFirst({
+      where: { id, companyId: company.companyId }
     })
 
     if (contractType) {
@@ -111,11 +121,14 @@ export async function updateContractType(data: Role, id: string) {
 
     const contractType = contractTypeSchema.parse(data)
     const payload = normalizeContractTypePayload(contractType)
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
-    await prisma.contractType.update({
-      where: { id },
+    const result = await prisma.contractType.updateMany({
+      where: { id, companyId: company.companyId },
       data: payload
     })
+    if (!result.count) return { success: false, message: "Contract Type not found" };
 
     return {
       success: true,
@@ -130,16 +143,17 @@ export async function updateContractType(data: Role, id: string) {
   }
 }
 
-export async function deleteContractType(id: any) {
+export async function deleteContractType(id: string) {
   try {
     const access = await requirePermission("/admin/contract-type", "delete");
     if (!access.ok) {
       return { success: false, message: access.message };
     }
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
-    await prisma.contractType.delete({
-      where: { id }
-    })
+    const result = await prisma.contractType.deleteMany({ where: { id, companyId: company.companyId } });
+    if (!result.count) return { success: false, message: "Contract Type not found" };
 
     return {
       success: true,

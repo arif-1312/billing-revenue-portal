@@ -7,6 +7,7 @@ import {
 
 export type EmailNotificationSource = {
   id: string
+  companyId: string | null
   dedupeKey: string
   category: string
   eventType: string
@@ -24,6 +25,7 @@ export type EmailNotificationSource = {
 
 export type EmailRecipientCandidate = {
   id: string
+  companyId: string
   email: string
   firstName: string
   lastName: string
@@ -68,9 +70,11 @@ export function planEmailJobs(input: {
   const jobs: PlannedEmailJob[] = []
 
   for (const notification of input.notifications) {
+    if (!notification.companyId) continue
     const route = requiredViewRoute(notification.category, notification.href)
 
     for (const user of input.users) {
+      if (user.companyId !== notification.companyId) continue
       const email = normalizeEmailAddress(user.email)
       if (!email || !user.viewRoutes.includes(route)) continue
 

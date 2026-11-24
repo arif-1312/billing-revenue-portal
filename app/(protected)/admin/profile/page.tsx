@@ -5,6 +5,8 @@ import { IconUserCircle } from "@tabler/icons-react";
 import { ProfileTabs } from "@/components/profile/profile-tabs";
 import { getCurrentUserProfile } from "@/lib/actions/users";
 
+export const dynamic = "force-dynamic";
+
 export default async function ProfilePage() {
   await connection();
   const user = await getCurrentUserProfile();

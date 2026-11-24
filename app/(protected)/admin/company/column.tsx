@@ -1,17 +1,20 @@
 "use client"
 
 import { ColumnDef } from "@tanstack/react-table"
-import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { DeleteDialog } from "@/components/ui/delete-dailog"
 import { EditIcon, Trash } from "lucide-react"
+import type { getCompanys } from "@/lib/actions/company"
+type CompanyRow = Awaited<ReturnType<typeof getCompanys>>[number]
+type ColumnOptions = { canEdit: boolean; canDelete: boolean; onDelete: (id: string) => void | Promise<void>; onEdit: (row: CompanyRow) => void }
 export const getUsersColumns = ({
   canEdit,
   canDelete,
   onDelete,
-}: any): ColumnDef<any>[] => {
-  const columns: ColumnDef<any>[] = [
+  onEdit,
+}: ColumnOptions): ColumnDef<CompanyRow>[] => {
+  const columns: ColumnDef<CompanyRow>[] = [
     {
       accessorKey: "companyCode",
       header: "Company Code",
@@ -59,13 +62,12 @@ export const getUsersColumns = ({
           <div className="flex gap-2">
             {canEdit && (
               <Button
-                asChild
                 size="icon"
                 className="bg-orange-500 hover:bg-orange-600"
+                onClick={() => onEdit(row.original)}
+                aria-label={`Edit ${row.original.name}`}
               >
-                <Link href={`/admin/company/edit/${id}`}>
-                  <EditIcon size={16} />
-                </Link>
+                <EditIcon size={16} />
               </Button>
             )}
 
@@ -74,6 +76,7 @@ export const getUsersColumns = ({
                 onConfirm={() => onDelete(id)}
                 title="Delete Company?"
                 description="Are you sure you want to delete this company? This action cannot be undone."
+                preventOutsideDismiss
               >
                 <Button
                   size="icon"

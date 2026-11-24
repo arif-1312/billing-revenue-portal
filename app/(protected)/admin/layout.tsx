@@ -3,6 +3,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { SiteHeader } from "@/components/site-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { getConfiguration } from "@/lib/actions/configuration";
+import { getActiveCompanyContext } from "@/lib/company-context";
 import { canAccess, getUserPermissions, visibleRoute } from "@/lib/rbac";
 import { isSignedInSession } from "@/lib/session-decision";
 import { redirect } from "next/navigation";
@@ -30,6 +31,9 @@ export default async function AdminLayout({
     redirect(session ? "/api/session/end" : "/login");
   }
 
+  const activeCompany = await getActiveCompanyContext();
+  if (!activeCompany) redirect("/api/session/end");
+
   const userRoles = await getUserPermissions();
 
   if (!userRoles) {
@@ -46,35 +50,37 @@ export default async function AdminLayout({
       email: userRoles.email || undefined,
       allowedRoutes,
       role: userRoles.role?.name || undefined,
+      activeCompanyId: userRoles.activeCompanyId,
+      activeCompanyName: userRoles.activeCompany.name,
     }
     : undefined;
 
   const configData = await getConfiguration();
   const configuration = configData
     ? {
-      name: configData.name,
-      logo: configData.logo,
+      name: activeCompany.company.name || configData.name,
+      logo: activeCompany.company.logo || configData.logo,
     }
     : undefined;
 
   return (
     <SidebarProvider
-      defaultOpen={false}
+      defaultOpen={true}
       className="group/sidebar"
       style={
         {
           "--sidebar-width": "18rem",
           "--sidebar-width-icon": "3.5rem",
-          "--header-height": "3.75rem",
+          "--header-height": "4.75rem",
         } as React.CSSProperties
       }
     >
       <AppSidebar user={user} configuration={configuration} />
 
       <SidebarInset
-        className="min-w-0 bg-[#F5F7FA] transition-[margin] duration-300 ease-in-out"
+        className="min-w-0 bg-background transition-[margin] duration-300 ease-in-out"
       >
-        <div className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl">
+        <div className="sticky top-0 z-50 bg-background/95 px-3 py-2 backdrop-blur-xl sm:px-4 lg:px-6">
           <SiteHeader canViewNotifications={await canAccess("/admin/notifications", "view")} />
         </div>
 

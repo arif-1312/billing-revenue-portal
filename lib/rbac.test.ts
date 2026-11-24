@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { authMock, findUnique, recordSecurityEvent } = vi.hoisted(() => ({
+const { authMock, getMembership, recordSecurityEvent } = vi.hoisted(() => ({
   authMock: vi.fn(),
-  findUnique: vi.fn(),
+  getMembership: vi.fn(),
   recordSecurityEvent: vi.fn(),
 }));
 
@@ -10,13 +10,7 @@ vi.mock("@/auth", () => ({
   auth: authMock,
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    user: {
-      findUnique,
-    },
-  },
-}));
+vi.mock("@/lib/company-context", () => ({ getActiveCompanyMembership: getMembership }));
 
 vi.mock("@/lib/security-event", () => ({
   recordSecurityEvent,
@@ -61,9 +55,9 @@ function permissionUser({
 
 beforeEach(() => {
   authMock.mockReset();
-  findUnique.mockReset();
+  getMembership.mockReset();
   recordSecurityEvent.mockReset();
-  authMock.mockResolvedValue({ user: { email } });
+  authMock.mockResolvedValue({ user: { id: "user-1", email, activeCompanyId: "company-1" } });
 });
 
 describe("permission checks", () => {
@@ -73,7 +67,7 @@ describe("permission checks", () => {
     const decision = await requirePermission("/admin/customer", "delete");
 
     expect(decision).toEqual({ ok: false, message: "Unauthorized" });
-    expect(findUnique).not.toHaveBeenCalled();
+    expect(getMembership).not.toHaveBeenCalled();
     expect(recordSecurityEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         event: "PERMISSION_DENIED",
@@ -85,7 +79,7 @@ describe("permission checks", () => {
   });
 
   it("rejects an active user who does not have the action", async () => {
-    findUnique.mockResolvedValue(permissionUser());
+    getMembership.mockResolvedValue({ user: permissionUser(), role: permissionUser().role, company: { id: "company-1" }, companyId: "company-1" });
 
     await expect(canAccess("/admin/customer", "delete")).resolves.toBe(false);
     await expect(requirePermission("/admin/customer", "delete")).resolves.toEqual({
@@ -95,7 +89,7 @@ describe("permission checks", () => {
   });
 
   it("rejects an inactive account", async () => {
-    findUnique.mockResolvedValue(permissionUser({ status: "INACTIVE", canDelete: true }));
+    getMembership.mockResolvedValue({ user: permissionUser({ status: "INACTIVE", canDelete: true }), role: permissionUser({ status: "INACTIVE", canDelete: true }).role, company: { id: "company-1" }, companyId: "company-1" });
 
     await expect(canAccess("/admin/customer", "view")).resolves.toBe(false);
     await expect(requirePermission("/admin/customer", "view")).resolves.toEqual({
@@ -105,27 +99,26 @@ describe("permission checks", () => {
   });
 
   it("does not grant access because a role is named Admin", async () => {
-    findUnique.mockResolvedValue(permissionUser({ roleName: "Admin", canDelete: false }));
+    getMembership.mockResolvedValue({ user: permissionUser({ roleName: "Admin", canDelete: false }), role: permissionUser({ roleName: "Admin", canDelete: false }).role, company: { id: "company-1" }, companyId: "company-1" });
     await expect(canAccess("/admin/customer", "delete")).resolves.toBe(false);
 
-    findUnique.mockResolvedValue(permissionUser({ roleName: "admin", canDelete: false }));
+    getMembership.mockResolvedValue({ user: permissionUser({ roleName: "admin", canDelete: false }), role: permissionUser({ roleName: "admin", canDelete: false }).role, company: { id: "company-1" }, companyId: "company-1" });
     await expect(canAccess("/admin/customer", "delete")).resolves.toBe(false);
 
-    findUnique.mockResolvedValue(permissionUser({ canDelete: true }));
+    const user = permissionUser({ canDelete: true });
+    getMembership.mockResolvedValue({ user, role: user.role, company: { id: "company-1" }, companyId: "company-1" });
     await expect(requirePermission("/admin/customer", "delete")).resolves.toEqual({
       ok: true,
     });
   });
 
   it("denies a disabled role and a disabled module", async () => {
-    findUnique.mockResolvedValue(
-      permissionUser({ roleStatus: "INACTIVE", canDelete: true }),
-    );
+    const inactiveRole = permissionUser({ roleStatus: "INACTIVE", canDelete: true });
+    getMembership.mockResolvedValue({ user: inactiveRole, role: inactiveRole.role, company: { id: "company-1" }, companyId: "company-1" });
     await expect(canAccess("/admin/customer", "view")).resolves.toBe(false);
 
-    findUnique.mockResolvedValue(
-      permissionUser({ moduleStatus: "INACTIVE", canDelete: true }),
-    );
+    const inactiveModule = permissionUser({ moduleStatus: "INACTIVE", canDelete: true });
+    getMembership.mockResolvedValue({ user: inactiveModule, role: inactiveModule.role, company: { id: "company-1" }, companyId: "company-1" });
     await expect(requirePermission("/admin/customer", "delete")).resolves.toEqual({
       ok: false,
       message: "Unauthorized",
@@ -133,9 +126,10 @@ describe("permission checks", () => {
   });
 
   it("loads the permission record once for every action on a route", async () => {
-    findUnique.mockResolvedValue(permissionUser({ canDelete: true }));
+    const user = permissionUser({ canDelete: true });
+    getMembership.mockResolvedValue({ user, role: user.role, company: { id: "company-1" }, companyId: "company-1" });
 
     await expect(getAllowedRoute("/admin/customer")).resolves.toBe("/admin/customer");
-    expect(findUnique).toHaveBeenCalledTimes(1);
+    expect(getMembership).toHaveBeenCalledTimes(1);
   });
 });

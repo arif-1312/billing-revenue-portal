@@ -1,8 +1,6 @@
-import Link from "next/link"
-import { Button } from "@/components/ui/button"
 import { getUsers } from "@/lib/actions/users"
 import { redirect } from "next/navigation";
-import { canAccess, getUserPermissions } from "@/lib/rbac"
+import { canAccess } from "@/lib/rbac"
 import UserDataTable from "./user-datatable"
 
 export default async function UsersPage() {
@@ -22,15 +20,9 @@ export default async function UsersPage() {
 
   return (
     <UserDataTable data={users}
+      canCreate={canCreate}
       canEdit={canEdit}
       canDelete={canDelete}
-      title="User"
-      actions={
-        canCreate && (
-          <Button className="bg-[#1976D2] hover:bg-[#155EA8]">
-            <Link href="/admin/users/create">Add Create</Link>
-          </Button>
-        )
-      } />
+      title="User" />
   )
 }

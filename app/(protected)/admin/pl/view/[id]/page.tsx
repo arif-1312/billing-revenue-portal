@@ -27,11 +27,11 @@ type ProjectView = {
   status?: string | null;
   startDate?: string | Date | null;
   endDate?: string | Date | null;
-  poValue?: number | string | null;
-  totalRevenue?: number | string | null;
-  totalCost?: number | string | null;
-  resourceCount?: number | string | null;
-  projectedProfit?: number | string | null;
+  poValue?: unknown;
+  totalRevenue?: unknown;
+  totalCost?: unknown;
+  resourceCount?: unknown;
+  projectedProfit?: unknown;
   orderType?: string | null;
   company?: {
     name?: string | null;

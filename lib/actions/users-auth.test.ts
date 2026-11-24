@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { requirePermission, findFirst, findMany } = vi.hoisted(() => ({
+const { requirePermission, getActiveCompanyContext, findFirst, findMany } = vi.hoisted(() => ({
   requirePermission: vi.fn(),
+  getActiveCompanyContext: vi.fn(),
   findFirst: vi.fn(),
   findMany: vi.fn(),
 }));
@@ -9,6 +10,7 @@ const { requirePermission, findFirst, findMany } = vi.hoisted(() => ({
 vi.mock("@/lib/rbac", () => ({
   requirePermission,
 }));
+vi.mock("@/lib/company-context", () => ({ getActiveCompanyContext }));
 
 vi.mock("@/auth", () => ({
   auth: vi.fn(),
@@ -40,6 +42,7 @@ beforeEach(() => {
   findFirst.mockReset();
   findMany.mockReset();
   requirePermission.mockResolvedValue({ ok: true });
+  getActiveCompanyContext.mockResolvedValue({ companyId: "company-1", company: { name: "Company A" } });
 });
 
 describe("user lookups", () => {
@@ -48,6 +51,7 @@ describe("user lookups", () => {
       id: "user-1",
       username: "ada",
       email: "ada@example.com",
+      companyMemberships: [{ roleId: "role-1", role: { id: "role-1", name: "Finance" } }],
     });
 
     const result = await getUserById("user-1");
@@ -57,7 +61,7 @@ describe("user lookups", () => {
   });
 
   it("requests the user list without password hashes", async () => {
-    findMany.mockResolvedValue([{ id: "user-1", username: "ada" }]);
+    findMany.mockResolvedValue([{ id: "user-1", username: "ada", roleId: "role-1", companyMemberships: [{ roleId: "role-1", role: { id: "role-1", name: "Finance" } }] }]);
 
     const users = await getUsers();
 

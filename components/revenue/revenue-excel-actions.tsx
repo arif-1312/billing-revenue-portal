@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import {
   commitRevenueImport,
+  previewRevenueImport,
   exportRevenueWorkbook,
   type RevenueImportResult,
 } from "@/lib/actions/revenue-excel";
@@ -83,6 +84,30 @@ export function RevenueExcelActions({
     });
   };
 
+  const validateFile = () => {
+    if (!file) {
+      toast.error("Error", { description: "Choose an .xlsx file." });
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    startImport(async () => {
+      const result = await previewRevenueImport(formData);
+
+      if (!result.success && result.columnErrors.length === 0 && result.errors.length === 0) {
+        toast.error("Error", {
+          description: result.message || "Could not read the Excel file.",
+        });
+        setPreview(null);
+        return;
+      }
+
+      setPreview(result);
+    });
+  };
+
   const commitFile = () => {
     if (!file) return;
 
@@ -139,7 +164,7 @@ export function RevenueExcelActions({
       ) : null}
 
       <Dialog open={open} onOpenChange={closeDialog}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-5xl">
+        <DialogContent scrollBody className="max-h-[85vh] sm:max-w-5xl">
           <DialogHeader>
             <DialogTitle>Import revenue Excel</DialogTitle>
             <DialogDescription>
@@ -228,7 +253,6 @@ export function RevenueExcelActions({
                             <th className="px-3 py-2">Customer PO Number</th>
                             <th className="px-3 py-2">Invoice Date</th>
                             <th className="px-3 py-2">Invoice Amount</th>
-                            <th className="px-3 py-2">Credit Note Amount</th>
                             <th className="px-3 py-2">TDS</th>
                             <th className="px-3 py-2">Payment Received</th>
                           </tr>
@@ -242,7 +266,6 @@ export function RevenueExcelActions({
                               <td className="px-3 py-2">{row.customerPONumber}</td>
                               <td className="px-3 py-2">{row.invoiceDate}</td>
                               <td className="px-3 py-2">{row.invoiceAmount}</td>
-                              <td className="px-3 py-2">{row.creditNote}</td>
                               <td className="px-3 py-2">{row.tds}</td>
                               <td className="px-3 py-2">{row.paymentReceived}</td>
                             </tr>
@@ -265,6 +288,15 @@ export function RevenueExcelActions({
           </div>
 
           <DialogFooter>
+            {/* <Button
+              type="button"
+              variant="outline"
+              onClick={validateFile}
+              disabled
+              title="Validation is turned off for now"
+            >
+              Validate
+            </Button> */}
             <Button
               type="button"
               className="bg-teal-600 text-white hover:bg-teal-700"

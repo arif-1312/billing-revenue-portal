@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import { Search } from "lucide-react";
 import {
   Area,
   AreaChart,
@@ -50,25 +51,25 @@ import { HoverAmount, KpiCard, type KpiDetailKey } from "./kpi-card";
 import { StatusBadge } from "./status-badge";
 
 const chartConfig = {
-  billing: { label: "Billed amount without GST", color: "#1976D2" },
-  mrr: { label: "MRR", color: "#1976D2" },
-  payment: { label: "Collected amount without GST", color: "#15966A" },
-  outstanding: { label: "Outstanding amount without GST", color: "#E69A23" },
-  overdue: { label: "Overdue", color: "#DC4545" },
-  pending: { label: "Pending", color: "#E69A23" },
+  billing: { label: "Billed amount without GST", color: "var(--financial-billing)" },
+  mrr: { label: "MRR", color: "var(--financial-billing)" },
+  payment: { label: "Collected amount without GST", color: "var(--financial-collected)" },
+  outstanding: { label: "Outstanding amount without GST", color: "var(--financial-pending)" },
+  overdue: { label: "Overdue", color: "var(--financial-overdue)" },
+  pending: { label: "Pending", color: "var(--financial-pending)" },
 } satisfies ChartConfig;
 
 const months = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
 
 const collectionEfficiencyConfig = {
-  efficiency: { label: "Monthly collection-to-billing ratio", color: "#15966A" },
+  efficiency: { label: "Monthly collection-to-billing ratio", color: "var(--financial-collected)" },
 } satisfies ChartConfig;
 
 const sliceColor: Record<string, string> = {
-  Collected: "#15966A",
-  Pending: "#E69A23",
-  Outstanding: "#E69A23",
-  Overdue: "#DC4545",
+  Collected: "var(--financial-collected)",
+  Pending: "var(--financial-pending)",
+  Outstanding: "var(--financial-pending)",
+  Overdue: "var(--financial-overdue)",
 };
 
 function displayPartyName(name?: string | null) {
@@ -95,10 +96,12 @@ function namedRows(rows: PartyRow[]) {
   }));
 }
 
-const axisTick = { fill: "#64748B", fontSize: 11 };
+const axisTick = { fill: "var(--muted-foreground)", fontSize: 11 };
 const tooltipStyle = {
-  border: "1px solid #e4e8ee",
-  borderRadius: 6,
+  backgroundColor: "var(--popover)",
+  color: "var(--popover-foreground)",
+  border: "1px solid var(--border)",
+  borderRadius: 10,
   fontSize: 12,
   boxShadow: "0 1px 2px rgba(16,24,40,0.06)",
 };
@@ -174,6 +177,8 @@ export function OverviewView({
   const [followUpSort, setFollowUpSort] = useState<"dueDate" | "outstanding" | "age">("dueDate");
   const [followUpPage, setFollowUpPage] = useState(1);
   const [showAllFollowUps, setShowAllFollowUps] = useState(false);
+  const [ledgerQuery, setLedgerQuery] = useState("");
+  const [ledgerPage, setLedgerPage] = useState(1);
   const billedByMonth = new Map<string, number>();
   for (const line of invoiceLines) {
     billedByMonth.set(
@@ -393,10 +398,6 @@ export function OverviewView({
     return invoice.dueDate > todayDate && dueTimestamp <= todayTimestamp + 30 * 86_400_000;
   });
   const upcomingAmount = upcomingInvoices.reduce((total, invoice) => total + invoice.outstanding, 0);
-  const upcomingCustomers = new Set(upcomingInvoices.map((invoice) => invoice.customerName));
-  const nearestUpcomingDate = upcomingInvoices
-    .map((invoice) => invoice.dueDate)
-    .sort()[0] ?? null;
   const agingBuckets = [
     { label: "Not Due", amount: 0, invoices: 0, color: "#1976D2" },
     { label: "0–15 Days", amount: 0, invoices: 0, color: "#D99520" },
@@ -458,9 +459,9 @@ export function OverviewView({
     return { name: displayPartyName(row.name), rawName: row.name, billed: row.billed, collected: row.collected, outstanding: due, efficiency: row.billed > 0 ? row.collected / row.billed * 100 : null };
   }).sort((left, right) => right.outstanding - left.outstanding).slice(0, 10);
   const formatCollectionDate = (value: string) => {
-    if (!value) return "—";
+    if (!value) return "â€”";
     const date = new Date(`${value}T00:00:00Z`);
-    if (Number.isNaN(date.getTime())) return "—";
+    if (Number.isNaN(date.getTime())) return "â€”";
     return new Intl.DateTimeFormat("en-IN", {
       timeZone: "Asia/Kolkata",
       day: "2-digit",
@@ -497,6 +498,53 @@ export function OverviewView({
     month: point.month,
     efficiency: point.billing > 0 ? Number(((point.payment / point.billing) * 100).toFixed(2)) : null,
   }));
+  const ledgerByInvoice = new Map<string, {
+    identity: string;
+    customerName: string;
+    companyName: string;
+    invoiceNumber: string;
+    invoiceDate: string;
+    dueDate: string | null;
+    amount: number;
+    outstanding: number;
+  }>();
+  for (const line of invoiceLines) {
+    if (!line.invoiceNumber || line.invoiceNumber === "-" || !line.invoiceDate) continue;
+    const identity = line.invoiceIdentity || `${line.companyName}|${line.invoiceNumber}|${line.invoiceDate}`;
+    const current = ledgerByInvoice.get(identity) ?? {
+      identity,
+      customerName: line.customerName || "Unassigned",
+      companyName: line.companyName || "Unassigned",
+      invoiceNumber: line.invoiceNumber,
+      invoiceDate: dateValue(line.invoiceDate) || line.invoiceDate,
+      dueDate: line.dueDate ? dateValue(line.dueDate) : null,
+      amount: 0,
+      outstanding: 0,
+    };
+    current.amount += line.totalAmount || line.billed;
+    current.outstanding += line.notYetDueAmount + line.overdueAmount + line.undatedOutstanding;
+    ledgerByInvoice.set(identity, current);
+  }
+  const customerLedger = [...ledgerByInvoice.values()]
+    .map((invoice) => ({
+      ...invoice,
+      status: invoice.outstanding <= 0
+        ? "Paid"
+        : invoice.dueDate && invoice.dueDate < todayDate
+          ? "Overdue"
+          : "Pending",
+    }))
+    .sort((left, right) => right.invoiceDate.localeCompare(left.invoiceDate));
+  const filteredLedger = customerLedger.filter((invoice) =>
+    [invoice.customerName, invoice.companyName, invoice.invoiceNumber]
+      .some((value) => value.toLowerCase().includes(ledgerQuery.trim().toLowerCase())),
+  );
+  const ledgerPageCount = Math.max(1, Math.ceil(filteredLedger.length / 8));
+  const activeLedgerPage = Math.min(ledgerPage, ledgerPageCount);
+  const ledgerPageItems = filteredLedger.slice(
+    (activeLedgerPage - 1) * 8,
+    activeLedgerPage * 8,
+  );
 
   return (
     <div className="space-y-3">
@@ -508,7 +556,7 @@ export function OverviewView({
           BILLING OVERVIEW
         </h2>
 
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
           {/* Planned Billing - Blue */}
           <KpiCard
             label="Planned Billing (without GST)"
@@ -573,19 +621,7 @@ export function OverviewView({
             deltaTone={deltas.billingDone.tone}
           />
 
-          {/* Billing Achievement - Green */}
-          <KpiCard
-            label="Billing Achievement"
-            detailKey="billingAchievement"
-            onOpenDetails={onKpiClick}
-            value={billingOverview?.billingAchievement ?? 0}
-            mode="percent"
-            unavailable={billingOverview?.billingAchievement == null}
-            hint="Billing Done is normalized to GST-exclusive invoice amounts before comparison with the GST-exclusive PO plan. A result over 100% is retained and flagged as above plan."
-            accent="billing"
-            deltaText={`${billingOverview?.billingAchievementAbovePlan ? "Above plan · " : ""}${deltas.billingAchievement.text}`}
-            deltaTone={deltas.billingAchievement.tone}
-          />
+
         </div>
       </section>
       
@@ -599,7 +635,7 @@ export function OverviewView({
         >
           COLLECTION OVERVIEW
         </h2>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
           <KpiCard
             label="Total Collected (without GST)"
             detailKey="totalCollected"
@@ -686,11 +722,11 @@ export function OverviewView({
             <div className="grid grid-cols-1 items-center gap-2 sm:grid-cols-[minmax(0,1fr)_11rem]">
               <ChartContainer config={chartConfig} className="aspect-auto h-60 w-full">
                 <BarChart data={agingBuckets} layout="vertical" margin={{ left: 4, right: 12 }} onClick={(state) => { if (state?.activeLabel) { setSelectedAgingBucket(String(state.activeLabel)); setActiveCollectionDetail("aging"); } }} style={{ cursor: "pointer" }}>
-                  <CartesianGrid horizontal={false} stroke="#eef1f4"/><XAxis type="number" tickFormatter={(value) => formatInr(Number(value), true)} tickLine={false} axisLine={false} tick={axisTick}/><YAxis type="category" dataKey="label" width={100} tickLine={false} axisLine={false} tick={axisTick}/><Tooltip formatter={(value, name, item) => name === "amount" ? [formatInr(Number(value)), `${item.payload.invoices} invoices`] : value} contentStyle={tooltipStyle}/><Bar dataKey="amount" name="Outstanding without GST" radius={[0, 3, 3, 0]} maxBarSize={22} isAnimationActive={false}>{agingBuckets.map((bucket) => <Cell key={bucket.label} fill={bucket.color} cursor="pointer" onClick={() => { setSelectedAgingBucket(bucket.label); setActiveCollectionDetail("aging"); }}/>)}</Bar>
+                  <CartesianGrid horizontal={false} stroke="var(--border)"/><XAxis type="number" tickFormatter={(value) => formatInr(Number(value), true)} tickLine={false} axisLine={false} tick={axisTick}/><YAxis type="category" dataKey="label" width={100} tickLine={false} axisLine={false} tick={axisTick}/><Tooltip formatter={(value, name, item) => name === "amount" ? [formatInr(Number(value)), `${item.payload.invoices} invoices`] : value} contentStyle={tooltipStyle}/><Bar dataKey="amount" name="Outstanding without GST" radius={[0, 3, 3, 0]} maxBarSize={22} isAnimationActive={false}>{agingBuckets.map((bucket) => <Cell key={bucket.label} fill={bucket.color} cursor="pointer" onClick={() => { setSelectedAgingBucket(bucket.label); setActiveCollectionDetail("aging"); }}/>)}</Bar>
                 </BarChart>
               </ChartContainer>
               <div className="space-y-2">
-                {agingBuckets.map((bucket) => <button type="button" key={bucket.label} onClick={() => { setSelectedAgingBucket(bucket.label); setActiveCollectionDetail("aging"); }} className="flex w-full min-w-0 items-center justify-between gap-2 rounded-md px-1 py-0.5 text-left hover:bg-[#F8FAFC]" title={`${bucket.label}: ${formatInr(bucket.amount)}, ${bucket.invoices} invoices`}><span className="flex min-w-0 items-center gap-1.5 text-[10px] text-[#64748B]"><span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: bucket.color }}/><span className="truncate">{bucket.label}</span></span><span className="shrink-0 text-right"><span className="block font-mono text-[10px] font-medium tabular-nums text-[#17365D]">{formatInr(bucket.amount, true)}</span><span className="text-[9px] text-[#64748B]">{totalInvoiceOutstanding > 0 ? formatPercent(bucket.amount / totalInvoiceOutstanding * 100) : "0.00%"} · {bucket.invoices}</span></span></button>)}
+                {agingBuckets.map((bucket) => <button type="button" key={bucket.label} onClick={() => { setSelectedAgingBucket(bucket.label); setActiveCollectionDetail("aging"); }} className="flex w-full min-w-0 items-center justify-between gap-2 rounded-md px-1 py-0.5 text-left hover:bg-[#F8FAFC]" title={`${bucket.label}: ${formatInr(bucket.amount)}, ${bucket.invoices} invoices`}><span className="flex min-w-0 items-center gap-1.5 text-[10px] text-[#64748B]"><span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: bucket.color }}/><span className="truncate">{bucket.label}</span></span><span className="shrink-0 text-right"><span className="block font-mono text-[10px] font-medium tabular-nums text-[#17365D]">{formatInr(bucket.amount, true)}</span><span className="text-[9px] text-[#64748B]">{totalInvoiceOutstanding > 0 ? formatPercent(bucket.amount / totalInvoiceOutstanding * 100) : "0.00%"} Â· {bucket.invoices}</span></span></button>)}
               </div>
             </div>
           </ChartCard>
@@ -699,7 +735,7 @@ export function OverviewView({
             <div className="grid grid-cols-1 items-center gap-2 sm:grid-cols-[minmax(0,1fr)_12rem]">
               <div className="relative mx-auto h-60 w-full max-w-[22rem]">
                 <ChartContainer config={chartConfig} className="h-full w-full">
-                  <PieChart><Pie data={collectionStatusRows} dataKey="value" nameKey="name" innerRadius={66} outerRadius={94} paddingAngle={2} stroke="#fff" strokeWidth={2} isAnimationActive={false} onClick={(item) => { if (item.name === "Collected") onKpiClick("totalCollected"); else if (item.name === "Pending") onKpiClick("pendingCollection"); else setActiveCollectionDetail("overdue"); }} style={{ cursor: "pointer" }}>{collectionStatusRows.map((row) => <Cell key={row.name} fill={row.color}/>)}</Pie><Tooltip formatter={(value, name) => [`${formatInr(Number(value))} (${collectionChartTotal > 0 ? formatPercent(Number(value) / collectionChartTotal * 100) : "0.00%"})`, name]} contentStyle={tooltipStyle}/></PieChart>
+                  <PieChart><Pie data={collectionStatusRows} dataKey="value" nameKey="name" innerRadius={66} outerRadius={94} paddingAngle={2} stroke="var(--card)" strokeWidth={2} isAnimationActive={false} onClick={(item) => { if (item.name === "Collected") onKpiClick("totalCollected"); else if (item.name === "Pending") onKpiClick("pendingCollection"); else setActiveCollectionDetail("overdue"); }} style={{ cursor: "pointer" }}>{collectionStatusRows.map((row) => <Cell key={row.name} fill={row.color}/>)}</Pie><Tooltip formatter={(value, name) => [`${formatInr(Number(value))} (${collectionChartTotal > 0 ? formatPercent(Number(value) / collectionChartTotal * 100) : "0.00%"})`, name]} contentStyle={tooltipStyle}/></PieChart>
                 </ChartContainer>
                 <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center"><span className="text-[10px] text-[#64748B]">Total position</span><strong className="max-w-[90%] truncate font-mono text-sm font-semibold tabular-nums text-[#17365D]">{formatInr(collectionChartTotal, true)}</strong></div>
               </div>
@@ -710,8 +746,8 @@ export function OverviewView({
 
         {activeCollectionDetail ? (
           <div id="collection-priority-details" className="overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#E2E8F0] px-4 py-3"><div className="min-w-0"><h3 className="truncate text-sm font-semibold text-[#17365D]">{activeCollectionDetail === "overdue" ? "Overdue invoice details" : activeCollectionDetail === "aging" ? `${selectedAgingBucket ?? "Aging"} invoice details` : "Upcoming collection details"}</h3><p className="mt-0.5 text-xs text-[#64748B]">{formatCount(selectedCollectionInvoices.length)} distinct invoices · dashboard filters applied</p></div><button type="button" onClick={() => setActiveCollectionDetail(null)} className="rounded-md px-2.5 py-1.5 text-xs font-medium text-[#64748B] hover:bg-[#F1F4F8] hover:text-[#17365D]">Close</button></div>
-            {selectedCollectionInvoices.length ? <div className="max-h-72 overflow-auto"><table className="w-full min-w-[720px] border-collapse text-left text-xs"><thead className="sticky top-0 bg-[#F8FAFC] text-[10px] uppercase tracking-wide text-[#64748B]"><tr><th className="px-4 py-2.5 font-semibold">Invoice</th><th className="px-4 py-2.5 font-semibold">Customer</th><th className="px-4 py-2.5 font-semibold">Company</th><th className="px-4 py-2.5 font-semibold">Due date</th><th className="px-4 py-2.5 text-right font-semibold">Outstanding</th></tr></thead><tbody className="divide-y divide-[#F1F4F8]">{selectedCollectionInvoices.map((invoice) => <tr key={invoice.identity} className="text-[#17365D]"><td className="whitespace-nowrap px-4 py-2.5 font-medium">{invoice.invoiceNumber}</td><td className="max-w-52 truncate px-4 py-2.5" title={invoice.customerName}>{invoice.customerName}</td><td className="max-w-52 truncate px-4 py-2.5" title={invoice.companyName}>{invoice.companyName}</td><td className="whitespace-nowrap px-4 py-2.5">{formatCollectionDate(invoice.dueDate)}{invoice.dueDate ? <span className="text-[#64748B]"> · {invoice.dueDate < todayDate ? `${Math.floor((todayTimestamp - Date.parse(`${invoice.dueDate}T00:00:00Z`)) / 86_400_000)} days overdue` : `${Math.floor((Date.parse(`${invoice.dueDate}T00:00:00Z`) - todayTimestamp) / 86_400_000)} days`}</span> : null}</td><td className="whitespace-nowrap px-4 py-2.5 text-right font-mono tabular-nums">{formatInr(invoice.outstanding)}</td></tr>)}</tbody></table></div> : <p className="px-4 py-8 text-center text-sm text-[#64748B]">No matching invoices for the current dashboard filters.</p>}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#E2E8F0] px-4 py-3"><div className="min-w-0"><h3 className="truncate text-sm font-semibold text-[#17365D]">{activeCollectionDetail === "overdue" ? "Overdue invoice details" : activeCollectionDetail === "aging" ? `${selectedAgingBucket ?? "Aging"} invoice details` : "Upcoming collection details"}</h3><p className="mt-0.5 text-xs text-[#64748B]">{formatCount(selectedCollectionInvoices.length)} distinct invoices Â· dashboard filters applied</p></div><button type="button" onClick={() => setActiveCollectionDetail(null)} className="rounded-md px-2.5 py-1.5 text-xs font-medium text-[#64748B] hover:bg-[#F1F4F8] hover:text-[#17365D]">Close</button></div>
+            {selectedCollectionInvoices.length ? <div className="max-h-72 overflow-auto"><table className="w-full min-w-[720px] border-collapse text-left text-xs"><thead className="sticky top-0 bg-[#F8FAFC] text-[10px] uppercase tracking-wide text-[#64748B]"><tr><th className="px-4 py-2.5 font-semibold">Invoice</th><th className="px-4 py-2.5 font-semibold">Customer</th><th className="px-4 py-2.5 font-semibold">Company</th><th className="px-4 py-2.5 font-semibold">Due date</th><th className="px-4 py-2.5 text-right font-semibold">Outstanding</th></tr></thead><tbody className="divide-y divide-[#F1F4F8]">{selectedCollectionInvoices.map((invoice) => <tr key={invoice.identity} className="text-[#17365D]"><td className="whitespace-nowrap px-4 py-2.5 font-medium">{invoice.invoiceNumber}</td><td className="max-w-52 truncate px-4 py-2.5" title={invoice.customerName}>{invoice.customerName}</td><td className="max-w-52 truncate px-4 py-2.5" title={invoice.companyName}>{invoice.companyName}</td><td className="whitespace-nowrap px-4 py-2.5">{formatCollectionDate(invoice.dueDate)}{invoice.dueDate ? <span className="text-[#64748B]"> Â· {invoice.dueDate < todayDate ? `${Math.floor((todayTimestamp - Date.parse(`${invoice.dueDate}T00:00:00Z`)) / 86_400_000)} days overdue` : `${Math.floor((Date.parse(`${invoice.dueDate}T00:00:00Z`) - todayTimestamp) / 86_400_000)} days`}</span> : null}</td><td className="whitespace-nowrap px-4 py-2.5 text-right font-mono tabular-nums">{formatInr(invoice.outstanding)}</td></tr>)}</tbody></table></div> : <p className="px-4 py-8 text-center text-sm text-[#64748B]">No matching invoices for the current dashboard filters.</p>}
           </div>
         ) : null}
 
@@ -723,7 +759,7 @@ export function OverviewView({
           <div className="flex h-full flex-col">
             <ChartCard title="Collection Follow-up & Upcoming Payments" description="Filtered open invoices sorted by due date, outstanding balance, or overdue age." filename="collection-follow-ups.csv" rows={filteredFollowUps.map((invoice) => ({ Customer: invoice.customerName, Company: invoice.companyName, Invoice: invoice.invoiceNumber, "Due date": invoice.dueDate, "Days overdue": invoice.dueDate && invoice.dueDate < todayDate ? Math.floor((todayTimestamp - Date.parse(`${invoice.dueDate}T00:00:00Z`)) / 86_400_000) : 0, Outstanding: invoice.outstanding, "Payment status": invoice.paymentStatus }))} loading={loading} error={error} className="flex-1">
               <div className="flex flex-wrap items-center gap-2 pb-2"><div className="inline-flex rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] p-0.5"><button type="button" onClick={() => { setFollowUpMode("overdue"); setFollowUpPage(1); setShowAllFollowUps(false); }} className={`rounded-md px-2.5 py-1 text-[10px] font-medium ${followUpMode === "overdue" ? "bg-white text-[#DC4545] shadow-sm" : "text-[#64748B]"}`}>Overdue</button><button type="button" onClick={() => { setFollowUpMode("upcoming"); setFollowUpPage(1); setShowAllFollowUps(false); }} className={`rounded-md px-2.5 py-1 text-[10px] font-medium ${followUpMode === "upcoming" ? "bg-white text-[#1976D2] shadow-sm" : "text-[#64748B]"}`}>Upcoming</button></div><input aria-label="Search collection follow-ups" value={followUpQuery} onChange={(event) => { setFollowUpQuery(event.target.value); setFollowUpPage(1); }} placeholder="Search customer or invoice" className="h-8 min-w-36 flex-1 rounded-md border border-[#E2E8F0] px-2 text-xs outline-none focus:ring-2 focus:ring-[#1976D2]/30"/><select aria-label="Sort follow-ups" value={followUpSort} onChange={(event) => setFollowUpSort(event.target.value as "dueDate" | "outstanding" | "age")} className="h-8 rounded-md border border-[#E2E8F0] bg-white px-2 text-xs text-[#64748B]"><option value="dueDate">Sort: due date</option><option value="outstanding">Sort: amount</option><option value="age">Sort: age</option></select><button type="button" onClick={() => downloadCsv("collection-follow-ups.csv", filteredFollowUps.map((invoice) => ({ Customer: invoice.customerName, Company: invoice.companyName, Invoice: invoice.invoiceNumber, "Due date": invoice.dueDate, Outstanding: invoice.outstanding, "Payment status": invoice.paymentStatus })))} className="h-8 rounded-md border border-[#E2E8F0] px-2.5 text-xs font-medium text-[#17365D] hover:bg-[#F8FAFC]">Export</button></div>
-              <div className="overflow-x-auto"><table className="w-full min-w-[560px] border-collapse text-left text-[11px]"><thead className="bg-[#F8FAFC] text-[10px] uppercase tracking-wide text-[#64748B]"><tr><th className="px-2 py-2 font-semibold">Customer · Invoice</th><th className="px-2 py-2 font-semibold">Due</th><th className="px-2 py-2 text-right font-semibold">Outstanding</th><th className="px-2 py-2 font-semibold">Status</th></tr></thead><tbody className="divide-y divide-[#F1F4F8]">{displayedFollowUps.length === 0 ? <tr><td colSpan={4} className="px-3 py-8 text-center text-xs text-[#64748B]">No invoices match this tab and the current filters.</td></tr> : displayedFollowUps.map((invoice) => { const overdueRow = invoice.dueDate < todayDate; const dueToday = invoice.dueDate === todayDate; const partialRow = invoice.paymentStatus === "Partially paid"; const statusLabel = overdueRow ? `Overdue${partialRow ? " · Partially paid" : ""}` : dueToday ? `Due today${partialRow ? " · Partially paid" : ""}` : partialRow ? "Partially paid" : "Upcoming"; return <tr key={invoice.identity} className="text-[#17365D]"><td className="px-2 py-2"><button type="button" onClick={() => { onCrossFilter({ kind: "customer", value: invoice.customerName }); onKpiClick("totalReceivables"); }} className="block max-w-52 truncate text-left font-medium hover:text-[#1976D2]" title={`${invoice.customerName} · ${invoice.invoiceNumber}`}>{invoice.customerName}</button><span className="block truncate text-[10px] text-[#64748B]">{invoice.invoiceNumber}</span></td><td className="whitespace-nowrap px-2 py-2">{formatCollectionDate(invoice.dueDate)} <span className="text-[#64748B]">{dueToday ? "· Due today" : overdueRow ? `· ${Math.floor((todayTimestamp - Date.parse(`${invoice.dueDate}T00:00:00Z`)) / 86_400_000)}d overdue` : ""}</span></td><td className="whitespace-nowrap px-2 py-2 text-right font-mono tabular-nums">{formatInr(invoice.outstanding, true)}</td><td className="px-2 py-2"><span className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium ${overdueRow ? "bg-[#FDECEC] text-[#DC4545]" : dueToday ? "bg-[#FFF4DE] text-[#B7791F]" : "bg-[#EAF3FF] text-[#1976D2]"}`}>{statusLabel}</span></td></tr>;})}</tbody></table></div>
+              <div className="overflow-x-auto"><table className="w-full min-w-[560px] border-collapse text-left text-[11px]"><thead className="bg-[#F8FAFC] text-[10px] uppercase tracking-wide text-[#64748B]"><tr><th className="px-2 py-2 font-semibold">Customer Â· Invoice</th><th className="px-2 py-2 font-semibold">Due</th><th className="px-2 py-2 text-right font-semibold">Outstanding</th><th className="px-2 py-2 font-semibold">Status</th></tr></thead><tbody className="divide-y divide-[#F1F4F8]">{displayedFollowUps.length === 0 ? <tr><td colSpan={4} className="px-3 py-8 text-center text-xs text-[#64748B]">No invoices match this tab and the current filters.</td></tr> : displayedFollowUps.map((invoice) => { const overdueRow = invoice.dueDate < todayDate; const dueToday = invoice.dueDate === todayDate; const partialRow = invoice.paymentStatus === "Partially paid"; const statusLabel = overdueRow ? `Overdue${partialRow ? " Â· Partially paid" : ""}` : dueToday ? `Due today${partialRow ? " Â· Partially paid" : ""}` : partialRow ? "Partially paid" : "Upcoming"; return <tr key={invoice.identity} className="text-[#17365D]"><td className="px-2 py-2"><button type="button" onClick={() => { onCrossFilter({ kind: "customer", value: invoice.customerName }); onKpiClick("totalReceivables"); }} className="block max-w-52 truncate text-left font-medium hover:text-[#1976D2]" title={`${invoice.customerName} Â· ${invoice.invoiceNumber}`}>{invoice.customerName}</button><span className="block truncate text-[10px] text-[#64748B]">{invoice.invoiceNumber}</span></td><td className="whitespace-nowrap px-2 py-2">{formatCollectionDate(invoice.dueDate)} <span className="text-[#64748B]">{dueToday ? "Â· Due today" : overdueRow ? `Â· ${Math.floor((todayTimestamp - Date.parse(`${invoice.dueDate}T00:00:00Z`)) / 86_400_000)}d overdue` : ""}</span></td><td className="whitespace-nowrap px-2 py-2 text-right font-mono tabular-nums">{formatInr(invoice.outstanding, true)}</td><td className="px-2 py-2"><span className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium ${overdueRow ? "bg-[#FDECEC] text-[#DC4545]" : dueToday ? "bg-[#FFF4DE] text-[#B7791F]" : "bg-[#EAF3FF] text-[#1976D2]"}`}>{statusLabel}</span></td></tr>;})}</tbody></table></div>
               <div className="mt-2 flex items-center justify-between border-t border-[#F1F4F8] pt-2"><button type="button" onClick={() => setShowAllFollowUps((value) => !value)} className="text-[10px] font-medium text-[#1976D2]">{showAllFollowUps ? "Show less" : `View all (${filteredFollowUps.length})`}</button>{!showAllFollowUps ? <div className="flex items-center gap-2 text-[10px] text-[#64748B]"><button type="button" disabled={followUpPage <= 1} onClick={() => setFollowUpPage((page) => Math.max(1, page - 1))} className="disabled:opacity-40">Previous</button><span>{Math.min(followUpPage, followUpPageCount)} / {followUpPageCount}</span><button type="button" disabled={followUpPage >= followUpPageCount} onClick={() => setFollowUpPage((page) => Math.min(followUpPageCount, page + 1))} className="disabled:opacity-40">Next</button></div> : null}</div>
             </ChartCard>
           </div>
@@ -731,7 +767,7 @@ export function OverviewView({
 
         <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-2">
           <ChartCard title="Monthly Collection Trend" description="Billed, collected, and outstanding amounts in the selected period. Select a month to filter the dashboard." filename="monthly-collection-trend.csv" rows={monthRows.map((row) => ({ Month: row.month, Billed: row["Billed amount without GST"], Collected: row["Collected amount without GST"], Outstanding: row["Outstanding amount without GST"] }))} loading={loading} error={error} empty={monthRows.every((row) => row["Billed amount without GST"] === 0 && row["Collected amount without GST"] === 0 && row["Outstanding amount without GST"] === 0)}>
-            <ChartContainer config={chartConfig} className="aspect-auto h-60 w-full"><ComposedChart data={monthRows} onClick={(state) => { if (state?.activeLabel) onMonth(String(state.activeLabel)); }} style={{ cursor: "pointer" }}><CartesianGrid vertical={false} stroke="#eef1f4"/><XAxis dataKey="month" tickLine={false} axisLine={false} tick={axisTick}/><YAxis tickFormatter={(value) => formatInr(Number(value), true)} tickLine={false} axisLine={false} tick={axisTick} width={72}/><Tooltip formatter={(value) => formatInr(Number(value))} contentStyle={tooltipStyle}/><Legend/><Bar dataKey="Billed amount without GST" name="Billed" fill="#1976D2" radius={[2,2,0,0]} maxBarSize={16} isAnimationActive={false}/><Bar dataKey="Collected amount without GST" name="Collected" fill="#15966A" radius={[2,2,0,0]} maxBarSize={16} isAnimationActive={false}/><Line dataKey="Outstanding amount without GST" name="Outstanding" stroke="#E69A23" strokeWidth={2} dot={false} isAnimationActive={false}/></ComposedChart></ChartContainer>
+            <ChartContainer config={chartConfig} className="aspect-auto h-60 w-full"><ComposedChart data={monthRows} onClick={(state) => { if (state?.activeLabel) onMonth(String(state.activeLabel)); }} style={{ cursor: "pointer" }}><CartesianGrid vertical={false} stroke="var(--border)"/><XAxis dataKey="month" tickLine={false} axisLine={false} tick={axisTick}/><YAxis tickFormatter={(value) => formatInr(Number(value), true)} tickLine={false} axisLine={false} tick={axisTick} width={72}/><Tooltip formatter={(value) => formatInr(Number(value))} contentStyle={tooltipStyle}/><Legend/><Bar dataKey="Billed amount without GST" name="Billed" fill="#1976D2" radius={[2,2,0,0]} maxBarSize={16} isAnimationActive={false}/><Bar dataKey="Collected amount without GST" name="Collected" fill="#15966A" radius={[2,2,0,0]} maxBarSize={16} isAnimationActive={false}/><Line dataKey="Outstanding amount without GST" name="Outstanding" stroke="#E69A23" strokeWidth={2} dot={false} isAnimationActive={false}/></ComposedChart></ChartContainer>
           </ChartCard>
           <ChartCard title="Collection by Company" description="Company collection totals and outstanding exposure from the current dashboard selection." filename="collection-by-company.csv" rows={companyCollectionRows.map((row) => ({ Company: row.name, Billed: row.billed, Collected: row.collected, Outstanding: row.outstanding, "Collection %": row.efficiency == null ? "N/A" : Number(row.efficiency.toFixed(2)) }))} loading={loading} error={error} empty={companyCollectionRows.length === 0}>
             <div className="max-h-60 overflow-auto"><table className="w-full min-w-[480px] border-collapse text-left text-xs"><thead className="sticky top-0 bg-[#F8FAFC] text-[10px] uppercase tracking-wide text-[#64748B]"><tr><th className="px-3 py-2.5 font-semibold">Company</th><th className="px-3 py-2.5 text-right font-semibold">Billed</th><th className="px-3 py-2.5 text-right font-semibold">Collected</th><th className="px-3 py-2.5 text-right font-semibold">Outstanding</th><th className="px-3 py-2.5 text-right font-semibold">Collection</th></tr></thead><tbody className="divide-y divide-[#F1F4F8]">{companyCollectionRows.map((row) => <tr key={row.name}><td className="px-3 py-2.5"><button type="button" onClick={() => { onCrossFilter({ kind: "company", value: row.rawName }); onKpiClick("totalReceivables"); }} className="max-w-40 truncate text-left font-medium text-[#17365D] hover:text-[#1976D2]" title={row.name}>{row.name}</button></td><td className="whitespace-nowrap px-3 py-2.5 text-right font-mono tabular-nums">{formatInr(row.billed, true)}</td><td className="whitespace-nowrap px-3 py-2.5 text-right font-mono tabular-nums text-[#15966A]">{formatInr(row.collected, true)}</td><td className="whitespace-nowrap px-3 py-2.5 text-right font-mono tabular-nums">{formatInr(row.outstanding, true)}</td><td className="px-3 py-2.5 text-right tabular-nums">{row.efficiency == null ? "N/A" : formatPercent(row.efficiency)}</td></tr>)}</tbody></table></div>
@@ -741,7 +777,7 @@ export function OverviewView({
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {[
             { label: "Highest overdue customer", value: topOverdueCustomer?.name ?? "None", detail: topOverdueCustomer ? formatInr(topOverdueCustomer.amount) : "No overdue balance", tone: "text-[#DC4545]" },
-            { label: "Total overdue exposure", value: formatInr(overdueAmount, true), detail: `${formatCount(overdueInvoices.length)} invoices · ${formatCount(overdueCustomers.size)} customers`, tone: "text-[#DC4545]" },
+            { label: "Total overdue exposure", value: formatInr(overdueAmount, true), detail: `${formatCount(overdueInvoices.length)} invoices Â· ${formatCount(overdueCustomers.size)} customers`, tone: "text-[#DC4545]" },
             { label: "Multiple overdue invoices", value: formatCount([...overdueCustomers.values()].filter((customer) => customer.invoiceCount > 1).length), detail: "Customers with more than one overdue invoice", tone: "text-[#E69A23]" },
             { label: "Highest aging category", value: [...agingBuckets].filter((bucket) => bucket.label !== "Not Due" && bucket.label !== "No Due Date" && bucket.amount > 0).sort((left, right) => right.amount - left.amount)[0]?.label ?? "None", detail: "Largest dated overdue balance bucket", tone: "text-[#DC4545]" },
             { label: "Upcoming collections", value: formatInr(upcomingAmount, true), detail: `${formatCount(upcomingInvoices.length)} invoices due within 30 days`, tone: "text-[#1976D2]" },
@@ -769,7 +805,7 @@ export function OverviewView({
           >
             <ChartContainer config={chartConfig} className="aspect-auto h-60 w-full">
               <BarChart data={billingAnalyticsRows} barGap={2} onClick={(state) => { if (state?.activeLabel) onMonth(String(state.activeLabel)); }} style={{ cursor: "pointer" }}>
-                <CartesianGrid vertical={false} stroke="#eef1f4" />
+                <CartesianGrid vertical={false} stroke="var(--border)" />
                 <XAxis dataKey="month" tickLine={false} axisLine={false} tick={axisTick} />
                 <YAxis tickFormatter={(value) => formatInr(Number(value), true)} tickLine={false} axisLine={false} tick={axisTick} width={72} />
                 <Tooltip formatter={(value) => formatInr(Number(value))} contentStyle={tooltipStyle} />
@@ -794,7 +830,7 @@ export function OverviewView({
           >
             <ChartContainer config={chartConfig} className="aspect-auto h-60 w-full">
               <ComposedChart data={billingAnalyticsRows} onClick={(state) => { if (state?.activeLabel) onMonth(String(state.activeLabel)); }} style={{ cursor: "pointer" }}>
-                <CartesianGrid vertical={false} stroke="#eef1f4" />
+                <CartesianGrid vertical={false} stroke="var(--border)" />
                 <XAxis dataKey="month" tickLine={false} axisLine={false} tick={axisTick} />
                 <YAxis yAxisId="amount" tickFormatter={(value) => formatInr(Number(value), true)} tickLine={false} axisLine={false} tick={axisTick} width={72} />
                 <YAxis yAxisId="percent" orientation="right" tickFormatter={(value) => formatPercent(Number(value))} tickLine={false} axisLine={false} tick={axisTick} width={58} />
@@ -817,7 +853,7 @@ export function OverviewView({
             <div className="grid grid-cols-1 items-center gap-2 sm:grid-cols-[minmax(0,1fr)_9rem]">
               <ChartContainer config={chartConfig} className="aspect-auto h-52 w-full">
                 <PieChart>
-                  <Pie data={billingStatusRows} dataKey="value" nameKey="name" innerRadius={48} outerRadius={72} stroke="#fff" strokeWidth={2} isAnimationActive={false}>
+                  <Pie data={billingStatusRows} dataKey="value" nameKey="name" innerRadius={48} outerRadius={72} stroke="var(--card)" strokeWidth={2} isAnimationActive={false}>
                     {billingStatusRows.map((row) => (
                       <Cell
                         key={row.name}
@@ -882,7 +918,7 @@ export function OverviewView({
             className="aspect-auto h-60 w-full"
           >
             <BarChart data={monthRows} barGap={2}>
-              <CartesianGrid vertical={false} stroke="#eef1f4" />
+              <CartesianGrid vertical={false} stroke="var(--border)" />
               <XAxis
                 dataKey="month"
                 tickLine={false}
@@ -950,7 +986,7 @@ export function OverviewView({
                   nameKey="name"
                   innerRadius={52}
                   outerRadius={74}
-                  stroke="#fff"
+                  stroke="var(--card)"
                   strokeWidth={2}
                   isAnimationActive={false}
                 >
@@ -1073,7 +1109,7 @@ export function OverviewView({
               }}
               style={{ cursor: "pointer" }}
             >
-              <CartesianGrid vertical={false} stroke="#eef1f4" />
+              <CartesianGrid vertical={false} stroke="var(--border)" />
               <XAxis
                 dataKey="month"
                 tickLine={false}
@@ -1145,7 +1181,7 @@ export function OverviewView({
                   <stop offset="100%" stopColor="#93C5FD" stopOpacity={0.04} />
                 </linearGradient>
               </defs>
-              <CartesianGrid vertical={false} stroke="#eef1f4" />
+              <CartesianGrid vertical={false} stroke="var(--border)" />
               <XAxis
                 dataKey="month"
                 tickLine={false}
@@ -1208,7 +1244,7 @@ export function OverviewView({
               }}
               style={{ cursor: "pointer" }}
             >
-              <CartesianGrid vertical={false} stroke="#eef1f4" />
+              <CartesianGrid vertical={false} stroke="var(--border)" />
               <XAxis dataKey="month" tickLine={false} axisLine={false} tick={axisTick} />
               <YAxis
                 tickFormatter={(value) => formatPercent(Number(value))}
@@ -1236,6 +1272,70 @@ export function OverviewView({
           </ChartContainer>
         </ChartCard>
       </div>
+      </section>
+      <section aria-labelledby="customer-ledger-heading" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+          <div>
+            <h2 id="customer-ledger-heading" className="text-sm font-semibold text-slate-900">Customer ledger</h2>
+            <p className="mt-1 text-xs text-slate-500">Recent invoices in the current dashboard selection.</p>
+          </div>
+          <label className="relative block w-full sm:max-w-xs">
+            <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+            <input
+              aria-label="Search customer ledger"
+              value={ledgerQuery}
+              onChange={(event) => { setLedgerQuery(event.target.value); setLedgerPage(1); }}
+              placeholder="Search customer, company, invoice"
+              className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs text-slate-800 outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-500/10"
+            />
+          </label>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] border-collapse text-left text-xs">
+            <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="px-5 py-3 font-semibold">Customer name</th>
+                <th className="px-4 py-3 font-semibold">Company</th>
+                <th className="px-4 py-3 font-semibold">Invoice ID</th>
+                <th className="px-4 py-3 font-semibold">Date</th>
+                <th className="px-4 py-3 text-right font-semibold">Amount (â‚¹)</th>
+                <th className="px-4 py-3 font-semibold">Status</th>
+                <th className="px-5 py-3 text-right font-semibold">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {ledgerPageItems.length === 0 ? (
+                <tr><td colSpan={7} className="px-5 py-10 text-center text-sm text-slate-500">No invoice records match this search.</td></tr>
+              ) : ledgerPageItems.map((invoice) => (
+                <tr key={invoice.identity} className="text-slate-700 transition-colors hover:bg-slate-50/80">
+                  <td className="max-w-56 truncate px-5 py-3 font-medium text-slate-900" title={invoice.customerName}>{invoice.customerName}</td>
+                  <td className="max-w-48 truncate px-4 py-3" title={invoice.companyName}>{invoice.companyName}</td>
+                  <td className="whitespace-nowrap px-4 py-3 font-mono text-[11px] text-slate-500">{invoice.invoiceNumber}</td>
+                  <td className="whitespace-nowrap px-4 py-3">{formatCollectionDate(invoice.invoiceDate)}</td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right font-mono font-medium tabular-nums text-slate-900">{formatInr(invoice.amount, true)}</td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-semibold ${invoice.status === "Paid" ? "bg-emerald-50 text-emerald-700" : invoice.status === "Overdue" ? "bg-rose-50 text-rose-700" : "bg-amber-50 text-amber-700"}`}>
+                      {invoice.status}
+                    </span>
+                  </td>
+                  <td className="px-5 py-3 text-right">
+                    <button type="button" onClick={() => onCrossFilter({ kind: "customer", value: invoice.customerName })} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-medium text-slate-600 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700">
+                      Filter
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-xs text-slate-500 sm:px-5">
+          <span>Showing {filteredLedger.length === 0 ? 0 : (activeLedgerPage - 1) * 8 + 1}â€“{Math.min(activeLedgerPage * 8, filteredLedger.length)} of {filteredLedger.length}</span>
+          <div className="flex items-center gap-2">
+            <button type="button" disabled={activeLedgerPage <= 1} onClick={() => setLedgerPage((page) => Math.max(1, page - 1))} className="rounded-lg border border-slate-200 px-2.5 py-1.5 font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">Previous</button>
+            <span className="min-w-12 text-center tabular-nums">{activeLedgerPage} / {ledgerPageCount}</span>
+            <button type="button" disabled={activeLedgerPage >= ledgerPageCount} onClick={() => setLedgerPage((page) => Math.min(ledgerPageCount, page + 1))} className="rounded-lg border border-slate-200 px-2.5 py-1.5 font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">Next</button>
+          </div>
+        </div>
       </section>
       <section aria-labelledby="management-insights-heading" className="space-y-2">
         <h2 id="management-insights-heading" className="border-l-2 border-[#17365D] pl-2 text-xs font-semibold tracking-wide text-[#17365D]">
@@ -1379,7 +1479,7 @@ export function PartyView({
               layout="vertical"
               margin={{ left: 8, right: 8 }}
             >
-              <CartesianGrid horizontal={false} stroke="#eef1f4" />
+              <CartesianGrid horizontal={false} stroke="var(--border)" />
               <XAxis
                 type="number"
                 tickFormatter={(value) => formatInr(Number(value), true)}
@@ -1535,7 +1635,7 @@ export function AgingView({
               className="aspect-auto h-60 w-full"
             >
               <BarChart data={aging.buckets}>
-                <CartesianGrid vertical={false} stroke="#eef1f4" />
+                <CartesianGrid vertical={false} stroke="var(--border)" />
                 <XAxis
                   dataKey="label"
                   tickLine={false}
@@ -1613,12 +1713,12 @@ export function AgingView({
           rows={outstanding.map((record) => [
             displayPartyName(record.customerName),
             displayPartyName(record.companyName),
-            record.poNumber || "—",
+            record.poNumber || "â€”",
             <Money key="billed" value={toNumber(record.amount)} />,
             <Money key="collected" value={toNumber(record.collectedAmount)} />,
             <Money key="due" value={toNumber(record.overdueAmount)} />,
             <Money key="past" value={toNumber(record.pastDueAmount)} />,
-            record.status || "—",
+            record.status || "â€”",
           ])}
         />
       </article>
@@ -1666,7 +1766,7 @@ export function ForecastView({
           className="aspect-auto h-72 w-full"
         >
           <BarChart data={series} barGap={2}>
-            <CartesianGrid vertical={false} stroke="#eef1f4" />
+            <CartesianGrid vertical={false} stroke="var(--border)" />
             <XAxis
               dataKey="month"
               tickLine={false}
@@ -1756,9 +1856,9 @@ function AgingAnalyticsChart({
   }
   const amounts = new Map<string, { amount: number; invoices: number }>([
     ["Not Due", { amount: 0, invoices: 0 }],
-    ["1–15 Days", { amount: 0, invoices: 0 }],
-    ["16–30 Days", { amount: 0, invoices: 0 }],
-    ["31–45 Days", { amount: 0, invoices: 0 }],
+    ["1â€“15 Days", { amount: 0, invoices: 0 }],
+    ["16â€“30 Days", { amount: 0, invoices: 0 }],
+    ["31â€“45 Days", { amount: 0, invoices: 0 }],
     ["Above 45 Days", { amount: 0, invoices: 0 }],
     ["No Due Date", { amount: 0, invoices: 0 }],
   ]);
@@ -1769,7 +1869,7 @@ function AgingAnalyticsChart({
     if (invoice.dueDate) {
       const dueValue = Date.parse(`${invoice.dueDate}T00:00:00Z`);
       const daysLate = Math.floor((todayValue - dueValue) / 86_400_000);
-      label = daysLate <= 0 ? "Not Due" : daysLate <= 15 ? "1–15 Days" : daysLate <= 30 ? "16–30 Days" : daysLate <= 45 ? "31–45 Days" : "Above 45 Days";
+      label = daysLate <= 0 ? "Not Due" : daysLate <= 15 ? "1â€“15 Days" : daysLate <= 30 ? "16â€“30 Days" : daysLate <= 45 ? "31â€“45 Days" : "Above 45 Days";
     }
     const bucket = amounts.get(label)!;
     bucket.amount += invoice.outstanding;
@@ -1795,7 +1895,7 @@ function AgingAnalyticsChart({
       ) : (
         <ChartContainer config={chartConfig} className="aspect-auto h-60 w-full">
           <BarChart data={agingRows}>
-            <CartesianGrid vertical={false} stroke="#eef1f4" />
+            <CartesianGrid vertical={false} stroke="var(--border)" />
             <XAxis dataKey="label" tickLine={false} axisLine={false} tick={axisTick} />
             <YAxis
               tickFormatter={(value) => formatInr(Number(value), true)}
@@ -1899,7 +1999,7 @@ function RankChart({
           layout="vertical"
           margin={{ left: 8, right: 12 }}
         >
-          <CartesianGrid horizontal={false} stroke="#eef1f4" />
+          <CartesianGrid horizontal={false} stroke="var(--border)" />
           <XAxis
             type="number"
             tickFormatter={(value) => formatInr(Number(value), true)}
@@ -1973,7 +2073,7 @@ function Money({ value }: { value: number }) {
 }
 
 function shorten(value: string) {
-  return value.length > 18 ? `${value.slice(0, 17)}…` : value;
+  return value.length > 18 ? `${value.slice(0, 17)}â€¦` : value;
 }
 
 function compareParty(

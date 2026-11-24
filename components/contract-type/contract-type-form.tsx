@@ -47,9 +47,14 @@ import { useHydrated } from "@/hooks/use-hydrated";
 const ContractTypeForm = ({
   data,
   update = false,
+  onSuccess,
 }: {
   data?: ContractType;
   update: boolean;
+  onSuccess?: (
+    contractTypeId?: string,
+    contractTypeName?: string,
+  ) => void | Promise<void>;
 }) => {
   const router = useRouter();
   const id = data?.id;
@@ -78,7 +83,18 @@ const ContractTypeForm = ({
           description: res?.message,
         });
       } else {
-        router.push("/admin/contract-type");
+        toast.success(update ? "Contract type updated successfully" : "Contract type created successfully");
+        if (onSuccess) {
+          const contractTypeId =
+            "contractTypeId" in res &&
+              typeof res.contractTypeId === "string"
+              ? res.contractTypeId
+              : id;
+          await onSuccess(contractTypeId, payload.name);
+        }
+        else {
+          router.push("/admin/contract-type");
+        }
       }
     });
   };

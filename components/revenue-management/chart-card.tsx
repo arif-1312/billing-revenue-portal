@@ -34,14 +34,14 @@ export function ChartCard({
   const [asTable, setAsTable] = useState(false);
 
   return (
-    <article className={`flex min-w-0 flex-col rounded-xl border border-[#e3e8ef] bg-white p-3.5 shadow-[0_1px_2px_rgba(16,24,40,0.035),0_12px_28px_-24px_rgba(16,24,40,0.18)] sm:p-4 ${className ?? ""}`}>
+    <article className={`flex min-w-0 flex-col rounded-2xl border border-border bg-card p-4 shadow-sm transition-shadow hover:border-primary/30 sm:p-5 ${className ?? ""}`}>
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-1.5">
-            <h3 className="text-sm font-semibold tracking-tight text-[#1c2430]">{title}</h3>
+            <h3 className="text-sm font-semibold tracking-tight text-slate-900">{title}</h3>
             <FyBadge />
           </div>
-          {description ? <p className="mt-0.5 text-[11px] leading-4 text-[#667085]">{description}</p> : null}
+          {description ? <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p> : null}
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {extra}

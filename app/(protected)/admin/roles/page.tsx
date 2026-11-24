@@ -1,7 +1,5 @@
-import Link from "next/link"
-import { Button } from "@/components/ui/button"
-import { Role } from "@prisma/client"
 import { getRoles } from "@/lib/actions/role"
+import { getModules } from "@/lib/actions/module-action"
 import { canAccess } from "@/lib/rbac"
 import { redirect } from "next/navigation"
 import RoleDataTable from "./role-datatable"
@@ -14,7 +12,8 @@ const RolesPage = async () => {
     redirect("/404");
   }
 
-  const roles: Role[] = await getRoles()
+  const roles = await getRoles()
+  const modules = await getModules()
   const canCreate = await canAccess(route, "create");
   const canEdit = await canAccess(route, "edit");
   const canDelete = await canAccess(route, "delete");
@@ -22,16 +21,11 @@ const RolesPage = async () => {
 
   return (
     <RoleDataTable data={roles}
+      modules={modules}
+      canCreate={canCreate}
       canEdit={canEdit}
       canDelete={canDelete}
-      title="Role"
-      actions={
-        canCreate && (
-          <Button className="bg-[#1976D2] hover:bg-[#155EA8]">
-            <Link href="/admin/roles/create">Add Role</Link>
-          </Button>
-        )
-      } />
+      title="Role" />
   )
 }
 

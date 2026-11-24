@@ -1,5 +1,3 @@
-import Link from "next/link"
-import { Button } from "@/components/ui/button"
 import { getServiceTypes } from "@/lib/actions/service-type"
 import { canAccess } from "@/lib/rbac"
 import { redirect } from "next/navigation"
@@ -22,16 +20,10 @@ const ServiceTypePage = async () => {
 
   return (
     <ServiceTypeDataTable data={serviceTypes}
+      canCreate={canCreate}
       canEdit={canEdit}
       canDelete={canDelete}
-      title="Service Type"
-      actions={
-        canCreate && (
-          <Button className="rounded-xl bg-sky-600 text-white shadow-sm hover:bg-sky-700">
-            <Link href="/admin/service-type/create">Add Service Type</Link>
-          </Button>
-        )
-      } />
+      title="Service Type" />
   )
 }
 

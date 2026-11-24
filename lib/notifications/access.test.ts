@@ -12,7 +12,7 @@ import { getNotificationCentre, getNotificationPreview, getUnreadNotificationCou
 
 beforeEach(() => {
   vi.resetAllMocks();
-  getUserPermissions.mockResolvedValue({ id: "user" });
+  getUserPermissions.mockResolvedValue({ id: "user", activeCompanyId: "company-a" });
   canAccess.mockResolvedValue(false);
 });
 
@@ -26,5 +26,19 @@ describe("notification module access", () => {
     }
     expect(canAccess).toHaveBeenCalledWith("/admin/notifications", "view");
     expect(count).not.toHaveBeenCalled();
+  });
+
+  it("counts notifications only for the active company", async () => {
+    canAccess.mockResolvedValue(true);
+    count.mockResolvedValue(0);
+
+    await expect(getUnreadNotificationCount()).resolves.toEqual({ ok: true, unreadCount: 0 });
+    expect(count).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        notification: expect.objectContaining({
+          AND: expect.arrayContaining([expect.objectContaining({ companyId: "company-a" })]),
+        }),
+      }),
+    }));
   });
 });

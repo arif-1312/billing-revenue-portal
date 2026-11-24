@@ -1,8 +1,9 @@
 import { Prisma } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { requirePermission, findNotes, findCustomers, findCycles, findPurchaseOrders } = vi.hoisted(() => ({
+const { requirePermission, getActiveCompanyContext, findNotes, findCustomers, findCycles, findPurchaseOrders } = vi.hoisted(() => ({
   requirePermission: vi.fn(),
+  getActiveCompanyContext: vi.fn(),
   findNotes: vi.fn(),
   findCustomers: vi.fn(),
   findCycles: vi.fn(),
@@ -10,6 +11,7 @@ const { requirePermission, findNotes, findCustomers, findCycles, findPurchaseOrd
 }));
 
 vi.mock("@/lib/rbac", () => ({ requirePermission }));
+vi.mock("@/lib/company-context", () => ({ getActiveCompanyContext }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     creditNote: { findMany: findNotes },
@@ -32,12 +34,13 @@ const query: CreditNoteDashboardQuery = {
 };
 
 function note(customerName: string, date: string, amount: string) {
-  return { customerName, date: parseKolkataDate(date), amount: new Prisma.Decimal(amount) };
+  return { companyId: "co-tech", customerName, date: parseKolkataDate(date), amount: new Prisma.Decimal(amount) };
 }
 
 beforeEach(() => {
   vi.resetAllMocks();
   requirePermission.mockResolvedValue({ ok: true });
+  getActiveCompanyContext.mockResolvedValue({ companyId: "co-tech", company: { id: "co-tech" } });
   findCustomers.mockResolvedValue([]);
   findCycles.mockResolvedValue([]);
   findPurchaseOrders.mockResolvedValue([]);
@@ -95,14 +98,14 @@ describe("projected revenue after credit notes", () => {
       purchaseOrders: [{ company: { name: "SY Associates" } }],
     }]);
     const result = await getRevenueDashboardSummary(2025, {
-      company: "company-1", customer: "customer-1", timeZone: "Asia/Kolkata",
+      company: "co-tech", customer: "customer-1", timeZone: "Asia/Kolkata",
     });
     expect(result.totalRevenueProjected).toBe(2600);
     expect(findCycles.mock.calls[0][0].where).toEqual({
-      purchaseOrder: { companyId: "company-1", customerId: "customer-1" },
+      purchaseOrder: { companyId: "co-tech", customerId: "customer-1" },
     });
     expect(findCustomers.mock.calls[0][0].where).toEqual({
-      id: "customer-1", purchaseOrders: { some: { companyId: "company-1" } },
+      companyId: "co-tech", id: "customer-1", purchaseOrders: { some: { companyId: "co-tech" } },
     });
   });
 
@@ -163,7 +166,7 @@ describe("dashboard credit note summary", () => {
       comparison: { amount: 110, count: 2, label: "FY 2024–25" },
     });
     expect(findNotes).toHaveBeenCalledWith({
-      where: { OR: [
+      where: { companyId: "co-tech", OR: [
         { date: { gte: parseKolkataDate("2025-04-01"), lte: parseKolkataDate("2026-03-31", true) } },
         { date: { gte: parseKolkataDate("2024-04-01"), lte: parseKolkataDate("2025-03-31", true) } },
       ] },
@@ -218,7 +221,7 @@ describe("dashboard credit note summary", () => {
       count: 2,
       comparison: { amount: 50, count: 1, label: "FY 2024–25" },
     });
-    expect(findCustomers.mock.calls[0][0].where).toEqual({ id: { in: ["customer-1", "customer-2"] } });
+    expect(findCustomers.mock.calls[0][0].where).toEqual({ companyId: "co-tech", id: { in: ["customer-1", "customer-2"] } });
   });
 
   it("combines company, customer, and status selections on the same purchase order and counts a note once", async () => {
@@ -226,14 +229,15 @@ describe("dashboard credit note summary", () => {
       companyName: "Exato", firstName: "", lastName: null, customerCode: "EX",
       purchaseOrders: [{ company: { name: "SY Associates" } }, { company: { name: "SY Associates" } }],
     }]);
-    expect(await getCreditNoteDashboardSummary({ ...query, company: "co-1,co-2", customer: "c-1", status: "LIVE" })).toEqual({
+    expect(await getCreditNoteDashboardSummary({ ...query, company: "co-tech", customer: "c-1", status: "LIVE" })).toEqual({
       amount: 200,
       count: 1,
       comparison: { amount: 60, count: 1, label: "FY 2024–25" },
     });
     expect(findCustomers.mock.calls[0][0].where).toEqual({
+      companyId: "co-tech",
       id: "c-1",
-      purchaseOrders: { some: { companyId: { in: ["co-1", "co-2"] }, status: { in: ["LIVE"] } } },
+      purchaseOrders: { some: { companyId: "co-tech", status: { in: ["LIVE"] } } },
     });
   });
 
@@ -267,11 +271,11 @@ describe("credit deductions across dashboard filters", () => {
   beforeEach(() => {
     const parties = [
       {
-        id: "customer-hitachi", companyName: "Hitachi", firstName: "", lastName: null, customerCode: "HIT",
+        id: "customer-hitachi", companyId: "co-tech", companyName: "Hitachi", firstName: "", lastName: null, customerCode: "HIT",
         purchaseOrders: [{ id: "po-hitachi", companyId: "co-tech", status: "CLOSED", company: { id: "co-tech", name: "Technosys" } }],
       },
       {
-        id: "customer-exato", companyName: "Exato", firstName: "", lastName: null, customerCode: "EX",
+        id: "customer-exato", companyId: "co-sy", companyName: "Exato", firstName: "", lastName: null, customerCode: "EX",
         purchaseOrders: [{ id: "po-exato", companyId: "co-sy", status: "LIVE", company: { id: "co-sy", name: "SY Associates" } }],
       },
     ];
@@ -288,7 +292,7 @@ describe("credit deductions across dashboard filters", () => {
       },
     }));
     findCustomers.mockImplementation(async ({ where, select }) => parties
-      .filter((customer) => matches(customer.id, where.id))
+      .filter((customer) => matches(customer.id, where.id) && customer.companyId === where.companyId)
       .map((customer) => ({
         ...customer,
         purchaseOrders: customer.purchaseOrders.filter((order) => {
@@ -309,23 +313,23 @@ describe("credit deductions across dashboard filters", () => {
   });
 
   it.each([
-    [{ company: "co-sy" }, 200, 1800],
-    [{ company: "co-tech,co-sy" }, 600, 2400],
+    [{ company: "co-sy" }, 0, 0],
+    [{ company: "co-tech,co-sy" }, 400, 600],
     [{ customer: "customer-hitachi" }, 400, 600],
-    [{ customer: "customer-hitachi,customer-exato" }, 600, 2400],
-    [{ status: "LIVE" }, 200, 1800],
+    [{ customer: "customer-hitachi,customer-exato" }, 400, 600],
+    [{ status: "LIVE" }, 0, 0],
     [{ status: "CLOSED" }, 400, 600],
-    [{ status: "LIVE,CLOSED" }, 600, 2400],
+    [{ status: "LIVE,CLOSED" }, 400, 600],
     [{ company: "co-tech", customer: "customer-exato" }, 0, 0],
     [{ company: "co-sy", status: "CLOSED" }, 0, 0],
-    [{ crossFilter: { kind: "company", value: "sy" } }, 200, 1800],
+    [{ crossFilter: { kind: "company", value: "sy" } }, 0, 0],
     [{ crossFilter: { kind: "customer", value: "Hitachi" } }, 400, 600],
     [{ crossFilter: { kind: "status", value: "CLOSED" } }, 400, 600],
     [{ status: "LIVE", crossFilter: { kind: "status", value: "CLOSED" } }, 0, 0],
     [{ company: "co-tech", month: "3" }, 300, -300],
     [{ customer: "customer-hitachi", quarter: "2" }, 300, -300],
-    [{ status: "LIVE", startDate: "2025-05-01", endDate: "2025-05-31" }, 200, 1800],
-    [{ crossFilter: { kind: "month", value: "May" } }, 200, 1800],
+    [{ status: "LIVE", startDate: "2025-05-01", endDate: "2025-05-31" }, 0, 0],
+    [{ crossFilter: { kind: "month", value: "May" } }, 200, -200],
   ] satisfies Array<[Partial<CreditNoteDashboardQuery>, number, number]>)(
     "keeps the card, billed total, and monthly chart aligned for %j",
     async (patch, credit, billed) => {

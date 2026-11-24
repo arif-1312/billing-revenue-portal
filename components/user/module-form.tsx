@@ -45,9 +45,10 @@ import { useHydrated } from "@/hooks/use-hydrated";
 type Props = {
   data?: Module;
   update: boolean;
+  onSuccess?: () => void;
 };
 
-const ModuleForm = ({ data, update = false }: Props) => {
+const ModuleForm = ({ data, update = false, onSuccess }: Props) => {
   const router = useRouter();
   const id = data?.id;
   const isHydrated = useHydrated();
@@ -86,7 +87,9 @@ const ModuleForm = ({ data, update = false }: Props) => {
           description: res?.message,
         });
       } else {
-        router.push("/admin/module");
+        toast.success(update ? "Module updated successfully" : "Module created successfully");
+        if (onSuccess) onSuccess();
+        else router.push("/admin/module");
       }
     });
   };

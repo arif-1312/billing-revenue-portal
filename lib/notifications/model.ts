@@ -25,6 +25,7 @@ export type InvoiceSnapshot = {
 
 export type PurchaseOrderSnapshot = {
   id: string
+  companyId?: string | null
   poNumber: string
   status: "LIVE" | "CLOSED"
   startOn: string | null
@@ -38,6 +39,7 @@ export type PurchaseOrderSnapshot = {
 }
 
 export type NotificationDraft = {
+  companyId?: string | null
   dedupeKey: string
   category: NotificationCategory
   eventType: string
@@ -73,6 +75,7 @@ export type SystemNotificationInput = {
   priority?: NotificationPriority
   customerName?: string | null
   companyName?: string | null
+  companyId?: string | null
 }
 
 type KeyedInvoice = {
@@ -107,7 +110,7 @@ export function stateNotificationDrafts(
   }
 
   drafts.push(...agreementStateDrafts(order, today))
-  return drafts
+  return drafts.map((draft) => ({ ...draft, companyId: order.companyId }))
 }
 
 export function transitionNotificationDrafts(
@@ -165,14 +168,15 @@ export function transitionNotificationDrafts(
     drafts.push(...invoiceTransitionDrafts(after, previous.get(entry.key) ?? null, entry))
   }
 
-  return drafts
+  return drafts.map((draft) => ({ ...draft, companyId: after.companyId }))
 }
 
 export function systemNotificationDraft(
   input: SystemNotificationInput,
 ): NotificationDraft {
   return {
-    dedupeKey: `SYSTEM|${input.eventType}|${input.entityType}|${input.entityId}|${input.fingerprint}`,
+    dedupeKey: `SYSTEM|${input.companyId ?? "global"}|${input.eventType}|${input.entityType}|${input.entityId}|${input.fingerprint}`,
+    companyId: input.companyId ?? null,
     category: "SYSTEM",
     eventType: input.eventType,
     priority: input.priority ?? "NORMAL",

@@ -15,6 +15,15 @@ import { recordSecurityEvent } from "@/lib/security-event";
 import { fingerprint } from "@/lib/notifications/model";
 import { safePublishSystem } from "@/lib/notifications/publish";
 
+type RoleModuleInput = {
+  moduleId: string;
+  canView: boolean;
+  canCreate: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+};
+type RoleInput = Role & { modules: RoleModuleInput[] };
+
 function permissionFingerprint(
   modules: Array<{
     moduleId?: string;
@@ -121,7 +130,7 @@ export async function getRoles() {
   })
 }
 
-export async function createRole(data: any) {
+export async function createRole(data: RoleInput) {
 
   try {
     const access = await requirePermission("/admin/roles", "create");
@@ -156,7 +165,7 @@ export async function createRole(data: any) {
         ...payload,
         isSystem: false,
         roleModules: {
-          create: data.modules.map((m: any) => ({
+          create: data.modules.map((m) => ({
             moduleId: m.moduleId,
             canView: m.canView,
             canCreate: m.canCreate,
@@ -204,7 +213,7 @@ export async function getRoleById(id: string) {
       return { success: false, message: access.message };
     }
 
-    let role = await prisma.role.findFirst({
+    const role = await prisma.role.findFirst({
       where: { id },
       include: {
         roleModules: true
@@ -233,7 +242,7 @@ export async function getRoleById(id: string) {
 }
 
 
-export async function updateRole(data: any, id: string) {
+export async function updateRole(data: RoleInput, id: string) {
   try {
     const access = await requirePermission("/admin/roles", "edit");
     if (!access.ok) {
@@ -279,7 +288,7 @@ export async function updateRole(data: any, id: string) {
         isSystem: existing.isSystem,
         roleModules: {
           deleteMany: {}, // deletes all existing roleModules for this role
-          create: data.modules.map((m: any) => ({
+          create: data.modules.map((m) => ({
             moduleId: m.moduleId,
             canView: m.canView,
             canCreate: m.canCreate,
@@ -320,7 +329,7 @@ export async function updateRole(data: any, id: string) {
   }
 }
 
-export async function deleteRole(id: any) {
+export async function deleteRole(id: string) {
   try {
     const access = await requirePermission("/admin/roles", "delete");
     if (!access.ok) {

@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { billedInvoiceAmount, collectedAmountOf, classifyInvoiceReceivable } from "@/lib/invoice-balances";
 import { moneyToNumber } from "@/lib/money";
 import { requirePermission, type PermissionRule } from "@/lib/rbac";
+import { getActiveCompanyContext } from "@/lib/company-context";
 
 const revenueReaders: PermissionRule[] = [
   { route: "/admin/dashboard", action: "view" },
@@ -41,11 +42,14 @@ export async function getRevenueSummary(
   if (!access.ok) {
     return { billed: 0, collected: 0, overdue: 0, outstanding: 0, efficiency: 0 };
   }
+  const company = await getActiveCompanyContext();
+  if (!company) return { billed: 0, collected: 0, overdue: 0, outstanding: 0, efficiency: 0 };
 
   const { start, end } = getFinancialYearRangeToDate(year);
 
   const cycles = await prisma.billingCycle.findMany({
     where: {
+      purchaseOrder: { companyId: company.companyId },
       OR: [
         {
           invoiceDate: {
@@ -107,11 +111,14 @@ export async function getRevenueByCompany(
 ) {
   const access = await requirePermission("/admin/revenue", "view", revenueReaders);
   if (!access.ok) return [];
+  const company = await getActiveCompanyContext();
+  if (!company) return [];
 
   const { start, end } = getFinancialYearRangeToDate(year);
 
   const cycles = await prisma.billingCycle.findMany({
     where: {
+      purchaseOrder: { companyId: company.companyId },
       OR: [
         {
           invoiceDate: {
@@ -190,11 +197,14 @@ export async function getRevenueByCustomer(
 ) {
   const access = await requirePermission("/admin/revenue", "view", revenueReaders);
   if (!access.ok) return [];
+  const company = await getActiveCompanyContext();
+  if (!company) return [];
 
   const { start, end } = getFinancialYearRangeToDate(year);
 
   const data = await prisma.billingCycle.findMany({
     where: {
+      purchaseOrder: { companyId: company.companyId },
       OR: [
         {
           invoiceDate: {
@@ -261,10 +271,12 @@ export async function getRevenueByCustomer(
 export async function getUpcomingPayments() {
   const access = await requirePermission("/admin/revenue", "view", revenueReaders);
   if (!access.ok) return [];
+  const company = await getActiveCompanyContext();
+  if (!company) return [];
 
   const today = new Date();
   const cycles = await prisma.billingCycle.findMany({
-    where: { paymentDueDate: { gt: today } },
+    where: { paymentDueDate: { gt: today }, purchaseOrder: { companyId: company.companyId } },
     select: { invoiceNumber: true, paymentDueDate: true, invoiceAmount: true, creditNote: true },
     orderBy: { paymentDueDate: "asc" },
   });

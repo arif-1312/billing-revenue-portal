@@ -47,9 +47,11 @@ import { useHydrated } from "@/hooks/use-hydrated";
 const ServiceTypeForm = ({
   data,
   update = false,
+  onSuccess,
 }: {
   data?: ServiceType;
   update: boolean;
+  onSuccess?: () => void;
 }) => {
   const router = useRouter();
   const id = data?.id;
@@ -78,7 +80,9 @@ const ServiceTypeForm = ({
           description: res?.message,
         });
       } else {
-        router.push("/admin/service-type");
+        toast.success(update ? "Service Type updated successfully" : "Service Type created successfully");
+        if (onSuccess) onSuccess();
+        else router.push("/admin/service-type");
       }
     });
   };

@@ -1,12 +1,11 @@
-import Link from "next/link"
-import { Button } from "@/components/ui/button"
 import { getBillingPlans } from "@/lib/actions/billing-plan"
-import { canAccess, getUserPermissions } from "@/lib/rbac"
+import { canAccess } from "@/lib/rbac"
 import { redirect } from "next/navigation"
 import BillingPlanDataTable from "./billing-plan-datatable"
 
 const RolesPage = async () => {
-  const billingPlans = await getBillingPlans()
+  const billingPlanResult = await getBillingPlans()
+  const billingPlans = Array.isArray(billingPlanResult) ? billingPlanResult : []
 
   const route = "/admin/billing-plan";
   const canView = await canAccess(route, "view")
@@ -20,16 +19,10 @@ const RolesPage = async () => {
 
   return (
     <BillingPlanDataTable data={billingPlans}
+      canCreate={canCreate}
       canEdit={canEdit}
       canDelete={canDelete}
-      title="Billing Plan"
-      actions={
-        canCreate && (
-          <Button className="bg-[#1976D2] hover:bg-[#155EA8]">
-            <Link href="/admin/billing-plan/create">Add Billing Plan</Link>
-          </Button>
-        )
-      } />
+      title="Billing Plan" />
   );
 }
 

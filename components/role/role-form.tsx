@@ -85,10 +85,12 @@ const RoleForm = ({
   data,
   update = false,
   modules,
+  onSuccess,
 }: {
   data?: RoleFormData;
   update: boolean;
   modules: Module[];
+  onSuccess?: () => void;
 }) => {
   const router = useRouter();
   const id = data?.id;
@@ -124,7 +126,9 @@ const RoleForm = ({
           description: res?.message,
         });
       } else {
-        router.push("/admin/roles");
+        toast.success(update ? "Role updated successfully" : "Role created successfully");
+        if (onSuccess) onSuccess();
+        else router.push("/admin/roles");
       }
     });
   };

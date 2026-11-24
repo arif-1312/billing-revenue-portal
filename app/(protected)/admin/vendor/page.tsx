@@ -1,7 +1,5 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { Button } from "@/components/ui/button";
 import { getVendors } from "@/lib/actions/vendor";
 import { canAccess } from "@/lib/rbac";
 
@@ -23,16 +21,10 @@ export default async function VendorPage() {
   return (
     <VendorDataTable
       data={vendors}
+      canCreate={canCreate}
       canEdit={canEdit}
       canDelete={canDelete}
       title="Vendor"
-      actions={
-        canCreate && (
-          <Button className="bg-[#1976D2] hover:bg-[#155EA8]">
-            <Link href="/admin/vendor/create">Add Vendor</Link>
-          </Button>
-        )
-      }
     />
   );
 }

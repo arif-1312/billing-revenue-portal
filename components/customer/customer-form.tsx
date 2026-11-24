@@ -36,7 +36,7 @@ import {
 import { FormHydrationFallback } from "../ui/form-hydration-fallback"
 import { useHydrated } from "@/hooks/use-hydrated"
 
-export default function CustomerForm({ data, update = false }: { data?: Customer, update: boolean }) {
+export default function CustomerForm({ data, update = false, onSuccess }: { data?: Customer, update: boolean, onSuccess?: () => void }) {
 
   const router = useRouter();
   const id = data?.id;
@@ -67,281 +67,356 @@ export default function CustomerForm({ data, update = false }: { data?: Customer
         res = await createCustomer(payload);
       }
 
+      console.log(res);
+
+
       if (!res?.success) {
         toast.error("Error", {
           description: res?.message,
         });
       } else {
-        router.push("/admin/customer");
+        toast.success(update ? "Customer updated successfully" : "Customer created successfully");
+        if (onSuccess) onSuccess();
+        else router.push("/admin/customer");
       }
     });
   };
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+      <form onSubmit={form.handleSubmit(onSubmit, (error) => console.log(error))} className="space-y-6">
         <ThemedFormSection
           title="Customer Details"
-                 >
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          <FormField
-            control={form.control}
-            name="customerCode"
-            render={({ field }) => (
-              <FormItem className={themedFieldClassName}>
-                <FormLabel className={themedLabelClassName}>Customer Code</FormLabel>
-                <FormControl>
-                  <Input className={themedInputClassName} placeholder="Enter Customer Code" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+        >
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            <FormField
+              control={form.control}
+              name="customerCode"
+              render={({ field }) => (
+                <FormItem className={themedFieldClassName}>
+                  <FormLabel className={themedLabelClassName}>Customer Code</FormLabel>
+                  <FormControl>
+                    <Input
+                      className={themedInputClassName}
+                      placeholder="Enter Customer Code" {...field}
+                      value={field.value ?? ""}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-          <FormField
-            control={form.control}
-            name="firstName"
-            render={({ field }) => (
-              <FormItem className={themedFieldClassName}>
-                <FormLabel className={themedLabelClassName}>First Name</FormLabel>
-                <FormControl>
-                  <Input className={themedInputClassName} placeholder="Enter first name" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="lastName"
-            render={({ field }) => (
-              <FormItem className={themedFieldClassName}>
-                <FormLabel className={themedLabelClassName}>Last Name</FormLabel>
-                <FormControl>
-                  <Input className={themedInputClassName} placeholder="Enter last name" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+            <FormField
+              control={form.control}
+              name="firstName"
+              render={({ field }) => (
+                <FormItem className={themedFieldClassName}>
+                  <FormLabel className={themedLabelClassName}>First Name</FormLabel>
+                  <FormControl>
+                    <Input
+                      className={themedInputClassName}
+                      placeholder="Enter first name" {...field}
+                      value={field.value ?? ""}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="lastName"
+              render={({ field }) => (
+                <FormItem className={themedFieldClassName}>
+                  <FormLabel className={themedLabelClassName}>Last Name</FormLabel>
+                  <FormControl>
+                    <Input
+                      className={themedInputClassName}
+                      placeholder="Enter last name" {...field}
+                      value={field.value ?? ""}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-          <FormField
-            control={form.control}
-            name="companyName"
-            render={({ field }) => (
-              <FormItem className={themedFieldClassName}>
-                <FormLabel className={themedLabelClassName}>Company Name</FormLabel>
-                <FormControl>
-                  <Input className={themedInputClassName} placeholder="Enter company name" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-
-          <FormField
-            control={form.control}
-            name="phone"
-            render={({ field }) => (
-              <FormItem className={themedFieldClassName}>
-                <FormLabel className={themedLabelClassName}>Phone</FormLabel>
-                <FormControl>
-                  <Input className={themedInputClassName} placeholder="Enter phone number" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-
-          <FormField
-            control={form.control}
-            name="alternatePhone"
-            render={({ field }) => (
-              <FormItem className={themedFieldClassName}>
-                <FormLabel className={themedLabelClassName}>Alternate Phone</FormLabel>
-                <FormControl>
-                  <Input className={themedInputClassName} placeholder="Enter alternate phone number" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="email"
-            render={({ field }) => (
-              <FormItem className={themedFieldClassName}>
-                <FormLabel className={themedLabelClassName}>Email</FormLabel>
-                <FormControl>
-                  <Input className={themedInputClassName} type="email" placeholder="Enter email" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="website"
-            render={({ field }) => (
-              <FormItem className={themedFieldClassName}>
-                <FormLabel className={themedLabelClassName}>Website</FormLabel>
-                <FormControl>
-                  <Input className={themedInputClassName} placeholder="Enter website" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+            <FormField
+              control={form.control}
+              name="companyName"
+              render={({ field }) => (
+                <FormItem className={themedFieldClassName}>
+                  <FormLabel className={themedLabelClassName}>Company Name</FormLabel>
+                  <FormControl>
+                    <Input
+                      className={themedInputClassName}
+                      placeholder="Enter company name" {...field}
+                      value={field.value ?? ""}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
 
-          <FormField
-            control={form.control}
-            name="addressLine1"
-            render={({ field }) => (
-              <FormItem className={themedFieldClassName}>
-                <FormLabel className={themedLabelClassName}>Address Line 1</FormLabel>
-                <FormControl>
-                  <Input className={themedInputClassName} placeholder="Enter address line 1" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+            <FormField
+              control={form.control}
+              name="phone"
+              render={({ field }) => (
+                <FormItem className={themedFieldClassName}>
+                  <FormLabel className={themedLabelClassName}>Phone</FormLabel>
+                  <FormControl>
+                    <Input
+                      className={themedInputClassName}
+                      placeholder="Enter phone number" {...field}
+                      value={field.value ?? ""} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
 
-          <FormField
-            control={form.control}
-            name="addressLine2"
-            render={({ field }) => (
-              <FormItem className={themedFieldClassName}>
-                <FormLabel className={themedLabelClassName}>Address Line 2</FormLabel>
-                <FormControl>
-                  <Input className={themedInputClassName} placeholder="Enter address line 2" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+            <FormField
+              control={form.control}
+              name="alternatePhone"
+              render={({ field }) => (
+                <FormItem className={themedFieldClassName}>
+                  <FormLabel className={themedLabelClassName}>Alternate Phone</FormLabel>
+                  <FormControl>
+                    <Input
+                      className={themedInputClassName}
+                      placeholder="Enter alternate phone number" {...field}
+                      value={field.value ?? ""
+
+                      }
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem className={themedFieldClassName}>
+                  <FormLabel className={themedLabelClassName}>Email</FormLabel>
+                  <FormControl>
+                    <Input
+                      className={themedInputClassName}
+                      type="email" placeholder="Enter email" {...field}
+                      value={field.value ?? ""
+
+                      }
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="website"
+              render={({ field }) => (
+                <FormItem className={themedFieldClassName}>
+                  <FormLabel className={themedLabelClassName}>Website</FormLabel>
+                  <FormControl>
+                    <Input
+                      className={themedInputClassName}
+                      placeholder="Enter website" {...field}
+                      value={field.value ?? ""
+
+                      }
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
 
-          <FormField
-            control={form.control}
-            name="city"
-            render={({ field }) => (
-              <FormItem className={themedFieldClassName}>
-                <FormLabel className={themedLabelClassName}>City</FormLabel>
-                <FormControl>
-                  <Input className={themedInputClassName} placeholder="Enter city" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="state"
-            render={({ field }) => (
-              <FormItem className={themedFieldClassName}>
-                <FormLabel className={themedLabelClassName}>State</FormLabel>
-                <FormControl>
-                  <Input className={themedInputClassName} placeholder="Enter state" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+            <FormField
+              control={form.control}
+              name="addressLine1"
+              render={({ field }) => (
+                <FormItem className={themedFieldClassName}>
+                  <FormLabel className={themedLabelClassName}>Address Line 1</FormLabel>
+                  <FormControl>
+                    <Input
+                      className={themedInputClassName}
+                      placeholder="Enter address line 1" {...field}
+                      value={field.value ??
+                        ""}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
 
-          <FormField
-            control={form.control}
-            name="country"
-            render={({ field }) => (
-              <FormItem className={themedFieldClassName}>
-                <FormLabel className={themedLabelClassName}>Country</FormLabel>
-                <FormControl>
-                  <Input className={themedInputClassName} placeholder="Enter country" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="postalCode"
-            render={({ field }) => (
-              <FormItem className={themedFieldClassName}>
-                <FormLabel className={themedLabelClassName}>Postal Code</FormLabel>
-                <FormControl>
-                  <Input className={themedInputClassName} placeholder="Enter postal code" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+            <FormField
+              control={form.control}
+              name="addressLine2"
+              render={({ field }) => (
+                <FormItem className={themedFieldClassName}>
+                  <FormLabel className={themedLabelClassName}>Address Line 2</FormLabel>
+                  <FormControl>
+                    <Input
+                      className={themedInputClassName}
+                      placeholder="Enter address line 2" {...field}
+                      value={field.value ?? ""}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
 
-          <FormField
-            control={form.control}
-            name="gstNumber"
-            render={({ field }) => (
-              <FormItem className={themedFieldClassName}>
-                <FormLabel className={themedLabelClassName}>GST Number</FormLabel>
-                <FormControl>
-                  <Input className={themedInputClassName} placeholder="Enter GST number" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+            <FormField
+              control={form.control}
+              name="city"
+              render={({ field }) => (
+                <FormItem className={themedFieldClassName}>
+                  <FormLabel className={themedLabelClassName}>City</FormLabel>
+                  <FormControl>
+                    <Input
+                      className={themedInputClassName}
+                      placeholder="Enter city" {...field}
+                      value={field.value ?? ""}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-          <FormField
-            control={form.control}
-            name="panNumber"
-            render={({ field }) => (
-              <FormItem className={themedFieldClassName}>
-                <FormLabel className={themedLabelClassName}>PAN Number</FormLabel>
-                <FormControl>
-                  <Input className={themedInputClassName} placeholder="Enter PAN number" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+            <FormField
+              control={form.control}
+              name="state"
+              render={({ field }) => (
+                <FormItem className={themedFieldClassName}>
+                  <FormLabel className={themedLabelClassName}>State</FormLabel>
+                  <FormControl>
+                    <Input
+                      className={themedInputClassName}
+                      placeholder="Enter state" {...field}
+                      value={field.value ?? ""}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-          <FormField
-            control={form.control}
-            name="status"
-            render={({ field }) => (
-              <FormItem className={themedFieldClassName}>
-                <FormLabel className={themedLabelClassName}>Status</FormLabel>
-                <FormControl>
-                  <Select
-                    defaultValue={field.value}
-                    onValueChange={(v) => field.onChange(v as Status)}
-                  >
-                    <SelectTrigger className={themedSelectTriggerClassName}>
-                      <SelectValue placeholder="status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        <SelectItem value={Status.ACTIVE}>Active</SelectItem>
-                        <SelectItem value={Status.INACTIVE}>Inactive</SelectItem>
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
 
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
+            <FormField
+              control={form.control}
+              name="country"
+              render={({ field }) => (
+                <FormItem className={themedFieldClassName}>
+                  <FormLabel className={themedLabelClassName}>Country</FormLabel>
+                  <FormControl>
+                    <Input
+                      className={themedInputClassName}
+                      placeholder="Enter country" {...field}
+                      value={field.value ?? ""}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="postalCode"
+              render={({ field }) => (
+                <FormItem className={themedFieldClassName}>
+                  <FormLabel className={themedLabelClassName}>Postal Code</FormLabel>
+                  <FormControl>
+                    <Input
+                      className={themedInputClassName}
+                      placeholder="Enter postal code" {...field}
+                      value={field.value ?? ""}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+
+            <FormField
+              control={form.control}
+              name="gstNumber"
+              render={({ field }) => (
+                <FormItem className={themedFieldClassName}>
+                  <FormLabel className={themedLabelClassName}>GST Number</FormLabel>
+                  <FormControl>
+                    <Input
+                      className={themedInputClassName}
+                      placeholder="Enter GST number" {...field}
+                      value={field.value ?? ""}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="panNumber"
+              render={({ field }) => (
+                <FormItem className={themedFieldClassName}>
+                  <FormLabel className={themedLabelClassName}>PAN Number</FormLabel>
+                  <FormControl>
+                    <Input
+                      className={themedInputClassName}
+                      placeholder="Enter PAN number" {...field}
+                      value={field.value ?? ""}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="status"
+              render={({ field }) => (
+                <FormItem className={themedFieldClassName}>
+                  <FormLabel className={themedLabelClassName}>Status</FormLabel>
+                  <FormControl>
+                    <Select
+                      defaultValue={field.value}
+                      onValueChange={(v) => field.onChange(v as Status)}
+                    >
+                      <SelectTrigger className={themedSelectTriggerClassName}>
+                        <SelectValue placeholder="status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value={Status.ACTIVE}>Active</SelectItem>
+                          <SelectItem value={Status.INACTIVE}>Inactive</SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
         </ThemedFormSection>
 
         <ThemedFormSection title="Notes" description="Keep internal remarks and onboarding context in one place.">
@@ -373,7 +448,7 @@ export default function CustomerForm({ data, update = false }: { data?: Customer
             ) : (
               <ArrowRight className="w-4 h-4" />
             )}
-            Save Customer
+            {update ? "Update Customer" : "Save Customer"}
           </Button>
         </div>
       </form>

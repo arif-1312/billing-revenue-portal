@@ -5,6 +5,7 @@ import { prisma } from "../prisma";
 import { serviceTypeSchema } from "../validators";
 import { formatError } from "../utils";
 import { requirePermission, type PermissionRule } from "@/lib/rbac";
+import { getActiveCompanyContext } from "@/lib/company-context";
 
 const revenueReaders: PermissionRule[] = [
   { route: "/admin/revenue", action: "view" },
@@ -33,8 +34,11 @@ function normalizeServiceTypePayload(serviceType: {
 export async function getServiceTypes() {
   const access = await requirePermission("/admin/service-type", "view", revenueReaders);
   if (!access.ok) return [];
+  const company = await getActiveCompanyContext();
+  if (!company) return [];
 
   return await prisma.serviceType.findMany({
+    where: { companyId: company.companyId },
     orderBy: {
       createdAt: 'desc'
     },
@@ -51,9 +55,11 @@ export async function createServiceType(data: Role) {
 
     const serviceType = serviceTypeSchema.parse(data)
     const payload = normalizeServiceTypePayload(serviceType)
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
     await prisma.serviceType.create({
-      data: payload
+      data: { ...payload, companyId: company.companyId }
     })
 
     return {
@@ -76,9 +82,11 @@ export async function getServiceTypeById(id: string) {
     if (!access.ok) {
       return { success: false, message: access.message };
     }
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
-    let serviceType = await prisma.serviceType.findFirst({
-      where: { id }
+    const serviceType = await prisma.serviceType.findFirst({
+      where: { id, companyId: company.companyId }
     })
 
     if (serviceType) {
@@ -111,11 +119,14 @@ export async function updateServiceType(data: Role, id: string) {
 
     const serviceType = serviceTypeSchema.parse(data)
     const payload = normalizeServiceTypePayload(serviceType)
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
-    await prisma.serviceType.update({
-      where: { id },
+    const result = await prisma.serviceType.updateMany({
+      where: { id, companyId: company.companyId },
       data: payload
     })
+    if (!result.count) return { success: false, message: "Service type not found" };
 
     return {
       success: true,
@@ -130,16 +141,17 @@ export async function updateServiceType(data: Role, id: string) {
   }
 }
 
-export async function deleteServiceType(id: any) {
+export async function deleteServiceType(id: string) {
   try {
     const access = await requirePermission("/admin/service-type", "delete");
     if (!access.ok) {
       return { success: false, message: access.message };
     }
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
-    await prisma.serviceType.delete({
-      where: { id }
-    })
+    const result = await prisma.serviceType.deleteMany({ where: { id, companyId: company.companyId } });
+    if (!result.count) return { success: false, message: "Service type not found" };
 
     return {
       success: true,

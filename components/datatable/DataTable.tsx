@@ -12,6 +12,8 @@ import {
   getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
+  type FilterFn,
+  type Row,
 } from "@tanstack/react-table";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -104,12 +106,14 @@ export function DataTable<TData, TValue>({
     setPagination((prev) => ({ ...prev, pageIndex: 0 }));
   }, [globalFilter, data]);
 
-  const globalFilterFn = (row: any, columnId: string, filterValue: string) => {
+  const globalFilterFn: FilterFn<TData> = (row: Row<TData>, columnId, filterValue) => {
     return String(row.getValue(columnId) ?? "")
       .toLowerCase()
       .includes(filterValue.toLowerCase());
   };
 
+  // TanStack's table instance exposes imperative functions the React compiler cannot memoize safely.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data: currentData,
     columns,

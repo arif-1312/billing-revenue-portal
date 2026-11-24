@@ -138,6 +138,8 @@ const PLForm = ({
 
   const [isPending, startTransition] = useTransition();
   const [selectedCycleIndex, setSelectedCycleIndex] = useState(0);
+  // React Hook Form's watch API is intentionally used to subscribe to live form values.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const startDate = form.watch("startDate");
   const endDate = form.watch("endDate");
   const billingPlanId = form.watch("billingPlanId");

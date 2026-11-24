@@ -1,10 +1,7 @@
-import { prisma } from "@/lib/prisma"
 import CustomerDatatable from "./customer-datatable"
 import { getCustomers } from "@/lib/actions/customer";
-import { canAccess, getUserPermissions } from "@/lib/rbac";
+import { canAccess } from "@/lib/rbac";
 import { redirect } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import Link from "next/link";
 
 export default async function CustomerPage() {
 
@@ -22,15 +19,9 @@ export default async function CustomerPage() {
 
   return (
     <CustomerDatatable data={customers}
+      canCreate={canCreate}
       canEdit={canEdit}
       canDelete={canDelete}
-      title="Customer"
-      actions={
-        canCreate && (
-          <Button className="bg-[#1976D2] hover:bg-[#155EA8]">
-            <Link href="/admin/customer/create">Add Customer</Link>
-          </Button>
-        )
-      } />
+      title="Customer" />
   );
 }

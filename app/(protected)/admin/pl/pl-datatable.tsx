@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { getUsersColumns } from "./column";
 import { DataTable } from "@/components/datatable/DataTable";
 import { deleteProject } from "@/lib/actions/project";
+import type { ProjectRow } from "./column";
 
 export default function PLDataTable({
   data,
@@ -14,7 +15,7 @@ export default function PLDataTable({
   canView,
   title,
   actions,
-}: any) {
+}: { data: ProjectRow[]; canEdit: boolean; canDelete: boolean; canView?: boolean; title: string; actions?: React.ReactNode }) {
   const [tableData, setTableData] = React.useState(data);
 
   const deleteHandler = async (id: string) => {
@@ -27,7 +28,7 @@ export default function PLDataTable({
 
     toast.success("Success", { description: res?.message });
 
-    setTableData((prev: any[]) => prev.filter((r) => r.id !== id));
+    setTableData((prev: ProjectRow[]) => prev.filter((row) => row.id !== id));
   };
 
   const columns = getUsersColumns({

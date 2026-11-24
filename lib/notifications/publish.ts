@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache"
 
 import { prisma } from "@/lib/prisma"
+import { getActiveCompanyContext } from "@/lib/company-context"
 
 import {
   systemNotificationDraft,
@@ -49,7 +50,13 @@ export async function publishPurchaseOrderChanges(
 
 export async function safePublishSystem(input: SystemNotificationInput) {
   await safeNotify(async () => {
-    await publishDrafts([systemNotificationDraft(input)])
+    const company = await getActiveCompanyContext().catch(() => null)
+    await publishDrafts([
+      systemNotificationDraft({
+        ...input,
+        companyId: input.companyId ?? company?.companyId ?? null,
+      }),
+    ])
   })
 }
 

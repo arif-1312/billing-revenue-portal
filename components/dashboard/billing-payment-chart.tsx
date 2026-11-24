@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { Line, LineChart, CartesianGrid, XAxis } from "recharts"
 
 import { getMonthlyBillingData } from "@/lib/actions/dashboard"
+type MonthlyBillingPoint = Awaited<ReturnType<typeof getMonthlyBillingData>>[number];
 import {
   ChartContainer,
   ChartTooltip,
@@ -21,17 +22,17 @@ import {
 const chartConfig = {
   billing: {
     label: "Billing",
-    color: "#1976D2",
+    color: "var(--financial-billing)",
   },
   payment: {
     label: "Payment",
-    color: "#15966A",
+    color: "var(--financial-collected)",
   },
 }
 
 export function BillingPaymentChart() {
   const [year, setYear] = useState("2025")
-  const [chartData, setChartData] = useState<any[]>([])
+  const [chartData, setChartData] = useState<MonthlyBillingPoint[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -69,7 +70,7 @@ export function BillingPaymentChart() {
       </div>
 
       {/* Chart */}
-      <ChartContainer config={chartConfig} className="h-[320px] w-full">
+      <ChartContainer config={chartConfig} className="h-[320px] w-full" aria-busy={loading}>
         <LineChart data={chartData}>
           <CartesianGrid vertical={false} />
           <XAxis dataKey="month" tickLine={false} axisLine={false} />
@@ -79,7 +80,7 @@ export function BillingPaymentChart() {
           <Line
             type="monotone"
             dataKey="billing"
-            stroke="#1976D2"
+            stroke="var(--financial-billing)"
             strokeWidth={3}
             dot={false}
           />
@@ -87,7 +88,7 @@ export function BillingPaymentChart() {
           <Line
             type="monotone"
             dataKey="payment"
-            stroke="#15966A"
+            stroke="var(--financial-collected)"
             strokeWidth={3}
             dot={false}
           />

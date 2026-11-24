@@ -1,15 +1,12 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { ContractDuration } from "@/types"
 import { getContractDurations } from "@/lib/actions/contract-duration"
-import { canAccess, getUserPermissions } from "@/lib/rbac"
+import { canAccess } from "@/lib/rbac"
 import { redirect } from "next/navigation"
 import ContractDurationDataTable from "./contract-duration-datatable"
 
 const ContractDurationPage = async () => {
-  const contractDuration: ContractDuration[] = await getContractDurations()
-  const user = await getUserPermissions();
+  const contractDuration = await getContractDurations()
   const route = "/admin/contract-duration";
 
   const canView = await canAccess(route, "view")
@@ -23,6 +20,7 @@ const ContractDurationPage = async () => {
 
   return (
     <ContractDurationDataTable data={contractDuration}
+      canCreate={canCreate}
       canEdit={canEdit}
       canDelete={canDelete}
       title="Contract Duration"

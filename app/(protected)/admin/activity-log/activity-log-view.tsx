@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { format } from "date-fns"
@@ -60,9 +60,9 @@ export function ActivityLogView({
   const router = useRouter()
   const [selected, setSelected] = useState<ActivityLogRow | null>(null)
 
-  useEffect(() => {
-    setSelected(null)
-  }, [rows])
+  const visibleSelected = selected && rows.some((row) => row.id === selected.id)
+    ? selected
+    : null
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
   const from = total === 0 ? 0 : (page - 1) * pageSize + 1
   const to = Math.min(page * pageSize, total)
@@ -283,9 +283,9 @@ export function ActivityLogView({
         </div>
       </CardContent>
 
-      <Dialog open={Boolean(selected)} onOpenChange={(open) => !open && setSelected(null)}>
+      <Dialog open={Boolean(visibleSelected)} onOpenChange={(open) => !open && setSelected(null)}>
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-4xl">
-          {selected ? <AuditDetail row={selected} /> : null}
+          {visibleSelected ? <AuditDetail row={visibleSelected} /> : null}
         </DialogContent>
       </Dialog>
     </Card>

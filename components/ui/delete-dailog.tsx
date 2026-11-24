@@ -19,6 +19,7 @@ type DeleteDialogProps = {
   description?: string
   confirmText?: string
   cancelText?: string
+  preventOutsideDismiss?: boolean
 }
 
 export function DeleteDialog({
@@ -28,6 +29,7 @@ export function DeleteDialog({
   description = "Click confirm to delete",
   confirmText = "Confirm",
   cancelText = "Cancel",
+  preventOutsideDismiss = false,
 }: DeleteDialogProps) {
   const [open, setOpen] = React.useState(false)
   const [isPending, setIsPending] = React.useState(false)
@@ -45,7 +47,9 @@ export function DeleteDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{children}</DialogTrigger>
-      <DialogContent>
+      <DialogContent
+        onInteractOutside={preventOutsideDismiss ? (event) => event.preventDefault() : undefined}
+      >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>

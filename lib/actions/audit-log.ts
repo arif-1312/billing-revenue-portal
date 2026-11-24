@@ -7,6 +7,7 @@ import {
 } from "../audit-format"
 import { prisma } from "../prisma"
 import { requirePermission } from "@/lib/rbac"
+import { getActiveCompanyContext } from "@/lib/company-context"
 
 export const AUDIT_PAGE_SIZE = 20
 
@@ -50,6 +51,10 @@ export async function getAuditLogs(query: AuditLogQuery) {
       models: AUDIT_MODELS,
     }
   }
+  const company = await getActiveCompanyContext();
+  if (!company) {
+    return { rows: [], total: 0, page: 1, pageSize: AUDIT_PAGE_SIZE, q: "", model: "", action: "", models: AUDIT_MODELS };
+  }
 
   const q = query.q?.trim().slice(0, 100) || ""
   const model = query.model?.trim().slice(0, 64) || ""
@@ -57,7 +62,7 @@ export async function getAuditLogs(query: AuditLogQuery) {
   const requestedPage = Number.parseInt(query.page || "1", 10)
   const page = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1
 
-  const where: Prisma.AuditLogWhereInput = {}
+  const where: Prisma.AuditLogWhereInput = { companyId: company.companyId }
 
   if (model) where.model = model
   if (action) where.action = action

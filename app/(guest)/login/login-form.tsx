@@ -9,38 +9,43 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Eye, EyeOff } from "lucide-react";
+import Image from "next/image";
 
 type LoginActionState = {
   success: boolean;
   message: string;
 } | null;
 
+type LoginCompany = { id: string; name: string; logo: string | null };
+
 export function LoginForm({
   companyName,
+  companies,
   resetNotice = false,
   className,
   ...props
-}: React.ComponentProps<"div"> & { companyName?: string; resetNotice?: boolean }) {
+}: React.ComponentProps<"div"> & { companyName?: string; resetNotice?: boolean; companies: LoginCompany[] }) {
   const [data, action, isPending] = useActionState<LoginActionState, FormData>(
     loginFormUser,
     null
   );
 
   const [validationError, setValidationError] = useState("");
-  const [username, setUsername] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
+  const [companyId, setCompanyId] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
   const error = validationError || (!isPending && data?.success === false ? data.message : "");
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
 
-    const user = username.trim();
+    const user = identifier.trim();
     const pass = password.trim();
 
-    if (!user || !pass) {
+    if (!user || !pass || !companyId) {
       event.preventDefault();
-      setValidationError("Username and password are required.");
+      setValidationError(!companyId ? "Select your company to continue." : "Username/email and password are required.");
       return;
     }
 
@@ -77,16 +82,41 @@ export function LoginForm({
               )}
 
               <Field>
-                <FieldLabel htmlFor="username">Username</FieldLabel>
+                <FieldLabel htmlFor="email">Username or Email</FieldLabel>
                 <Input
-                  id="username"
-                  name="username"
+                  id="email"
+                  name="email"
                   type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
                   autoComplete="username"
+                  autoCapitalize="none"
                   className="h-11 rounded-xl border-slate-200"
                 />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="companyId">Company</FieldLabel>
+                <input type="hidden" name="companyId" value={companyId} />
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {companies.map((company) => {
+                    const selected = companyId === company.id;
+                    return (
+                      <button
+                        key={company.id}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => { setCompanyId(company.id); setValidationError(""); }}
+                        className={cn(
+                          "flex min-h-14 items-center gap-3 rounded-xl border px-3 py-2 text-left transition-colors",
+                          selected ? "border-primary bg-primary/10 text-foreground ring-1 ring-primary/40" : "border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground",
+                        )}
+                      >
+                        {company.logo ? <Image src={company.logo} alt="" width={32} height={32} className="size-8 rounded-lg object-contain" /> : <span className="flex size-8 items-center justify-center rounded-lg bg-primary/15 text-sm font-semibold text-primary">{company.name.slice(0, 1).toUpperCase()}</span>}
+                        <span className="truncate text-sm font-medium">{company.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </Field>
               <Field>
                 <FieldLabel htmlFor="password">Password</FieldLabel>

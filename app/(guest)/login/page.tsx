@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import Image from "next/image";
 import { getConfiguration } from "@/lib/actions/configuration";
 import { isSignedInSession } from "@/lib/session-decision";
+import { prisma } from "@/lib/prisma";
 
 export const metadata: Metadata = {
   title: "Sign In",
@@ -18,6 +19,11 @@ async function SignInPage({
 }) {
   const session = await auth();
   const configuration = await getConfiguration();
+  const companies = await prisma.company.findMany({
+    where: { status: "ACTIVE", isActive: true },
+    select: { id: true, name: true, logo: true },
+    orderBy: { name: "asc" },
+  });
   const companyName = configuration?.name || "SY ASSOCIATES";
   const logo = configuration?.logo || "/sy.png";
   const params = searchParams ? await searchParams : {};
@@ -131,7 +137,7 @@ async function SignInPage({
                 </p>
               </div>
 
-              <LoginForm companyName={companyName} resetNotice={resetNotice} />
+              <LoginForm companies={companies} companyName={companyName} resetNotice={resetNotice} />
 
               <p className="text-center text-xs text-slate-400 lg:text-left">
                 Protected access for authorized users only.

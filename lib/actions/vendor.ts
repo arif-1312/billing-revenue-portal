@@ -8,6 +8,7 @@ import { prisma } from "../prisma";
 import { formatError } from "../utils";
 import { vendorSchema } from "../validators";
 import { requirePermission, type PermissionRule } from "@/lib/rbac";
+import { getActiveCompanyContext } from "@/lib/company-context";
 
 const vendorReaders: PermissionRule[] = [
   { route: "/admin/revenue", action: "view" },
@@ -19,6 +20,7 @@ type VendorPayload = ReturnType<typeof normalizeVendorPayload>;
 
 type VendorRecord = {
   id: string;
+  companyId: string | null;
   vendorCode: string;
   firstName: string;
   lastName: string | null;
@@ -48,20 +50,21 @@ type VendorCountRecord = {
 
 type VendorDelegate = {
   findMany(args: {
+    where: { companyId: string };
     orderBy: { createdAt: "desc" };
   }): Promise<VendorRecord[]>;
   create(args: {
     data: VendorPayload;
   }): Promise<unknown>;
   findFirst(args: {
-    where: { id: string };
+    where: { id: string; companyId: string };
   }): Promise<VendorRecord | null>;
   update(args: {
-    where: { id: string };
+    where: { id: string; companyId: string };
     data: VendorPayload;
   }): Promise<unknown>;
   findUnique(args: {
-    where: { id: string };
+    where: { id: string; companyId: string };
     select: {
       id: true;
       _count: {
@@ -171,10 +174,11 @@ function getVendorRuntimeMessage(error: unknown) {
   return message;
 }
 
-async function findVendorsWithSql() {
+async function findVendorsWithSql(companyId: string) {
   return prisma.$queryRaw<VendorRecord[]>`
     SELECT
       "id",
+      "companyId",
       "vendorCode",
       "firstName",
       "lastName",
@@ -196,14 +200,16 @@ async function findVendorsWithSql() {
       "createdAt",
       "updatedAt"
     FROM "Vendor"
+    WHERE "companyId" = ${companyId}
     ORDER BY "createdAt" DESC
   `;
 }
 
-async function findVendorByIdWithSql(id: string) {
+async function findVendorByIdWithSql(id: string, companyId: string) {
   const vendors = await prisma.$queryRaw<VendorRecord[]>`
     SELECT
       "id",
+      "companyId",
       "vendorCode",
       "firstName",
       "lastName",
@@ -225,17 +231,18 @@ async function findVendorByIdWithSql(id: string) {
       "createdAt",
       "updatedAt"
     FROM "Vendor"
-    WHERE "id" = ${id}
+    WHERE "id" = ${id} AND "companyId" = ${companyId}
     LIMIT 1
   `;
 
   return vendors[0] ?? null;
 }
 
-async function createVendorWithSql(payload: VendorPayload) {
+async function createVendorWithSql(payload: VendorPayload, companyId: string) {
   await prisma.$executeRaw`
     INSERT INTO "Vendor" (
       "vendorCode",
+      "companyId",
       "firstName",
       "lastName",
       "companyName",
@@ -256,6 +263,7 @@ async function createVendorWithSql(payload: VendorPayload) {
       "updatedAt"
     ) VALUES (
       ${payload.vendorCode},
+      ${companyId},
       ${payload.firstName},
       ${payload.lastName},
       ${payload.companyName},
@@ -278,7 +286,7 @@ async function createVendorWithSql(payload: VendorPayload) {
   `;
 }
 
-async function updateVendorWithSql(payload: VendorPayload, id: string) {
+async function updateVendorWithSql(payload: VendorPayload, id: string, companyId: string) {
   return prisma.$executeRaw`
     UPDATE "Vendor"
     SET
@@ -301,11 +309,11 @@ async function updateVendorWithSql(payload: VendorPayload, id: string) {
       "status" = ${payload.status}::"Status",
       "remark" = ${payload.remark},
       "updatedAt" = NOW()
-    WHERE "id" = ${id}
+    WHERE "id" = ${id} AND "companyId" = ${companyId}
   `;
 }
 
-async function getVendorDeleteMetaWithSql(id: string) {
+async function getVendorDeleteMetaWithSql(id: string, companyId: string) {
   const vendors = await prisma.$queryRaw<VendorCountRecord[]>`
     SELECT
       v."id",
@@ -313,17 +321,17 @@ async function getVendorDeleteMetaWithSql(id: string) {
     FROM "Vendor" v
     LEFT JOIN "PurchaseOrder" po
       ON po."vendorId" = v."id"
-    WHERE v."id" = ${id}
+    WHERE v."id" = ${id} AND v."companyId" = ${companyId}
     GROUP BY v."id"
   `;
 
   return vendors[0] ?? null;
 }
 
-async function deleteVendorWithSql(id: string) {
+async function deleteVendorWithSql(id: string, companyId: string) {
   return prisma.$executeRaw`
     DELETE FROM "Vendor"
-    WHERE "id" = ${id}
+    WHERE "id" = ${id} AND "companyId" = ${companyId}
   `;
 }
 
@@ -339,11 +347,14 @@ function revalidateVendorPaths(id?: string) {
 export async function getVendors() {
   const access = await requirePermission("/admin/vendor", "view", vendorReaders);
   if (!access.ok) return [];
+  const company = await getActiveCompanyContext();
+  if (!company) return [];
 
   const vendorDelegate = getVendorDelegate();
 
   if (vendorDelegate) {
     const records = await vendorDelegate.findMany({
+      where: { companyId: company.companyId },
       orderBy: {
         createdAt: "desc",
       },
@@ -353,7 +364,7 @@ export async function getVendors() {
   }
 
   try {
-    const records = await findVendorsWithSql();
+    const records = await findVendorsWithSql(company.companyId);
 
     return records.map(mapVendorRecord);
   } catch (error) {
@@ -371,14 +382,16 @@ export async function createVendor(data: Vendor) {
 
     const vendor = vendorSchema.parse(data);
     const payload = normalizeVendorPayload(vendor);
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
     const vendorDelegate = getVendorDelegate();
 
     if (vendorDelegate) {
       await vendorDelegate.create({
-        data: payload,
+        data: { ...payload, companyId: company.companyId },
       });
     } else {
-      await createVendorWithSql(payload);
+      await createVendorWithSql(payload, company.companyId);
     }
 
     revalidateVendorPaths();
@@ -403,13 +416,15 @@ export async function getVendorById(id: string) {
     if (!access.ok) {
       return { success: false, message: access.message };
     }
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
     const vendorDelegate = getVendorDelegate();
     const vendor = vendorDelegate
       ? await vendorDelegate.findFirst({
-          where: { id },
+          where: { id, companyId: company.companyId },
         })
-      : await findVendorByIdWithSql(id);
+      : await findVendorByIdWithSql(id, company.companyId);
 
     if (vendor) {
       return {
@@ -440,11 +455,13 @@ export async function updateVendor(data: Vendor, id: string) {
 
     const vendor = vendorSchema.parse(data);
     const payload = normalizeVendorPayload(vendor);
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
     const vendorDelegate = getVendorDelegate();
 
     if (vendorDelegate) {
       const existingVendor = await vendorDelegate.findFirst({
-        where: { id },
+        where: { id, companyId: company.companyId },
       });
 
       if (!existingVendor) {
@@ -455,11 +472,11 @@ export async function updateVendor(data: Vendor, id: string) {
       }
 
       await vendorDelegate.update({
-        where: { id },
+        where: { id, companyId: company.companyId },
         data: payload,
       });
     } else {
-      const affectedRows = await updateVendorWithSql(payload, id);
+      const affectedRows = await updateVendorWithSql(payload, id, company.companyId);
 
       if (Number(affectedRows) === 0) {
         return {
@@ -489,12 +506,14 @@ export async function deleteVendor(id: string) {
     if (!access.ok) {
       return { success: false, message: access.message };
     }
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
     const vendorDelegate = getVendorDelegate();
 
     if (vendorDelegate) {
       const vendor = await vendorDelegate.findUnique({
-        where: { id },
+        where: { id, companyId: company.companyId },
         select: {
           id: true,
           _count: {
@@ -520,10 +539,10 @@ export async function deleteVendor(id: string) {
       }
 
       await vendorDelegate.delete({
-        where: { id },
+        where: { id, companyId: company.companyId },
       });
     } else {
-      const vendor = await getVendorDeleteMetaWithSql(id);
+      const vendor = await getVendorDeleteMetaWithSql(id, company.companyId);
 
       if (!vendor) {
         return {
@@ -539,7 +558,7 @@ export async function deleteVendor(id: string) {
         };
       }
 
-      const affectedRows = await deleteVendorWithSql(id);
+      const affectedRows = await deleteVendorWithSql(id, company.companyId);
 
       if (Number(affectedRows) === 0) {
         return {

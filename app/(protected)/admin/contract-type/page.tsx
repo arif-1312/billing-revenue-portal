@@ -1,14 +1,12 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { getContractTypes } from "@/lib/actions/contract-type"
-import { ContractType } from "@/types"
-import { canAccess, getUserPermissions } from "@/lib/rbac"
+import { canAccess } from "@/lib/rbac"
 import { redirect } from "next/navigation"
 import ContractTypeDataTable from "./contract-type-datatable"
 
 const RolesPage = async () => {
-  const contactTypes: ContractType[] = await getContractTypes()
+  const contactTypes = await getContractTypes()
 
   const route = "/admin/contract-type";
   const canView = await canAccess(route, "view")
@@ -22,6 +20,7 @@ const RolesPage = async () => {
 
   return (
     <ContractTypeDataTable data={contactTypes}
+      canCreate={canCreate}
       canEdit={canEdit}
       canDelete={canDelete}
       title="Contract Type"

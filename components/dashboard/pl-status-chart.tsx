@@ -33,6 +33,13 @@ interface POItem {
   extraAmount?: number;
 }
 
+const colors: Record<string, string> = {
+  Revenue: "#1976D2",
+  Cost: "#E69A23",
+  Profit: "#15966A",
+  Overdue: "#DC4545",
+};
+
 // ================= COMPONENT =================
 export function PLStatusChart() {
   const currentYear = new Date().getFullYear();
@@ -45,21 +52,14 @@ export function PLStatusChart() {
     useState<PLDetail | null>(null);
   const [sliceDetails, setSliceDetails] = useState<POItem[]>([]);
 
-  const colors: Record<string, string> = {
-    Revenue: "#1976D2",
-    Cost: "#E69A23",
-    Profit: "#15966A",
-    Overdue: "#DC4545",
-  };
-
   // ================= FETCH =================
   useEffect(() => {
     const fetchData = async () => {
       const data = await getPLStatusData(Number(year), month);
 
-      const finalData = data.map((d: any) => ({
-        ...d,
-        fill: colors[d.status],
+      const finalData = data.map((detail) => ({
+        ...detail,
+        fill: colors[detail.status],
       }));
 
       setChartData(finalData);

@@ -30,6 +30,7 @@ import { headers } from "next/headers";
 import { clientAddress } from "@/lib/client-address";
 import { loginLimitState } from "@/lib/login-rate-limit";
 import { loginFailureFeedback } from "@/lib/login-feedback";
+import { getActiveCompanyContext } from "@/lib/company-context";
 
 const userPublicSelect = {
   id: true,
@@ -257,16 +258,27 @@ async function getAuthenticatedUserIdentity() {
 export async function getUsers() {
   const access = await requirePermission("/admin/users", "view");
   if (!access.ok) return [];
+  const company = await getActiveCompanyContext();
+  if (!company) return [];
 
-  return await prisma.user.findMany({
+  const users = await prisma.user.findMany({
+    where: { companyMemberships: { some: { companyId: company.companyId, status: "ACTIVE" } } },
     orderBy: {
       createdAt: 'desc'
     },
     select: {
       ...userPublicSelect,
-      role: true,
+      companyMemberships: {
+        where: { companyId: company.companyId, status: "ACTIVE" },
+        select: { roleId: true, role: true },
+      },
     },
-  })
+  });
+  return users.map(({ companyMemberships = [], ...user }) => ({
+    ...user,
+    roleId: companyMemberships[0]?.roleId ?? user.roleId,
+    role: companyMemberships[0]?.role,
+  }));
 }
 
 export async function createUser(data: User) {
@@ -278,13 +290,22 @@ export async function createUser(data: User) {
     }
 
     const user = createUserSchema.parse(data)
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
     const password = user.password?.trim();
-
-    if (!password) {
-      throw new Error("Password is required");
-    }
     const payload = normalizeUserPayload(user);
+    const existing = await prisma.user.findFirst({
+      where: { email: payload.email },
+      select: { id: true, status: true },
+    });
+    if (existing?.status !== undefined && existing.status !== "ACTIVE") {
+      return { success: false, message: "This account is inactive." };
+    }
+    if (!existing && !password) {
+      throw new Error("Password is required for a new account");
+    }
     const assignment = await assertRoleAssignment({
+      ...(existing ? { targetUserId: existing.id } : {}),
       roleId: payload.roleId,
       nextStatus: payload.status,
     });
@@ -292,25 +313,29 @@ export async function createUser(data: User) {
       return { success: false, message: assignment.message };
     }
 
-    const hashedPassword = await hashPassword(password);
-
-    const created = await prisma.user.create({
-      data: {
-        ...payload,
-        password: hashedPassword,
-      },
-      select: { id: true },
-    })
+    const created = existing
+      ? existing
+      : await prisma.user.create({
+          data: { ...payload, password: await hashPassword(password!) },
+          select: { id: true },
+        });
+    await prisma.userCompany.upsert({
+      where: { userId_companyId: { userId: created.id, companyId: company.companyId } },
+      create: { userId: created.id, companyId: company.companyId, roleId: payload.roleId, status: payload.status },
+      update: { roleId: payload.roleId, status: payload.status },
+    });
 
     const name = [payload.firstName, payload.lastName].filter(Boolean).join(" ")
     await safePublishSystem({
       eventType: "SYSTEM_USER_ACTIVITY",
       entityType: "User",
       entityId: created.id,
-      title: "User account created",
-      body: `${name} (${payload.email}) was added as a user.`,
+      title: existing ? "Company access granted" : "User account created",
+      body: existing
+        ? `${payload.email} was granted access to ${company.company.name}.`
+        : `${name} (${payload.email}) was added as a user.`,
       href: "/admin/users",
-      fingerprint: fingerprint(["created", payload.email, payload.roleId]),
+      fingerprint: fingerprint([existing ? "membership-added" : "created", payload.email, payload.roleId, company.companyId]),
     })
 
     return {
@@ -333,16 +358,28 @@ export async function getUserById(id: string) {
     if (!access.ok) {
       return { success: false, message: access.message };
     }
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
     const user = await prisma.user.findFirst({
-      where: { id },
-      select: userPublicSelect,
+      where: { id, companyMemberships: { some: { companyId: company.companyId, status: "ACTIVE" } } },
+      select: {
+        ...userPublicSelect,
+        companyMemberships: {
+          where: { companyId: company.companyId, status: "ACTIVE" },
+          select: { roleId: true, role: true },
+        },
+      },
     })
 
     if (user) {
       return {
         success: true,
-        data: user,
+        data: {
+          ...user,
+          roleId: user.companyMemberships[0]?.roleId ?? user.roleId,
+          role: user.companyMemberships[0]?.role,
+        },
         message: "User fetched successfully"
       }
     }
@@ -370,6 +407,13 @@ export async function updateUser(data: User, id: string) {
 
     const user = userSchema.parse(data)
     const payload = normalizeUserPayload(user)
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
+    const membership = await prisma.userCompany.findFirst({
+      where: { userId: id, companyId: company.companyId, status: "ACTIVE" },
+      select: { roleId: true },
+    });
+    if (!membership) return { success: false, message: "User not found" };
     const assignment = await assertRoleAssignment({
       targetUserId: id,
       roleId: payload.roleId,
@@ -404,8 +448,12 @@ export async function updateUser(data: User, id: string) {
 
     await prisma.user.update({
       where: { id },
-      data: payload
+      data: { ...payload, roleId: undefined }
     })
+    await prisma.userCompany.update({
+      where: { userId_companyId: { userId: id, companyId: company.companyId } },
+      data: { roleId: payload.roleId, status: payload.status },
+    });
 
     const name = [payload.firstName, payload.lastName].filter(Boolean).join(" ")
     const activity = userActivityCopy({
@@ -456,6 +504,14 @@ export async function deleteUser(id: string) {
     if (!access.ok) {
       return { success: false, message: access.message };
     }
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
+
+    const membership = await prisma.userCompany.findFirst({
+      where: { userId: id, companyId: company.companyId, status: "ACTIVE" },
+      select: { id: true },
+    });
+    if (!membership) return { success: false, message: "User not found" };
 
     const existing = await prisma.user.findUnique({
       where: { id },
@@ -494,9 +550,16 @@ export async function deleteUser(id: string) {
       return { success: false, message: removal.message }
     }
 
-    await prisma.user.delete({
-      where: { id }
-    })
+    const otherMembershipCount = await prisma.userCompany.count({
+      where: { userId: id, companyId: { not: company.companyId }, status: "ACTIVE" },
+    });
+    if (otherMembershipCount > 0) {
+      await prisma.userCompany.delete({
+        where: { userId_companyId: { userId: id, companyId: company.companyId } },
+      });
+    } else {
+      await prisma.user.delete({ where: { id } });
+    }
 
     if (existing) {
       const name = [existing.firstName, existing.lastName].filter(Boolean).join(" ")
@@ -504,8 +567,10 @@ export async function deleteUser(id: string) {
         eventType: "SYSTEM_USER_ACTIVITY",
         entityType: "User",
         entityId: existing.id,
-        title: "User account removed",
-        body: `${name} (${existing.email}) was removed.`,
+        title: otherMembershipCount > 0 ? "Company access removed" : "User account removed",
+        body: otherMembershipCount > 0
+          ? `${existing.email} no longer has access to ${company.company.name}.`
+          : `${name} (${existing.email}) was removed.`,
         href: "/admin/users",
         fingerprint: "deleted",
         priority: "HIGH",
@@ -527,8 +592,9 @@ export async function deleteUser(id: string) {
 
 export async function loginFormUser(prevState: unknown, formData: FormData) {
   const result = loginFormSchema.safeParse({
-    username: formData.get("username"),
+    email: formData.get("email"),
     password: formData.get("password"),
+    companyId: formData.get("companyId"),
   });
 
   // Validation failed
@@ -542,7 +608,7 @@ export async function loginFormUser(prevState: unknown, formData: FormData) {
   const user = result.data;
 
   try {
-    await signIn("credentials", { ...user, redirectTo: "/admin/home?showPoRenewals=1" });
+    await signIn("credentials", { username: user.email, password: user.password, companyId: user.companyId, redirectTo: "/admin/home" });
 
     return {
       success: true,
@@ -554,8 +620,14 @@ export async function loginFormUser(prevState: unknown, formData: FormData) {
     }
 
     if (error instanceof CredentialsSignin) {
+      if (error.type === "CredentialsSignin" && "code" in error && error.code === "company_access_denied") {
+        return { success: false, message: "You are not authorized to access the selected company." };
+      }
+      if (error.type === "CredentialsSignin" && "code" in error && error.code === "company_required") {
+        return { success: false, message: "Select a company to continue." };
+      }
       try {
-        const state = await loginLimitState(user.username, clientAddress(await headers()));
+        const state = await loginLimitState(user.email, clientAddress(await headers()));
         return loginFailureFeedback(state);
       } catch {
         return { success: false, message: "Login could not be completed. Please try again." };
@@ -564,7 +636,7 @@ export async function loginFormUser(prevState: unknown, formData: FormData) {
 
     return {
       success: false,
-      message: "Invalid username or password",
+      message: "Invalid email or password",
     };
   }
 }

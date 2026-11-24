@@ -48,9 +48,11 @@ import { useHydrated } from "@/hooks/use-hydrated";
 export default function VendorForm({
   data,
   update = false,
+  onSuccess,
 }: {
   data?: Vendor;
   update: boolean;
+  onSuccess?: () => void;
 }) {
   const router = useRouter();
   const id = data?.id;
@@ -117,8 +119,12 @@ export default function VendorForm({
       toast.success("Success", {
         description: res?.message,
       });
-      router.refresh();
-      router.push("/admin/vendor");
+      if (onSuccess) {
+        onSuccess();
+      } else {
+        router.refresh();
+        router.push("/admin/vendor");
+      }
     });
   };
 

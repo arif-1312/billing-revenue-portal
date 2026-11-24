@@ -30,6 +30,7 @@ import { canonicalCompanyName, normalizeCompanyKey } from "@/lib/company-names";
 import type { CrossFilter } from "@/lib/revenue-metrics";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/rbac";
+import { getActiveCompanyContext } from "@/lib/company-context";
 
 function emptyDashboardSummary(): RevenueDashboardSummary {
   return {
@@ -584,12 +585,21 @@ function matchesCustomerFilter(
   return customers.includes(String(cycle.purchaseOrder?.customer?.id));
 }
 
-function getPurchaseOrderFilter(filters?: BillingStatusFilters) {
-  const purchaseOrderFilter: Prisma.PurchaseOrderWhereInput = {};
+function getPurchaseOrderFilter(filters?: BillingStatusFilters, activeCompanyId?: string) {
+  const purchaseOrderFilter: Prisma.PurchaseOrderWhereInput = activeCompanyId
+    ? { companyId: activeCompanyId }
+    : { id: "__no_active_company__" };
   const companyId = idFilter(filters?.company);
   const customerId = idFilter(filters?.customer);
 
-  if (companyId) purchaseOrderFilter.companyId = companyId;
+  const companyFilterMatches = !companyId || (
+    typeof companyId === "string"
+      ? companyId === activeCompanyId
+      : Boolean(activeCompanyId && companyId.in.includes(activeCompanyId))
+  );
+  if (!companyFilterMatches) {
+    purchaseOrderFilter.companyId = "__unauthorized_company_filter__";
+  }
   if (customerId) purchaseOrderFilter.customerId = customerId;
   const statuses = dashboardStatuses(filters);
   if (statuses) purchaseOrderFilter.status = { in: statuses };
@@ -718,6 +728,8 @@ function getCustomerDisplayName(customer?: Pick<NonNullable<CustomerRecord>, "co
 export async function getDashboardStats(): Promise<DashboardStats> {
   const access = await requirePermission("/admin/dashboard", "view");
   if (!access.ok) return emptyDashboardStats;
+  const company = await getActiveCompanyContext();
+  if (!company) return emptyDashboardStats;
 
   const currentFY = getCurrentFinancialYear();
 
@@ -726,6 +738,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   const currentMonth = getFinancialMonth(new Date());
 
   const cycles = await prisma.billingCycle.findMany({
+    where: { purchaseOrder: { companyId: company.companyId } },
     include: {
       payments: {
         select: { amount: true, receivedDate: true },
@@ -788,6 +801,8 @@ export async function getMonthlyBillingData(
 ) {
   const access = await requirePermission("/admin/dashboard", "view");
   if (!access.ok) return [];
+  const company = await getActiveCompanyContext();
+  if (!company) return [];
 
   const { start, end } = getFinancialYearRange(year);
 
@@ -797,7 +812,7 @@ export async function getMonthlyBillingData(
 
   const currentFYMonth = fiscalMonthInZone(currentDate, filters);
 
-  const purchaseOrderFilter = getPurchaseOrderFilter(filters);
+  const purchaseOrderFilter = getPurchaseOrderFilter(filters, company.companyId);
 
   const cycles = await prisma.billingCycle.findMany({
     where: {
@@ -913,8 +928,10 @@ export async function getRevenueDashboardSummary(
 ): Promise<RevenueDashboardSummary> {
   const access = await requirePermission("/admin/dashboard", "view");
   if (!access.ok) return emptyDashboardSummary();
+  const company = await getActiveCompanyContext();
+  if (!company) return emptyDashboardSummary();
 
-  const purchaseOrderFilter = getPurchaseOrderFilter(filters);
+  const purchaseOrderFilter = getPurchaseOrderFilter(filters, company.companyId);
 
   const cycles = await prisma.billingCycle.findMany({
     where: {
@@ -1090,8 +1107,10 @@ export async function getDueForBillingAmount(
 ) {
   const access = await requirePermission("/admin/dashboard", "view");
   if (!access.ok) return 0;
+  const company = await getActiveCompanyContext();
+  if (!company) return 0;
 
-  const purchaseOrderFilter = getPurchaseOrderFilter(filters);
+  const purchaseOrderFilter = getPurchaseOrderFilter(filters, company.companyId);
 
   const cycles = await prisma.billingCycle.findMany({
     where: {
@@ -1174,8 +1193,11 @@ export async function getBillingStatusDetails(
 ) {
   const access = await requirePermission("/admin/dashboard", "view");
   if (!access.ok) return { records: [], lines: [] };
+  const company = await getActiveCompanyContext();
+  if (!company) return { records: [], lines: [] };
 
   const cycles = await prisma.billingCycle.findMany({
+    where: { purchaseOrder: { companyId: company.companyId } },
     include: {
       payments: true,
       purchaseOrder: {
@@ -1363,9 +1385,11 @@ export async function getRevenueDetailsByMonth(
 ): Promise<RevenueMonthDetail[]> {
   const access = await requirePermission("/admin/dashboard", "view");
   if (!access.ok) return [];
+  const company = await getActiveCompanyContext();
+  if (!company) return [];
 
   const { start, end } = getFinancialMonthRange(params.year, params.month);
-  const purchaseOrderFilter = getPurchaseOrderFilter(filters);
+  const purchaseOrderFilter = getPurchaseOrderFilter(filters, company.companyId);
 
   const cycles = await prisma.billingCycle.findMany({
     where: {
@@ -1541,6 +1565,8 @@ function creditNoteCustomerKey(name: string) {
 }
 
 async function dashboardPartyScope(query?: Pick<CreditNoteDashboardQuery, "company" | "customer" | "status" | "crossFilter">) {
+  const activeCompany = await getActiveCompanyContext();
+  if (!activeCompany) return { customerKeys: new Set<string>(), purchaseOrderIds: [] as string[] };
   const customerId = idFilter(query?.customer);
   const companyId = idFilter(query?.company);
   const cross = query?.crossFilter;
@@ -1551,14 +1577,23 @@ async function dashboardPartyScope(query?: Pick<CreditNoteDashboardQuery, "compa
   const companyName = cross?.kind === "company" ? cross.value : undefined;
   const customerName = cross?.kind === "customer" ? cross.value : undefined;
   const needsPurchaseOrder = Boolean(companyId || companyName || validStatuses?.length);
+  const companyFilterMatches = !companyId || (
+    typeof companyId === "string"
+      ? companyId === activeCompany.companyId
+      : companyId.in.includes(activeCompany.companyId)
+  );
+  if (!companyFilterMatches) {
+    return { customerKeys: new Set<string>(), purchaseOrderIds: [] as string[] };
+  }
   if (!customerId && !customerName && !needsPurchaseOrder) return { customerKeys: null };
 
   const purchaseOrderWhere: Prisma.PurchaseOrderWhereInput = {
-    ...(companyId ? { companyId } : {}),
+    companyId: activeCompany.companyId,
     ...(validStatuses?.length ? { status: { in: validStatuses } } : {}),
   };
   const customers = await prisma.customer.findMany({
     where: {
+      companyId: activeCompany.companyId,
       ...(customerId ? { id: customerId } : {}),
       ...(needsPurchaseOrder ? { purchaseOrders: { some: purchaseOrderWhere } } : {}),
     },
@@ -1592,11 +1627,16 @@ async function dashboardPartyScope(query?: Pick<CreditNoteDashboardQuery, "compa
 
 async function dashboardCreditNotes(filters?: BillingStatusFilters) {
   const { customerKeys } = await dashboardPartyScope(filters);
-  if (customerKeys?.size === 0) return [];
+  if (customerKeys && !customerKeys.size) return [];
+  const company = await getActiveCompanyContext();
+  if (!company) return [];
   const notes = await prisma.creditNote.findMany({
+    where: { companyId: company.companyId },
     select: { customerName: true, date: true, amount: true },
   });
-  return customerKeys ? notes.filter((note) => customerKeys.has(creditNoteCustomerKey(note.customerName))) : notes;
+  return customerKeys
+    ? notes.filter((note) => customerKeys.has(creditNoteCustomerKey(note.customerName)))
+    : notes;
 }
 
 export async function getCreditNoteDashboardSummary(
@@ -1604,9 +1644,9 @@ export async function getCreditNoteDashboardSummary(
 ): Promise<CreditNoteDashboardSummary> {
   const access = await requirePermission("/admin/dashboard", "view");
   if (!access.ok) throw new Error(access.message);
-
   const { year, filters, earlier, comparisonFilters, comparisonYear } = dashboardPeriods(query);
   const { customerKeys } = await dashboardPartyScope(query);
+  const activeCompany = await getActiveCompanyContext();
   const summarize = (notes: Array<{ date: Date; amount: Prisma.Decimal }>, periodYear: number | undefined, periodFilters: BillingStatusFilters) => {
     let total = money(0);
     let count = 0;
@@ -1637,8 +1677,8 @@ export async function getCreditNoteDashboardSummary(
   };
   const windows = [dateWindow(year, filters)];
   if (comparisonFilters) windows.push(dateWindow(comparisonYear, comparisonFilters));
-  const notes = customerKeys?.size === 0 ? [] : await prisma.creditNote.findMany({
-    where: { OR: windows },
+  const notes = (customerKeys && !customerKeys.size) || !activeCompany ? [] : await prisma.creditNote.findMany({
+    where: { companyId: activeCompany.companyId, OR: windows },
     select: { customerName: true, date: true, amount: true },
   });
   const matchingNotes = customerKeys
@@ -1657,14 +1697,17 @@ async function getCreditNoteKpiDetails(
 ): Promise<DashboardKpiDetailRecord[]> {
   const { year, filters } = dashboardPeriods(query);
   const { customerKeys, purchaseOrderIds = [] } = await dashboardPartyScope(query);
-  if (customerKeys?.size === 0) return [];
+  if (customerKeys && !customerKeys.size) return [];
+  const activeCompany = await getActiveCompanyContext();
+  if (!activeCompany) return [];
 
   const [notes, orders] = await Promise.all([
     prisma.creditNote.findMany({
+      where: { companyId: activeCompany.companyId },
       select: { id: true, customerName: true, date: true, vchType: true, vchNo: true, amount: true },
     }),
     prisma.purchaseOrder.findMany({
-      where: purchaseOrderIds.length ? { id: { in: purchaseOrderIds } } : undefined,
+      where: { id: { in: purchaseOrderIds } },
       select: {
         customerPONumber: true,
         status: true,
@@ -1844,8 +1887,21 @@ async function getBillingOverviewMetrics(
   year: number | undefined,
   filters: BillingStatusFilters,
 ): Promise<BillingOverviewMetrics> {
+  const company = await getActiveCompanyContext();
+  if (!company) {
+    return {
+      plannedBilling: null,
+      billingDoneWithoutGst: null,
+      billingDoneWithGst: null,
+      billingAchievement: null,
+      billingAchievementAbovePlan: false,
+      upcomingBilling: null,
+      gstRate: GST_RATE,
+      plannedRecords: [],
+    };
+  }
   const orders = await prisma.purchaseOrder.findMany({
-    where: getPurchaseOrderFilter(filters),
+    where: getPurchaseOrderFilter(filters, company.companyId),
     select: {
       id: true,
       customerPONumber: true,
@@ -2156,9 +2212,12 @@ export async function getRevenueDashboard(query: RevenueDashboardQuery) {
 export async function getRevenueDashboardFinancialYears() {
   const access = await requirePermission("/admin/dashboard", "view");
   if (!access.ok) return [getFiscalYear(new Date())];
+  const company = await getActiveCompanyContext();
+  if (!company) return [getFiscalYear(new Date())];
 
   const [cycles, purchaseOrders] = await Promise.all([
     prisma.billingCycle.findMany({
+      where: { purchaseOrder: { companyId: company.companyId } },
       select: {
         billingSubmittedDate: true,
         invoiceDate: true,
@@ -2168,6 +2227,7 @@ export async function getRevenueDashboardFinancialYears() {
       },
     }),
     prisma.purchaseOrder.findMany({
+      where: { companyId: company.companyId },
       select: { startFrom: true, endDate: true },
     }),
   ]);

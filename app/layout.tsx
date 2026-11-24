@@ -32,7 +32,7 @@ export async function generateMetadata(): Promise<Metadata> {
         apple: [{ url: favicon }],
       },
     };
-  } catch (error) {
+  } catch {
     return {
       title: {
         template: `%s | ${APP_NAME}`,
@@ -53,9 +53,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body
-        className="antialiased bg-gray-50"
+        className="min-h-screen bg-background text-foreground antialiased"
         style={
           {
             "--font-geist-sans":

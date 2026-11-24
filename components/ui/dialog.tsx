@@ -51,10 +51,37 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  scrollBody = false,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
+  scrollBody?: boolean
 }) {
+  const contentChildren = React.Children.toArray(children)
+  const headerIndex = scrollBody
+    ? contentChildren.findIndex(
+        (child) => React.isValidElement(child) && child.type === DialogHeader,
+      )
+    : -1
+  const header = headerIndex >= 0 ? contentChildren[headerIndex] : null
+  const bodyChildren =
+    headerIndex >= 0
+      ? contentChildren.filter((_, index) => index !== headerIndex)
+      : contentChildren
+  const closeButton = showCloseButton ? (
+    <DialogPrimitive.Close
+      data-slot="dialog-close"
+      aria-label="Close dialog"
+      className={cn(
+        "flex size-9 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:pointer-events-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 [&_svg]:size-[18px] [&_svg]:shrink-0",
+        !(scrollBody && header) && "absolute top-3 right-3 z-20",
+      )}
+    >
+      <XIcon />
+      <span className="sr-only">Close</span>
+    </DialogPrimitive.Close>
+  ) : null
+
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />
@@ -62,20 +89,26 @@ function DialogContent({
         data-slot="dialog-content"
         className={cn(
           "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200 outline-none sm:max-w-lg",
-          className
+          className,
+          scrollBody &&
+            "max-h-[88vh] w-[calc(100vw-2rem)] flex flex-col overflow-hidden rounded-2xl border-slate-200/80 shadow-[0_24px_80px_-32px_rgba(15,23,42,0.45)]"
         )}
         {...props}
       >
-        {children}
-        {showCloseButton && (
-          <DialogPrimitive.Close
-            data-slot="dialog-close"
-            className="ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
-          >
-            <XIcon />
-            <span className="sr-only">Close</span>
-          </DialogPrimitive.Close>
-        )}
+        {scrollBody ? (
+          <>
+            {header && (
+              <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200/80 bg-background pb-4 pr-0 dark:border-slate-800">
+                <div className="min-w-0 flex-1">{header}</div>
+                {closeButton}
+              </div>
+            )}
+            <div className="dialog-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain pr-2 -mr-2">
+              {bodyChildren}
+            </div>
+          </>
+        ) : children}
+        {!(scrollBody && header) && closeButton}
       </DialogPrimitive.Content>
     </DialogPortal>
   )

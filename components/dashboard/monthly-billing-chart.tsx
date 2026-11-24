@@ -733,13 +733,28 @@ export function MonthlyBillingChartCard({
   const [details, setDetails] = useState<
     RevenueMonthDetail[]
   >([]);
-  const [selectedMonth, setSelectedMonth] =
-    useState<SelectedMonth | null>(null);
-
   const selectedYear =
     filters.year && filters.year !== "all"
       ? Number(filters.year)
       : currentFY;
+  const selectionFilterKey = JSON.stringify({
+    company: filters.company,
+    customer: filters.customer,
+    endDate: filters.endDate,
+    month: filters.month,
+    quarter: filters.quarter,
+    startDate: filters.startDate,
+    selectedYear,
+  });
+  const [selectionState, setSelectionState] = useState<{
+    filterKey: string;
+    month: SelectedMonth | null;
+  }>({ filterKey: "", month: null });
+  const selectedMonth = selectionState.filterKey === selectionFilterKey
+    ? selectionState.month
+    : null;
+  const setSelectedMonth = (month: SelectedMonth | null) =>
+    setSelectionState({ filterKey: selectionFilterKey, month });
 
   useEffect(() => {
     let active = true;
@@ -807,19 +822,6 @@ export function MonthlyBillingChartCard({
     return () => {
       active = false;
     };
-  }, [
-    filters.company,
-    filters.customer,
-    filters.endDate,
-    filters.month,
-    filters.quarter,
-    filters.startDate,
-    selectedYear,
-  ]);
-
-  useEffect(() => {
-    setSelectedMonth(null);
-    setDetails([]);
   }, [
     filters.company,
     filters.customer,

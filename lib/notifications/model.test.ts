@@ -129,7 +129,7 @@ describe("notification state evaluation", () => {
       today,
     )
 
-    expect(types(drafts)).toEqual(["PO_EXPIRING_SOON", "CONTRACT_EXPIRING_SOON"])
+    expect(types(drafts)).toEqual(["PO_EXPIRY_30_DAYS", "CONTRACT_EXPIRING_SOON"])
   })
 
   it("treats a past end date on a live order as expired", () => {
@@ -142,7 +142,7 @@ describe("notification state evaluation", () => {
       today,
     )
 
-    expect(types(drafts)).toEqual(["PO_EXPIRED", "CONTRACT_EXPIRED"])
+    expect(types(drafts)).toEqual(["PO_EXPIRY_EXPIRED", "CONTRACT_EXPIRED"])
   })
 
   it("does not call a closed purchase order expired, and skips contracts that are not linked", () => {
@@ -156,7 +156,7 @@ describe("notification state evaluation", () => {
     ))
 
     expect(closed).toEqual(["CONTRACT_EXPIRED"])
-    expect(unlinked).toEqual(["PO_EXPIRING_SOON"])
+    expect(unlinked).toEqual(["PO_EXPIRY_15_DAYS"])
     expect(unlinked).not.toContain("CONTRACT_EXPIRING_SOON")
   })
 })

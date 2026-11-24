@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { format } from "date-fns";
 import { CalendarIcon, Plus, Trash2 } from "lucide-react";
 import { PaymentReceived } from "@prisma/client";
@@ -103,10 +103,11 @@ const BillingCycleForm = ({
     control: form.control,
     name: `billingCycles.${index}.payments`,
   });
-  const payments = useWatch({
+  const watchedPayments = useWatch({
     control: form.control,
     name: `billingCycles.${index}.payments`,
-  }) ?? [];
+  });
+  const payments = useMemo(() => watchedPayments ?? [], [watchedPayments]);
   const paymentSignature = payments
     .map((payment) => `${payment?.receivedDate ?? ""}:${payment?.amount ?? ""}`)
     .join("|");

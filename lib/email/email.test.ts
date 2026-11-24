@@ -15,6 +15,7 @@ const now = new Date("2026-10-27T08:00:00.000Z")
 
 const purchaseOrder: EmailNotificationSource = {
   id: "11111111-1111-4111-8111-111111111111",
+  companyId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
   dedupeKey: "PO_CREATED|po-1",
   category: "PURCHASE_ORDER",
   eventType: "PO_CREATED",
@@ -32,6 +33,7 @@ const purchaseOrder: EmailNotificationSource = {
 
 const revenueUser = {
   id: "22222222-2222-4222-8222-222222222222",
+  companyId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
   email: "Asha@Example.com",
   firstName: "Asha",
   lastName: "Rao",
@@ -40,6 +42,7 @@ const revenueUser = {
 
 const outsider = {
   id: "33333333-3333-4333-8333-333333333333",
+  companyId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
   email: "outsider@example.com",
   firstName: "Out",
   lastName: "Sider",
@@ -78,6 +81,17 @@ describe("email planning", () => {
     })
 
     expect(dedupePlannedJobs([...once, ...twice])).toHaveLength(1)
+  })
+
+  it("does not email a user whose membership belongs to another company", () => {
+    const jobs = planEmailJobs({
+      notifications: [purchaseOrder],
+      users: [{ ...revenueUser, companyId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" }],
+      preferences: [],
+      categoryEnabled: {},
+    });
+
+    expect(jobs).toEqual([]);
   })
 
   it("respects a disabled optional email category and a user opt-out", () => {

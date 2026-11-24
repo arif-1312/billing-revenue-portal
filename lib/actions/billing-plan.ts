@@ -5,6 +5,7 @@ import { billingPlanSchema } from "../validators";
 import { formatError } from "../utils";
 import { z } from "zod";
 import { requirePermission, type PermissionRule } from "@/lib/rbac";
+import { getActiveCompanyContext } from "@/lib/company-context";
 
 const billingPlanReaders: PermissionRule[] = [
   { route: "/admin/revenue", action: "view" },
@@ -38,8 +39,11 @@ export async function getBillingPlans() {
   try {
     const access = await requirePermission("/admin/billing-plan", "view", billingPlanReaders);
     if (!access.ok) return [];
+    const company = await getActiveCompanyContext();
+    if (!company) return [];
 
     const data = await prisma.billingPlan.findMany({
+      where: { companyId: company.companyId },
       orderBy: {
         createdAt: "desc",
       },
@@ -65,9 +69,11 @@ export async function createBillingPlan(data: BillingPlanInput) {
 
     const billingPlan = billingPlanSchema.parse(data);
     const payload = normalizeBillingPlanPayload(billingPlan);
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
     await prisma.billingPlan.create({
-      data: payload,
+      data: { ...payload, companyId: company.companyId },
     });
 
     return {
@@ -91,9 +97,11 @@ export async function getBillingPlanById(id: string) {
     if (!access.ok) {
       return { success: false, message: access.message };
     }
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: access.message };
 
-    const billingPlan = await prisma.billingPlan.findUnique({
-      where: { id },
+    const billingPlan = await prisma.billingPlan.findFirst({
+      where: { id, companyId: company.companyId },
     });
 
     if (!billingPlan) {
@@ -128,11 +136,14 @@ export async function updateBillingPlan(
 
     const billingPlan = billingPlanSchema.parse(data);
     const payload = normalizeBillingPlanPayload(billingPlan);
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
-    await prisma.billingPlan.update({
-      where: { id },
+    const result = await prisma.billingPlan.updateMany({
+      where: { id, companyId: company.companyId },
       data: payload,
     });
+    if (!result.count) return { success: false, message: "Billing plan not found" };
 
     return {
       success: true,
@@ -153,10 +164,11 @@ export async function deleteBillingPlan(id: string) {
     if (!access.ok) {
       return { success: false, message: access.message };
     }
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
-    await prisma.billingPlan.delete({
-      where: { id },
-    });
+    const result = await prisma.billingPlan.deleteMany({ where: { id, companyId: company.companyId } });
+    if (!result.count) return { success: false, message: "Billing plan not found" };
 
     return {
       success: true,

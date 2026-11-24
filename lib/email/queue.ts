@@ -26,16 +26,22 @@ const PAYLOAD_KEYS = [
 export async function enqueueNotificationEmails(notifications: EmailNotificationSource[]) {
   const eligible = notifications.filter((notification) => notification.emailEligible)
   if (eligible.length === 0) return
+  const companyIds = [...new Set(eligible.flatMap((notification) => notification.companyId ? [notification.companyId] : []))]
+  if (companyIds.length === 0) return
 
   try {
-    const [users, preferences, settings] = await Promise.all([
-      prisma.user.findMany({
-        where: { status: "ACTIVE", role: { status: "ACTIVE" } },
+    const [memberships, preferences, settings] = await Promise.all([
+      prisma.userCompany.findMany({
+        where: {
+          companyId: { in: companyIds },
+          status: "ACTIVE",
+          user: { status: "ACTIVE" },
+          company: { status: "ACTIVE", isActive: true },
+          role: { status: "ACTIVE" },
+        },
         select: {
-          id: true,
-          email: true,
-          firstName: true,
-          lastName: true,
+          companyId: true,
+          user: { select: { id: true, email: true, firstName: true, lastName: true } },
           role: {
             select: {
               roleModules: {
@@ -56,12 +62,13 @@ export async function enqueueNotificationEmails(notifications: EmailNotification
 
     const jobs = planEmailJobs({
       notifications: eligible,
-      users: users.map((user) => ({
-        id: user.id,
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        viewRoutes: user.role.roleModules.map((roleModule) => roleModule.module.route),
+      users: memberships.map((membership) => ({
+        id: membership.user.id,
+        companyId: membership.companyId,
+        email: membership.user.email,
+        firstName: membership.user.firstName,
+        lastName: membership.user.lastName,
+        viewRoutes: membership.role.roleModules.map((roleModule) => roleModule.module.route),
       })),
       preferences,
       categoryEnabled: Object.fromEntries(
@@ -145,6 +152,7 @@ export async function requeueOrphanNotifications() {
   await enqueueNotificationEmails(
     rows.map((row) => ({
       id: row.id,
+      companyId: row.companyId,
       dedupeKey: row.dedupeKey,
       category: row.category,
       eventType: row.eventType,
@@ -187,6 +195,25 @@ export async function claimEmailJobs(limit: number) {
       FROM "EmailJob"
       WHERE "status" IN ('PENDING'::"EmailJobStatus", 'RETRYING'::"EmailJobStatus")
         AND "nextAttemptAt" <= NOW()
+        AND (
+          "EmailJob"."notificationId" IS NULL
+          OR EXISTS (
+            SELECT 1
+            FROM "Notification" n
+            JOIN "UserCompany" uc ON uc."companyId" = n."companyId"
+            JOIN "Company" c ON c."id" = uc."companyId"
+            JOIN "User" u ON u."id" = uc."userId"
+            JOIN "Role" r ON r."id" = uc."roleId"
+            WHERE n."id" = "EmailJob"."notificationId"
+              AND n."companyId" IS NOT NULL
+              AND uc."userId" = "EmailJob"."recipientUserId"
+              AND uc."status" = 'ACTIVE'::"Status"
+              AND c."status" = 'ACTIVE'::"CompanyStatus"
+              AND c."isActive" = true
+              AND u."status" = 'ACTIVE'::"Status"
+              AND r."status" = 'ACTIVE'::"Status"
+          )
+        )
       ORDER BY "nextAttemptAt" ASC
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED

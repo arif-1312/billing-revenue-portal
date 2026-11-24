@@ -363,16 +363,16 @@ export function ManagementReport({
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="-mx-3 -mt-3 flex min-h-[calc(100svh-var(--header-height)-1rem)] min-w-0 flex-1 flex-col gap-4 bg-[#f5f7fb] px-3 py-4 sm:-mx-4 sm:-mt-4 sm:px-4 lg:-mt-6 lg:py-5">
+      <div className="-mx-3 -mt-3 flex min-h-[calc(100svh-var(--header-height)-1rem)] min-w-0 flex-1 flex-col gap-5 bg-slate-50 px-3 py-4 sm:-mx-4 sm:-mt-4 sm:px-4 lg:-mt-6 lg:py-6">
         <header className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-xl font-semibold tracking-tight text-[#17365D]">Management Dashboard</h1>
-              <span className="rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-[#1F6FB5]">
+              <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Revenue operations</h1>
+              <span className="rounded-full border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700">
                 {fyLabel}
               </span>
             </div>
-            <p className="mt-1 text-xs text-slate-500">Financial performance, billing progress, and collections at a glance.</p>
+            <p className="mt-1 text-sm text-slate-500">Billing performance, cash collection, and customer exposure in one view.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             <p className="text-[11px] text-[#667085]">
@@ -389,7 +389,7 @@ export function ManagementReport({
           </div>
         </header>
 
-        <div className="no-print min-w-0 space-y-3 rounded-xl border border-[#e3e8ef] bg-white p-3 shadow-[0_1px_2px_rgba(16,24,40,0.035),0_12px_28px_-24px_rgba(16,24,40,0.18)] sm:p-4">
+        <div className="no-print min-w-0 space-y-3 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-sm sm:p-4">
           <DashboardTabs value={view} onChange={setView} />
           <SlicerBar
             filters={filters}

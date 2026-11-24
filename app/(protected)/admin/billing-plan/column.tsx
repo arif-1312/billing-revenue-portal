@@ -1,18 +1,19 @@
 "use client"
 
 import { ColumnDef } from "@tanstack/react-table"
-import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { EditIcon, Trash } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { DeleteDialog } from "@/components/ui/delete-dailog"
+import type { BillingPlan } from "@prisma/client"
 
 export const getUsersColumns = ({
   canEdit,
   canDelete,
+  onEdit,
   onDelete,
-}: any): ColumnDef<any>[] => {
-  const columns: ColumnDef<any>[] = [
+}: { canEdit: boolean; canDelete: boolean; onEdit: (billingPlan: BillingPlan) => void; onDelete: (id: string) => void | Promise<void> }): ColumnDef<BillingPlan>[] => {
+  const columns: ColumnDef<BillingPlan>[] = [
     {
       accessorKey: "name",
       header: "Name",
@@ -30,7 +31,11 @@ export const getUsersColumns = ({
     {
       accessorKey: "remark",
       header: "Remark",
-      cell: ({ row }) => row.original.remark ?? "-",
+      cell: ({ row }) => (
+        <div className="max-w-[240px] whitespace-normal break-words">
+          {row.original.remark ?? "-"}
+        </div>
+      ),
     },
     {
       accessorKey: "createdAt",
@@ -67,13 +72,12 @@ export const getUsersColumns = ({
           <div className="flex gap-2">
             {canEdit && (
               <Button
-                asChild
                 size="icon"
                 className="bg-orange-500 hover:bg-orange-600"
+                aria-label={`Edit ${row.original.name}`}
+                onClick={() => onEdit(row.original)}
               >
-                <Link href={`/admin/billing-plan/edit/${id}`}>
-                  <EditIcon size={16} />
-                </Link>
+                <EditIcon size={16} />
               </Button>
             )}
 
@@ -82,6 +86,7 @@ export const getUsersColumns = ({
                 onConfirm={() => onDelete(id)}
                 title="Delete Billing Plan?"
                 description="Are you sure you want to delete this billing plan? This action cannot be undone."
+                preventOutsideDismiss
               >
                 <Button
                   size="icon"

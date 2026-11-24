@@ -1,11 +1,8 @@
-import { prisma } from "@/lib/prisma"
 import { getCompanys } from "@/lib/actions/company"
-import { Company } from "@/types"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import CompanyDataTable from "./company-datatable"
-import { canAccess, getUserPermissions } from "@/lib/rbac"
+import { canAccess } from "@/lib/rbac"
 import { redirect } from "next/navigation"
 
 export default async function CustomerPage() {
@@ -24,6 +21,7 @@ export default async function CustomerPage() {
 
   return (
     <CompanyDataTable data={company}
+      canCreate={canCreate}
       canEdit={canEdit}
       canDelete={canDelete}
       title="Company"

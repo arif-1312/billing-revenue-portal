@@ -14,9 +14,9 @@ export function DataTable({
   className?: string;
 }) {
   return (
-    <div className={cn("max-h-[28rem] max-w-full min-w-0 overflow-auto rounded-lg border border-slate-100", className)}>
+    <div className={cn("max-h-[28rem] max-w-full min-w-0 overflow-auto rounded-xl border border-border bg-card", className)}>
       <table className="min-w-full border-separate border-spacing-0 text-left text-sm">
-        <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur">
+        <thead className="sticky top-0 z-10 bg-secondary/95 backdrop-blur">
           <tr>
             {columns.map((column) => {
               const active = sort?.id === column.id;
@@ -26,14 +26,14 @@ export function DataTable({
                   key={column.id}
                   aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
                   className={cn(
-                    "border-b border-[#e4e8ee] px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-[#667085]",
+                    "border-b border-border px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground",
                     column.align === "right" && "text-right",
                   )}
                 >
                   {onSort ? (
                     <button
                       type="button"
-                      className={cn("hover:text-[#1c2430]", column.align === "right" && "ml-auto block")}
+                      className={cn("hover:text-foreground", column.align === "right" && "ml-auto block")}
                       aria-label={label}
                       onClick={() => onSort(column.id)}
                     >
@@ -51,18 +51,18 @@ export function DataTable({
         <tbody>
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={columns.length} className="px-3 py-8 text-center text-sm text-[#667085]">
+              <td colSpan={columns.length} className="px-3 py-8 text-center text-sm text-muted-foreground">
                 No rows for this selection.
               </td>
             </tr>
           ) : (
             rows.map((row, index) => (
-              <tr key={index} className="transition-colors hover:bg-blue-50/40">
+              <tr key={index} className="transition-colors hover:bg-accent/40">
                 {row.map((cell, cellIndex) => (
                   <td
                     key={cellIndex}
                     className={cn(
-                      "border-b border-[#f0f2f5] px-3 py-2.5 text-[#1c2430]",
+                      "border-b border-border px-3 py-2.5 text-foreground",
                       columns[cellIndex]?.align === "right" && "text-right",
                     )}
                   >

@@ -202,7 +202,6 @@ export function TotalBilledChart({
   const [data, setData] = useState<DataPoint[]>([]);
   const [loading, setLoading] = useState(false);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-  const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const selectedYear =
     typeof filters.year === "string" && filters.year !== "all"
       ? Number(filters.year)
@@ -251,20 +250,14 @@ export function TotalBilledChart({
     };
   }, [filters, selectedYear]);
 
-  useEffect(() => {
-    if (!activeSelection) {
-      setActiveIndex(null);
-      return;
-    }
-
-    const nextIndex = data.findIndex(
+  const selectedIndex = activeSelection
+    ? data.findIndex(
       (entry) =>
         entry.monthNumber === activeSelection.month &&
         entry.year === activeSelection.year,
-    );
-
-    setActiveIndex(nextIndex >= 0 ? nextIndex : null);
-  }, [activeSelection, data, selectedYear]);
+    )
+    : -1;
+  const activeIndex = selectedIndex >= 0 ? selectedIndex : null;
 
   const chartStats = useMemo(() => {
     const values = data.map((item) => item.value).filter((value) => value > 0);
@@ -382,7 +375,6 @@ export function TotalBilledChart({
                     if (!state?.activePayload?.length) return;
 
                     const payload = state.activePayload[0].payload as DataPoint;
-                    setActiveIndex(payload.monthNumber - 1);
                     onMonthClick?.({
                       month: payload.monthNumber,
                       year: payload.year,

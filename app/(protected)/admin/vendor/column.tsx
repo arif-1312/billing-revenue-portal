@@ -2,7 +2,6 @@
 
 import { ColumnDef } from "@tanstack/react-table"
 import { EditIcon, Trash } from "lucide-react"
-import Link from "next/link"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -12,12 +11,14 @@ import { Vendor } from "@/types"
 type VendorColumnOptions = {
   canEdit: boolean
   canDelete: boolean
+  onEdit: (vendor: Vendor) => void
   onDelete: (id: string) => void
 }
 
 export const getVendorsColumns = ({
   canEdit,
   canDelete,
+  onEdit,
   onDelete,
 }: VendorColumnOptions): ColumnDef<Vendor>[] => {
   const columns: ColumnDef<Vendor>[] = [
@@ -78,13 +79,12 @@ export const getVendorsColumns = ({
           <div className="flex gap-2">
             {canEdit && (
               <Button
-                asChild
                 size="icon"
                 className="bg-orange-500 hover:bg-orange-600"
+                aria-label={`Edit ${row.original.companyName || row.original.vendorCode}`}
+                onClick={() => onEdit(row.original)}
               >
-                <Link href={`/admin/vendor/edit/${id}`}>
-                  <EditIcon size={16} />
-                </Link>
+                <EditIcon size={16} />
               </Button>
             )}
 
@@ -93,6 +93,7 @@ export const getVendorsColumns = ({
                 onConfirm={() => onDelete(id)}
                 title="Delete Vendor?"
                 description="Are you sure you want to delete this vendor? This action cannot be undone."
+                preventOutsideDismiss
               >
                 <Button
                   size="icon"

@@ -1,18 +1,19 @@
 "use client"
 
 import { ColumnDef } from "@tanstack/react-table"
-import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { DeleteDialog } from "@/components/ui/delete-dailog"
 import { EditIcon, Trash } from "lucide-react"
+import type { ContractDuration } from "@prisma/client"
 
 export const getUsersColumns = ({
   canEdit,
   canDelete,
+  onEdit,
   onDelete,
-}: any): ColumnDef<any>[] => {
-  const columns: ColumnDef<any>[] = [
+}: { canEdit: boolean; canDelete: boolean; onEdit: (contractDuration: ContractDuration) => void; onDelete: (id: string) => void | Promise<void> }): ColumnDef<ContractDuration>[] => {
+  const columns: ColumnDef<ContractDuration>[] = [
     {
       accessorKey: "name",
       header: "Name",
@@ -62,13 +63,12 @@ export const getUsersColumns = ({
           <div className="flex gap-2">
             {canEdit && (
               <Button
-                asChild
                 size="icon"
                 className="bg-orange-500 hover:bg-orange-600"
+                aria-label={`Edit ${row.original.name}`}
+                onClick={() => onEdit(row.original)}
               >
-                <Link href={`/admin/contract-duration/edit/${id}`}>
-                  <EditIcon size={16} />
-                </Link>
+                <EditIcon size={16} />
               </Button>
             )}
 
@@ -77,6 +77,7 @@ export const getUsersColumns = ({
                 onConfirm={() => onDelete(id)}
                 title="Delete Contract Duration?"
                 description="Are you sure you want to delete this contract duration? This action cannot be undone."
+                preventOutsideDismiss
               >
                 <Button
                   size="icon"

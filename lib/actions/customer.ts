@@ -8,6 +8,7 @@ import { formatError } from "../utils";
 import { requirePermission, type PermissionRule } from "@/lib/rbac";
 import { fingerprint } from "@/lib/notifications/model";
 import { safePublishSystem } from "@/lib/notifications/publish";
+import { getActiveCompanyContext } from "@/lib/company-context";
 
 const customerReaders: PermissionRule[] = [
   { route: "/admin/revenue", action: "view" },
@@ -70,8 +71,11 @@ function customerLabel(customer: {
 export async function getCustomers() {
   const access = await requirePermission("/admin/customer", "view", customerReaders);
   if (!access.ok) return [];
+  const company = await getActiveCompanyContext();
+  if (!company) return [];
 
   return await prisma.customer.findMany({
+    where: { companyId: company.companyId },
     orderBy: {
       createdAt: 'desc'
     },
@@ -88,9 +92,11 @@ export async function createCustomer(data: Customer) {
 
     const customer = customerSchema.parse(data)
     const payload = normalizeCustomerPayload(customer)
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
     const created = await prisma.customer.create({
-      data: payload,
+      data: { ...payload, companyId: company.companyId },
       select: { id: true },
     })
 
@@ -134,8 +140,10 @@ export async function getCustomerById(id: string) {
       return { success: false, message: access.message };
     }
 
-    let customer = await prisma.customer.findFirst({
-      where: { id }
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
+    const customer = await prisma.customer.findFirst({
+      where: { id, companyId: company.companyId }
     })
 
     if (customer) {
@@ -168,11 +176,14 @@ export async function updateCustomer(data: Customer, id: string) {
 
     const customer = customerSchema.parse(data)
     const payload = normalizeCustomerPayload(customer)
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
-    await prisma.customer.update({
-      where: { id },
+    const result = await prisma.customer.updateMany({
+      where: { id, companyId: company.companyId },
       data: payload
     })
+    if (!result.count) return { success: false, message: "Customer not found" };
 
     await safePublishSystem({
       eventType: "SYSTEM_RECORD_CHANGE",
@@ -218,8 +229,10 @@ export async function deleteCustomer(id: string) {
       return { success: false, message: access.message };
     }
 
-    const customer = await prisma.customer.findUnique({
-      where: { id },
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
+    const customer = await prisma.customer.findFirst({
+      where: { id, companyId: company.companyId },
       select: {
         id: true,
         companyName: true,
@@ -247,9 +260,7 @@ export async function deleteCustomer(id: string) {
       }
     }
 
-    await prisma.customer.delete({
-      where: { id }
-    })
+    await prisma.customer.deleteMany({ where: { id, companyId: company.companyId } })
 
     await safePublishSystem({
       eventType: "SYSTEM_RECORD_CHANGE",

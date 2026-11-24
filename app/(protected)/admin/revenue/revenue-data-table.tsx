@@ -45,11 +45,12 @@ export default function RevenueDataTable({
   title,
   actions,
 }: RevenueDataTableProps) {
-  const [tableData, setTableData] = React.useState(data)
-
-  React.useEffect(() => {
-    setTableData(data)
-  }, [data])
+  const [removedRows, setRemovedRows] = React.useState<{
+    source: RevenueRow[];
+    ids: Set<string>;
+  }>(() => ({ source: data, ids: new Set() }));
+  const removedIds = removedRows.source === data ? removedRows.ids : new Set<string>();
+  const tableData = data.filter((row) => !removedIds.has(row.id));
 
   const deleteHandler = async (id: string) => {
     const res = await deletePurchaseOrder(id)
@@ -61,7 +62,11 @@ export default function RevenueDataTable({
 
     toast.success("Success", { description: res?.message })
 
-    setTableData((prev) => prev.filter((r) => r.id !== id))
+    setRemovedRows((current) => {
+      const ids = new Set(current.source === data ? current.ids : []);
+      ids.add(id);
+      return { source: data, ids };
+    });
   }
 
   const columns = getUsersColumns({

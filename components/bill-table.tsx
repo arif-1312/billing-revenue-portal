@@ -7,7 +7,6 @@ import {
   getCoreRowModel,
   getFilteredRowModel,
   useReactTable,
-  type ColumnFiltersState,
 } from "@tanstack/react-table";
 
 import {
@@ -50,6 +49,8 @@ const columns: ColumnDef<BillingSummary>[] = [
 export function BillTable({ data }: { data: BillingSummary[] }) {
   const [globalFilter, setGlobalFilter] = React.useState("");
 
+  // TanStack's table instance exposes imperative functions the React compiler cannot memoize safely.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data,
     columns,

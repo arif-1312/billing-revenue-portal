@@ -1,9 +1,7 @@
-import { Button } from "@/components/ui/button";
-import Link from "next/link";
 import { getModules } from "@/lib/actions/module-action";
 import { redirect } from "next/navigation";
 import ModuleDataTable from "./module-data-table";
-import { canAccess, getUserPermissions } from "@/lib/rbac";
+import { canAccess } from "@/lib/rbac";
 
 const ModulePage = async () => {
 
@@ -21,16 +19,10 @@ const ModulePage = async () => {
 
   return (
     <ModuleDataTable data={modules}
+      canCreate={canCreate}
       canEdit={canEdit}
       canDelete={canDelete}
-      title="Module"
-      actions={
-        canCreate && (
-          <Button className="bg-[#1976D2] hover:bg-[#155EA8]">
-            <Link href="/admin/module/create">Add Module</Link>
-          </Button>
-        )
-      } />
+      title="Module" />
   );
 };
 

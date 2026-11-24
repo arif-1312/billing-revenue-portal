@@ -7,6 +7,8 @@ import {
   getCoreRowModel,
   getSortedRowModel,
   getFilteredRowModel,
+  type FilterFn,
+  type Row,
   useReactTable,
   SortingState,
 } from "@tanstack/react-table"
@@ -27,20 +29,20 @@ export function DataTable<TData, TValue>({
   const [globalFilter, setGlobalFilter] = React.useState("")
 
   // 🔎 Global filter function
-  const globalFilterFn = (
-    row: any,
+  const globalFilterFn: FilterFn<TData> = (
+    row: Row<TData>,
     columnId: string,
     filterValue: string
   ) => {
-    return String(row.getValue(columnId))
+    return String(row.getValue(columnId) ?? "")
       .toLowerCase()
       .includes(filterValue.toLowerCase())
   }
 
-  const [currentData, setCurrentData] = React.useState<any>([...data]);
-
+  // TanStack's table instance exposes imperative functions the React compiler cannot memoize safely.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
-    data: currentData,
+    data,
     columns,
     state: {
       sorting,
@@ -53,10 +55,6 @@ export function DataTable<TData, TValue>({
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
   })
-
-  React.useEffect(() => {
-    
-  }, [data.length])
 
   return (
     <div className="space-y-4">

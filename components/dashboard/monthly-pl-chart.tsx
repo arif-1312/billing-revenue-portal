@@ -28,7 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-import { getPLData } from "@/lib/actions/project";
+import { getPLData, type PLData } from "@/lib/actions/project";
 
 type ChartData = {
   month: string;
@@ -37,7 +37,7 @@ type ChartData = {
 };
 
 type MonthlyPLChartProps = {
-  plData?: any;
+  plData?: PLData;
 };
 
 function getFinancialYearRange(year: number) {
@@ -164,7 +164,7 @@ export function MonthlyPLChart({ plData }: MonthlyPLChartProps) {
         let totalCost = 0;
 
         const safeData: ChartData[] = allMonths.map((month) => {
-          const monthData = data?.monthly?.find((m: any) => m.month === month);
+          const monthData = data.monthly.find((item) => item.month === month);
           const revenue = Number(monthData?.revenue ?? 0);
           const cost = Number(monthData?.cost ?? 0);
 

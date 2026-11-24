@@ -169,8 +169,6 @@ export async function notifyPasswordChanged(userId: string) {
   if (!user?.email) return
 
   const when = formatActivity(new Date())
-  const name = displayName(user)
-
   try {
     await enqueueAuthEmail({
       idempotencyKey: `password-changed:${user.id}:${Date.now()}`,

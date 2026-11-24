@@ -21,11 +21,12 @@ export default function CreditNoteDataTable({
   title: string;
   actions?: React.ReactNode;
 }) {
-  const [tableData, setTableData] = React.useState(data);
-
-  React.useEffect(() => {
-    setTableData(data);
-  }, [data]);
+  const [removedRows, setRemovedRows] = React.useState<{
+    source: CreditNoteRecord[];
+    ids: Set<string>;
+  }>(() => ({ source: data, ids: new Set() }));
+  const removedIds = removedRows.source === data ? removedRows.ids : new Set<string>();
+  const tableData = data.filter((row) => !removedIds.has(row.id));
 
   const deleteHandler = async (id: string) => {
     const res = await deleteCreditNote(id);
@@ -36,7 +37,11 @@ export default function CreditNoteDataTable({
     }
 
     toast.success("Success", { description: res?.message });
-    setTableData((prev) => prev.filter((row) => row.id !== id));
+    setRemovedRows((current) => {
+      const ids = new Set(current.source === data ? current.ids : []);
+      ids.add(id);
+      return { source: data, ids };
+    });
   };
 
   const columns = getCreditNoteColumns({

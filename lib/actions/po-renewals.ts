@@ -3,16 +3,19 @@
 import { calendarDaysBetween, formatKolkataDate, parseKolkataDate } from "@/lib/fiscal-year";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/rbac";
+import { getActiveCompanyContext } from "@/lib/company-context";
 
 export async function getUpcomingPoRenewals() {
   const access = await requirePermission("/admin/dashboard", "view");
   if (!access.ok) throw new Error("You do not have permission to view PO renewals.");
+  const company = await getActiveCompanyContext();
+  if (!company) return [];
 
   const now = new Date();
   const start = parseKolkataDate(formatKolkataDate(now));
   const end = new Date(start.getTime() + 31 * 86_400_000);
   const orders = await prisma.purchaseOrder.findMany({
-    where: { status: "LIVE", endDate: { gte: start, lt: end } },
+    where: { companyId: company.companyId, status: "LIVE", endDate: { gte: start, lt: end } },
     orderBy: { endDate: "asc" },
     select: {
       id: true, customerPONumber: true, startFrom: true, endDate: true,

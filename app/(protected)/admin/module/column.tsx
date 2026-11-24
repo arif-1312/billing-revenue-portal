@@ -3,13 +3,16 @@ import { Button } from "@/components/ui/button"
 import { DeleteDialog } from "@/components/ui/delete-dailog"
 import { ColumnDef } from "@tanstack/react-table"
 import { EditIcon, Trash } from "lucide-react"
-import Link from "next/link"
+import type { getModules } from "@/lib/actions/module-action"
+type ModuleRow = Awaited<ReturnType<typeof getModules>>[number]
+type ColumnOptions = { canEdit: boolean; canDelete: boolean; onDelete: (id: string) => void | Promise<void>; onEdit: (row: ModuleRow) => void }
 export const getUsersColumns = ({
     canEdit,
     canDelete,
+    onEdit,
     onDelete,
-}: any): ColumnDef<any>[] => {
-    const columns: ColumnDef<any>[] = [
+}: ColumnOptions): ColumnDef<ModuleRow>[] => {
+    const columns: ColumnDef<ModuleRow>[] = [
         {
             accessorKey: "name",
             header: "Name",
@@ -44,13 +47,12 @@ export const getUsersColumns = ({
                     <div className="flex gap-2">
                         {canEdit && (
                             <Button
-                                asChild
                                 size="icon"
                                 className="bg-orange-500 hover:bg-orange-600"
+                                aria-label={`Edit ${row.original.name}`}
+                                onClick={() => onEdit(row.original)}
                             >
-                                <Link href={`/admin/module/edit/${id}`}>
-                                    <EditIcon size={16} />
-                                </Link>
+                                <EditIcon size={16} />
                             </Button>
                         )}
 
@@ -59,6 +61,7 @@ export const getUsersColumns = ({
                                 onConfirm={() => onDelete(id)}
                                 title="Delete Module?"
                                 description="Are you sure you want to delete this module? This action cannot be undone."
+                                preventOutsideDismiss
                             >
                                 <Button
                                     size="icon"

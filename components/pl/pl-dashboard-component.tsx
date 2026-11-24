@@ -383,12 +383,11 @@ export function PLDashboardComponent({
   const [filteredValues, setFilteredValues] = useState<ProjectRow[]>([]);
   const [billingDetails, setBillingDetails] = useState<BillingDetail[]>([]);
   const [costDetails, setCostDetails] = useState<CostDetail[]>([]);
-  const [activeTable, setActiveTable] = useState<"billing" | "cost" | null>(
-    null,
-  );
-  const [selectedMonth, setSelectedMonth] = useState<SelectedMonth | null>(
-    null,
-  );
+  const [drilldown, setDrilldown] = useState<{
+    filterKey: string;
+    activeTable: "billing" | "cost" | null;
+    selectedMonth: SelectedMonth | null;
+  }>({ filterKey: "", activeTable: null, selectedMonth: null });
   const [totalValues, setTotalValues] = useState<DashboardTotals>({
     totalPOValue: 0,
     totalBilledValue: 0,
@@ -409,6 +408,23 @@ export function PLDashboardComponent({
     month: "all",
     year: currentFY.toString(),
   });
+  const filterKey = JSON.stringify(filters);
+  const activeTable = drilldown.filterKey === filterKey ? drilldown.activeTable : null;
+  const selectedMonth = drilldown.filterKey === filterKey ? drilldown.selectedMonth : null;
+  const setActiveTable = (value: "billing" | "cost" | null) => {
+    setDrilldown((current) => ({
+      filterKey,
+      activeTable: value,
+      selectedMonth: current.filterKey === filterKey ? current.selectedMonth : null,
+    }));
+  };
+  const setSelectedMonth = (value: SelectedMonth | null) => {
+    setDrilldown((current) => ({
+      filterKey,
+      activeTable: current.filterKey === filterKey ? current.activeTable : null,
+      selectedMonth: value,
+    }));
+  };
 
   const updateFilter = (key: keyof Filters, value: Filters[keyof Filters]) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -430,18 +446,6 @@ export function PLDashboardComponent({
     setActiveTable(null);
     setSelectedMonth(null);
   };
-
-  useEffect(() => {
-    setActiveTable(null);
-    setSelectedMonth(null);
-  }, [
-    filters.year,
-    filters.month,
-    filters.company,
-    filters.project,
-    filters.startDate,
-    filters.endDate,
-  ]);
 
   useEffect(() => {
     let active = true;

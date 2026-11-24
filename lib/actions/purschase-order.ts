@@ -30,6 +30,7 @@ import {
   safeNotify,
 } from "@/lib/notifications/publish";
 import { loadPurchaseOrderSnapshots } from "@/lib/notifications/store";
+import { getActiveCompanyContext } from "@/lib/company-context";
 
 // ================= DATE HELPER =================
 const toLocalDate = (date?: string | Date | null): Date | undefined => {
@@ -186,8 +187,11 @@ export async function getPurchaseOrders() {
     if (!access.ok) {
       return { success: false, data: [], message: access.message };
     }
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, data: [], message: "Unauthorized" };
 
     const data = await prisma.purchaseOrder.findMany({
+      where: { companyId: company.companyId },
       orderBy: { createdAt: "desc" },
       take: 2000,
       include: {
@@ -221,13 +225,28 @@ export async function createPurchaseOrder(data: PurchaseOrder) {
     if (!access.ok) {
       return { success: false, message: access.message };
     }
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
     const validated = purchaseOrderSchema.parse(data);
+    if (validated.companyId && validated.companyId !== company.companyId) {
+      return { success: false, message: "Unauthorized company access" };
+    }
+    const customerId = emptyToUndefined(validated.customerId);
+    const vendorId = emptyToUndefined(validated.vendorId);
+    if (customerId && !(await prisma.customer.findFirst({ where: { id: customerId, companyId: company.companyId }, select: { id: true } }))) {
+      return { success: false, message: "Customer not found for the selected company" };
+    }
+    if (vendorId && !(await prisma.vendor.findFirst({ where: { id: vendorId, companyId: company.companyId }, select: { id: true } }))) {
+      return { success: false, message: "Vendor not found for the selected company" };
+    }
+    const referenceError = await validatePOSetupReferences(validated, company.companyId);
+    if (referenceError) return { success: false, message: referenceError };
     const billingPlanId = emptyToUndefined(validated.billingPlanId);
     const billingPlan =
       billingPlanId
-        ? await prisma.billingPlan.findUnique({
-            where: { id: billingPlanId },
+        ? await prisma.billingPlan.findFirst({
+            where: { id: billingPlanId, companyId: company.companyId },
           })
         : null;
 
@@ -273,7 +292,7 @@ export async function createPurchaseOrder(data: PurchaseOrder) {
       contractId: emptyToUndefined(validated.contractId) ?? null,
       startFrom: toLocalDate(validated.startFrom) ?? null,
       endDate: toLocalDate(validated.endDate) ?? null,
-      companyId: emptyToUndefined(validated.companyId) ?? null,
+      companyId: company.companyId,
       vendorId: emptyToUndefined(validated.vendorId) ?? null,
       paymentTerms: emptyToUndefined(validated.paymentTerms) ?? null,
       customerId: emptyToUndefined(validated.customerId) ?? null,
@@ -324,9 +343,11 @@ export async function getPurchaseOrderById(id: string) {
     if (!access.ok) {
       return { success: false, message: access.message };
     }
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
-    const data = await prisma.purchaseOrder.findUnique({
-      where: { id },
+    const data = await prisma.purchaseOrder.findFirst({
+      where: { id, companyId: company.companyId },
       include: {
         ServiceType: true,
         billingPlan: true,
@@ -498,8 +519,23 @@ export async function updatePurchaseOrder(
     if (!access.ok) {
       return { success: false, message: access.message };
     }
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
     const validated = purchaseOrderSchema.parse(data);
+    if (validated.companyId && validated.companyId !== company.companyId) {
+      return { success: false, message: "Unauthorized company access" };
+    }
+    const customerId = emptyToUndefined(validated.customerId);
+    const vendorId = emptyToUndefined(validated.vendorId);
+    if (customerId && !(await prisma.customer.findFirst({ where: { id: customerId, companyId: company.companyId }, select: { id: true } }))) {
+      return { success: false, message: "Customer not found for the selected company" };
+    }
+    if (vendorId && !(await prisma.vendor.findFirst({ where: { id: vendorId, companyId: company.companyId }, select: { id: true } }))) {
+      return { success: false, message: "Vendor not found for the selected company" };
+    }
+    const referenceError = await validatePOSetupReferences(validated, company.companyId);
+    if (referenceError) return { success: false, message: referenceError };
     const billingPlanId = emptyToUndefined(validated.billingPlanId);
     let previous: PurchaseOrderSnapshot | null = null;
     let previousLoaded = false;
@@ -520,7 +556,7 @@ export async function updatePurchaseOrder(
       contractId: emptyToUndefined(validated.contractId) ?? null,
       startFrom: toLocalDate(validated.startFrom) ?? null,
       endDate: toLocalDate(validated.endDate) ?? null,
-      companyId: emptyToUndefined(validated.companyId) ?? null,
+      companyId: company.companyId,
       vendorId: emptyToUndefined(validated.vendorId) ?? null,
       paymentTerms: emptyToUndefined(validated.paymentTerms) ?? null,
       customerId: emptyToUndefined(validated.customerId) ?? null,
@@ -542,7 +578,7 @@ export async function updatePurchaseOrder(
     await prisma.$transaction(async (tx) => {
       await lockPurchaseOrders(tx, [id]);
       const current = await tx.purchaseOrder.findUnique({
-        where: { id },
+        where: { id, companyId: company.companyId },
         select: { status: true, updatedAt: true },
       });
       if (!current) {
@@ -579,6 +615,23 @@ export async function updatePurchaseOrder(
   }
 }
 
+async function validatePOSetupReferences(
+  data: PurchaseOrder,
+  companyId: string,
+) {
+  const [serviceType, contractDuration, contractType, billingPlan] = await Promise.all([
+    data.serviceTypeId ? prisma.serviceType.findFirst({ where: { id: data.serviceTypeId, companyId }, select: { id: true } }) : null,
+    data.contractDurationId ? prisma.contractDuration.findFirst({ where: { id: data.contractDurationId, companyId }, select: { id: true } }) : null,
+    data.contractId ? prisma.contractType.findFirst({ where: { id: data.contractId, companyId }, select: { id: true } }) : null,
+    data.billingPlanId ? prisma.billingPlan.findFirst({ where: { id: data.billingPlanId, companyId }, select: { id: true } }) : null,
+  ]);
+  if (data.serviceTypeId && !serviceType) return "Service type not found for the selected company";
+  if (data.contractDurationId && !contractDuration) return "Contract duration not found for the selected company";
+  if (data.contractId && !contractType) return "Contract type not found for the selected company";
+  if (data.billingPlanId && !billingPlan) return "Billing plan not found for the selected company";
+  return null;
+}
+
 // ================= DELETE =================
 export async function deletePurchaseOrder(id: string) {
   try {
@@ -586,6 +639,8 @@ export async function deletePurchaseOrder(id: string) {
     if (!access.ok) {
       return { success: false, message: access.message };
     }
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
     const actor = await getUserPermissions();
     const actorIsSystem = Boolean(
@@ -595,7 +650,7 @@ export async function deletePurchaseOrder(id: string) {
     await prisma.$transaction(async (tx) => {
       await lockPurchaseOrders(tx, [id]);
       const current = await tx.purchaseOrder.findUnique({
-        where: { id },
+        where: { id, companyId: company.companyId },
         include: {
           billingCycles: {
             select: {
@@ -650,9 +705,11 @@ export async function getBillingCyclesByPOID(id: string) {
     if (!access.ok) {
       return { success: false, message: access.message };
     }
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
     const data = await prisma.billingCycle.findMany({
-      where: { purchaseOrderId: id },
+      where: { purchaseOrderId: id, purchaseOrder: { companyId: company.companyId } },
       orderBy: { billingSubmittedDate: "asc" },
     });
 

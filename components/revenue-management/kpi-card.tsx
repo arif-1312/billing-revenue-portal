@@ -1,4 +1,17 @@
-import { Info } from "lucide-react";
+import {
+  CircleAlert,
+  CircleDollarSign,
+  Clock3,
+  FileText,
+  Gauge,
+  Info,
+  Receipt,
+  Timer,
+  TrendingUp,
+  TriangleAlert,
+  Wallet,
+  type LucideIcon,
+} from "lucide-react";
 
 import {
   Tooltip,
@@ -61,6 +74,22 @@ export type KpiDetailKey =
   | "overdueInvoiceCount"
   | "pendingCollection";
 
+const metricIcons: Record<KpiDetailKey, LucideIcon> = {
+  plannedBilling: FileText,
+  billedAmount: Receipt,
+  netBilledAmount: Wallet,
+  creditNoteAmount: FileText,
+  billingDone: Receipt,
+  billingAchievement: TrendingUp,
+  totalCollected: CircleDollarSign,
+  totalReceivables: Wallet,
+  notYetDue: Clock3,
+  overdueAmount: TriangleAlert,
+  collectionEfficiency: Gauge,
+  overdueInvoiceCount: CircleAlert,
+  pendingCollection: Timer,
+};
+
 export function HoverAmount({
   value,
   className,
@@ -110,6 +139,9 @@ export function KpiCard({
   deltaText,
   deltaTone = "neutral",
   unavailable = false,
+  hero = false,
+  sparkline = [],
+  progressValue,
   detailKey,
   onOpenDetails,
 }: {
@@ -121,6 +153,9 @@ export function KpiCard({
   deltaText: string;
   deltaTone?: TrendTone;
   unavailable?: boolean;
+  hero?: boolean;
+  sparkline?: number[];
+  progressValue?: number;
   detailKey: KpiDetailKey;
   onOpenDetails: (key: KpiDetailKey) => void;
 }) {
@@ -138,38 +173,68 @@ export function KpiCard({
         : formatInr(value, true);
   const amountLabel = unavailable ? "Unavailable" : exact;
   const colors = cardTone[accent];
+  const MetricIcon = metricIcons[detailKey];
   const openDetails = () => onOpenDetails(detailKey);
+  const sparklineValues = sparkline.filter(Number.isFinite);
+  const sparklineMin = Math.min(...sparklineValues, 0);
+  const sparklineMax = Math.max(...sparklineValues, 1);
+  const sparklineRange = sparklineMax - sparklineMin || 1;
+  const sparklinePoints = sparklineValues
+    .map((point, index) => {
+      const x = sparklineValues.length < 2 ? 50 : (index / (sparklineValues.length - 1)) * 100;
+      const y = 27 - ((point - sparklineMin) / sparklineRange) * 22;
+      return `${x},${y}`;
+    })
+    .join(" ");
+  const progress = Math.max(0, Math.min(progressValue ?? value, 100));
 
   return (
     <article
-      className="group relative flex min-h-[8.75rem] min-w-0 flex-col rounded-xl border px-3.5 py-3 transition-[border-color,box-shadow] duration-150 hover:shadow-sm"
-      style={{
+      className={cn(
+        "group relative flex min-h-[8.75rem] min-w-0 flex-col overflow-hidden rounded-2xl border px-4 py-3.5 transition-colors duration-200 hover:border-primary/40",
+        hero
+          ? "border-[var(--kpi-billing-border)] bg-[var(--kpi-billing-background)] text-white shadow-sm"
+          : "border-slate-200 bg-white shadow-sm",
+      )}
+      style={hero ? undefined : {
         backgroundColor: colors.background,
         borderColor: colors.border,
-        boxShadow: `inset 3px 0 0 ${colors.accent}, 0 1px 2px rgb(15 23 42 / 0.035)`,
+        boxShadow: "0 1px 2px rgb(0 0 0 / 0.16)",
       }}
     >
       <button
         type="button"
-        className="absolute inset-0 z-0 cursor-pointer rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--financial-billing)]"
+        className="absolute inset-0 z-0 cursor-pointer rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400"
         aria-label={`View ${label} details`}
         onClick={openDetails}
       />
       <div className="pointer-events-none relative z-10 flex items-start justify-between gap-2">
-        <div className="flex min-w-0 flex-1 flex-col">
-          <h2 className="min-h-4 text-[11px] font-medium leading-4 text-[var(--kpi-label)]">
-            {label}
-          </h2>
-
-          <div className="mt-1 flex h-6 items-center">
-            <FyBadge />
+        <div className="flex min-w-0 flex-1 items-center gap-2.5">
+          <span
+            aria-hidden="true"
+            className="flex size-9 shrink-0 items-center justify-center rounded-xl border"
+            style={{
+              color: colors.accent,
+              borderColor: `color-mix(in srgb, ${colors.accent} 20%, transparent)`,
+              backgroundColor: `color-mix(in srgb, ${colors.accent} 12%, var(--card))`,
+            }}
+          >
+            <MetricIcon className="size-[18px]" />
+          </span>
+          <div className="min-w-0">
+            <h2 className={cn("truncate text-xs font-medium leading-4", hero ? "text-slate-300" : "text-[var(--kpi-label)]")}>
+              {label}
+            </h2>
+            <div className="mt-1 flex h-5 items-center">
+              <FyBadge className={hero ? "border-white/15 bg-white/10 text-slate-200" : undefined} />
+            </div>
           </div>
         </div>
         <Tooltip>
           <TooltipTrigger asChild>
             <button
               type="button"
-              className="pointer-events-auto rounded-md p-0.5 text-[var(--kpi-label)] hover:bg-slate-50 hover:text-[var(--financial-billing)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--financial-billing)]"
+              className={cn("pointer-events-auto rounded-md p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary", hero ? "text-slate-300 hover:bg-white/10 hover:text-white" : "text-[var(--kpi-label)] hover:bg-secondary hover:text-[var(--financial-billing)]")}
               aria-label={`About ${label}`}
               onClick={(event) => event.stopPropagation()}
             >
@@ -186,7 +251,7 @@ export function KpiCard({
       </div>
       <div className="pointer-events-none relative z-10">
       {unavailable || mode !== "currency" ? (
-        <p className="mt-1 truncate font-mono text-[23px] leading-7 font-semibold tracking-tight text-[var(--kpi-value)] tabular-nums">
+        <p className={cn("mt-1 truncate font-mono text-[23px] leading-7 font-semibold tracking-tight tabular-nums", hero ? "text-white" : "text-[var(--kpi-value)]")}>
           {unavailable ? "—" : display}
         </p>
       ) : (
@@ -194,17 +259,36 @@ export function KpiCard({
           value={value}
           displayInCrores
           onClick={openDetails}
-          className="mt-1 block w-full truncate text-left font-mono text-[23px] leading-7 font-semibold tracking-tight text-[var(--kpi-value)] tabular-nums"
+          className={cn("mt-1 block w-full truncate text-left font-mono text-[23px] leading-7 font-semibold tracking-tight tabular-nums", hero ? "text-white" : "text-[var(--kpi-value)]")}
         />
       )}
       <p
         className={cn(
           "mt-1 truncate text-[11px] font-medium tabular-nums",
+          hero ? "text-slate-300" : "",
           toneClass[deltaTone],
         )}
       >
         {deltaText}
       </p>
+      {hero ? (
+        <div className="mt-auto flex items-end justify-between gap-4 pt-2">
+          <div className="min-w-0 flex-1">
+            <div className="mb-1 flex justify-between gap-2 text-[10px] text-slate-300">
+              <span>Billing achievement</span>
+              <span className="font-mono tabular-nums">{unavailable ? "—" : `${progress.toFixed(1)}%`}</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+              <div className="h-full rounded-full bg-[var(--financial-billing)] transition-[width] duration-700" style={{ width: `${progress}%` }} />
+            </div>
+          </div>
+          {sparklinePoints ? (
+            <svg aria-hidden="true" viewBox="0 0 100 32" preserveAspectRatio="none" className="h-8 w-20 shrink-0 overflow-visible text-cyan-300 sm:w-24">
+            <polyline points={sparklinePoints} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          ) : null}
+        </div>
+      ) : null}
       </div>
     </article>
   );

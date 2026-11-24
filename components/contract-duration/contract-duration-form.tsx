@@ -49,9 +49,11 @@ type ContractDurationFormValues = z.infer<typeof contractDurationSchema>;
 const ContractDurationForm = ({
   data,
   update = false,
+  onSuccess,
 }: {
   data?: ContractDuration;
   update: boolean;
+  onSuccess?: () => void;
 }) => {
   const router = useRouter();
   const id = data?.id;
@@ -80,7 +82,9 @@ const ContractDurationForm = ({
           description: res?.message,
         });
       } else {
-        router.push("/admin/contract-duration");
+        toast.success(update ? "Contract Duration updated successfully" : "Contract Duration created successfully");
+        if (onSuccess) onSuccess();
+        else router.push("/admin/contract-duration");
       }
     });
   };

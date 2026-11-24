@@ -5,6 +5,7 @@ import { prisma } from "../prisma";
 import { contractDurationSchema } from "../validators";
 import { formatError } from "../utils";
 import { requirePermission, type PermissionRule } from "@/lib/rbac";
+import { getActiveCompanyContext } from "@/lib/company-context";
 
 const revenueReaders: PermissionRule[] = [
   { route: "/admin/revenue", action: "view" },
@@ -30,8 +31,11 @@ function normalizeContractDurationPayload(contractDuration: ContractDuration) {
 export async function getContractDurations() {
   const access = await requirePermission("/admin/contract-duration", "view", revenueReaders);
   if (!access.ok) return [];
+  const company = await getActiveCompanyContext();
+  if (!company) return [];
 
   return await prisma.contractDuration.findMany({
+    where: { companyId: company.companyId },
     orderBy: {
       createdAt: 'desc'
     },
@@ -48,9 +52,11 @@ export async function createContractDuration(data: ContractDuration) {
 
     const contractDuration = contractDurationSchema.parse(data)
     const payload = normalizeContractDurationPayload(contractDuration)
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
     await prisma.contractDuration.create({
-      data: payload
+      data: { ...payload, companyId: company.companyId }
     })
 
     return {
@@ -73,9 +79,11 @@ export async function getContractDurationById(id: string) {
     if (!access.ok) {
       return { success: false, message: access.message };
     }
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
-    let contractDuration = await prisma.contractDuration.findFirst({
-      where: { id }
+    const contractDuration = await prisma.contractDuration.findFirst({
+      where: { id, companyId: company.companyId }
     })
 
     if (contractDuration) {
@@ -108,11 +116,14 @@ export async function updateContractDuration(data: ContractDuration, id: string)
 
   const contractDuration = contractDurationSchema.parse(data)
   const payload = normalizeContractDurationPayload(contractDuration)
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
-    await prisma.contractDuration.update({
-      where: { id },
+    const result = await prisma.contractDuration.updateMany({
+      where: { id, companyId: company.companyId },
       data: payload
     })
+    if (!result.count) return { success: false, message: "Contract Duration not found" };
 
     return {
       success: true,
@@ -127,16 +138,17 @@ export async function updateContractDuration(data: ContractDuration, id: string)
   }
 }
 
-export async function deleteContractDuration(id: any) {
+export async function deleteContractDuration(id: string) {
   try {
     const access = await requirePermission("/admin/contract-duration", "delete");
     if (!access.ok) {
       return { success: false, message: access.message };
     }
+    const company = await getActiveCompanyContext();
+    if (!company) return { success: false, message: "Unauthorized" };
 
-    await prisma.contractDuration.delete({
-      where: { id }
-    })
+    const result = await prisma.contractDuration.deleteMany({ where: { id, companyId: company.companyId } });
+    if (!result.count) return { success: false, message: "Contract Duration not found" };
 
     return {
       success: true,

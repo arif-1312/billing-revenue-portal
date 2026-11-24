@@ -56,6 +56,7 @@ model Role {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   users     User[]
+  companyMemberships UserCompany[]
 
   roleModules RoleModule[]
 }
@@ -79,6 +80,25 @@ model User {
   emailJobs               EmailJob[]
   passwordResetTokens     PasswordResetToken[]
   activeLogin             ActiveLogin?
+  companyMemberships      UserCompany[]
+}
+
+model UserCompany {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @db.Uuid
+  companyId String   @db.Uuid
+  roleId    String   @db.Uuid
+  status    Status   @default(ACTIVE)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  role    Role    @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, companyId])
+  @@index([companyId, status])
+  @@index([userId, status])
 }
 
 model ActiveLogin {
@@ -188,16 +208,19 @@ model BillingCyclePayment {
 
 model ServiceType {
   id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId      String?         @db.Uuid
   name           String          @unique
   remark         String?
   status         Status          @default(ACTIVE)
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   purchaseOrders PurchaseOrder[]
+  company        Company?        @relation(fields: [companyId], references: [id])
 }
 
 model BillingPlan {
   id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId          String?          @db.Uuid
   name               String           @unique
   totalBillingCycles Int
   billingCycleType   BillingCycleType @default(START)
@@ -207,10 +230,12 @@ model BillingPlan {
   updatedAt          DateTime         @updatedAt
   purchaseOrders     PurchaseOrder[]
   project            Project[]
+  company            Company?         @relation(fields: [companyId], references: [id])
 }
 
 model ContractDuration {
   id                  String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId           String?         @db.Uuid
   name                String          @unique
   totalNumberOfMonths Int
   remark              String?
@@ -218,20 +243,24 @@ model ContractDuration {
   createdAt           DateTime        @default(now())
   updatedAt           DateTime        @updatedAt
   purchaseOrders      PurchaseOrder[]
+  company             Company?        @relation(fields: [companyId], references: [id])
 }
 
 model ContractType {
   id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId      String?         @db.Uuid
   name           String          @unique
   remark         String?
   status         Status          @default(ACTIVE)
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   purchaseOrders PurchaseOrder[]
+  company        Company?        @relation(fields: [companyId], references: [id])
 }
 
 model Customer {
   id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId      String?         @db.Uuid
   customerCode   String          @unique
   firstName      String
   lastName       String?
@@ -253,10 +282,12 @@ model Customer {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   purchaseOrders PurchaseOrder[]
+  company        Company?        @relation(fields: [companyId], references: [id])
 }
 
 model Vendor {
   id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId      String?         @db.Uuid
   vendorCode     String          @unique
   firstName      String
   lastName       String?
@@ -278,6 +309,7 @@ model Vendor {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   purchaseOrders PurchaseOrder[]
+  company        Company?        @relation(fields: [companyId], references: [id])
 }
 
 model Company {
@@ -296,13 +328,24 @@ model Company {
   gstNumber      String?       @unique
   panNumber      String?
   cinNumber      String?
+  logo           String?
   status         CompanyStatus @default(ACTIVE)
   isActive       Boolean       @default(true)
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
-  projects      Project[]
-  purchaseOrder PurchaseOrder[]
+  projects         Project[]
+  purchaseOrder    PurchaseOrder[]
+  userMemberships  UserCompany[]
+  customers        Customer[]
+  vendors          Vendor[]
+  creditNotes      CreditNote[]
+  serviceTypes     ServiceType[]
+  billingPlans     BillingPlan[]
+  contractDurations ContractDuration[]
+  contractTypes    ContractType[]
+  notifications    Notification[]
+  auditLogs        AuditLog[]
 }
 
 model Project {
@@ -400,6 +443,7 @@ enum EmailJobStatus {
 /// In-app billing and system alerts. Delivery attempts are stored on EmailJob.
 model Notification {
   id               String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId        String?                 @db.Uuid
   dedupeKey        String                  @unique
   category         NotificationCategory
   eventType        String
@@ -424,6 +468,7 @@ model Notification {
   updatedAt        DateTime                @updatedAt
   receipts         NotificationReceipt[]
   emailJobs        EmailJob[]
+  company          Company?                @relation(fields: [companyId], references: [id], onDelete: SetNull)
 
   @@index([category, occurredAt])
   @@index([entityType, entityId])
@@ -524,6 +569,7 @@ enum AuditAction {
 
 model CreditNote {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId    String?  @db.Uuid
   customerName String   @map("particulars")
   date         DateTime
   vchType      String
@@ -531,6 +577,7 @@ model CreditNote {
   amount       Decimal  @db.Decimal(14, 2)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  company      Company? @relation(fields: [companyId], references: [id])
 
   @@index([date])
   @@index([vchType, vchNo])
@@ -546,6 +593,7 @@ model RateLimitBucket {
 
 model AuditLog {
   id        String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId String?     @db.Uuid
   createdAt DateTime    @default(now())
   userId    String?     @db.Uuid
   userName  String?
@@ -555,7 +603,9 @@ model AuditLog {
   before    Json?
   after     Json?
   changes   Json?
+  company   Company?    @relation(fields: [companyId], references: [id], onDelete: SetNull)
 
+  @@index([companyId, createdAt])
   @@index([createdAt])
   @@index([model, createdAt])
   @@index([action, createdAt])

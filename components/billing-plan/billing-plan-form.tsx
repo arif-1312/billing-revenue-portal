@@ -49,9 +49,11 @@ type BillingCycleFormValues = z.infer<typeof billingPlanSchema>;
 const BillingPlanForm = ({
   data,
   update = false,
+  onSuccess,
 }: {
   data?: BillingPlan;
   update: boolean;
+  onSuccess?: () => void;
 }) => {
   const router = useRouter();
   const id = data?.id;
@@ -85,7 +87,9 @@ const BillingPlanForm = ({
           description: res?.message,
         });
       } else {
-        router.push("/admin/billing-plan");
+        toast.success(update ? "Billing Plan updated successfully" : "Billing Plan created successfully");
+        if (onSuccess) onSuccess();
+        else router.push("/admin/billing-plan");
       }
     });
   };
