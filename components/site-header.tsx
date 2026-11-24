@@ -94,7 +94,7 @@ export function SiteHeader({ canViewNotifications }: { canViewNotifications: boo
 
         <Separator orientation="vertical" className="h-4" />
 
-        {companies.length > 1 ? (
+        {/* {companies.length > 1 ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" disabled={switching} className="h-9 max-w-48 rounded-xl border-border bg-card text-foreground">
@@ -110,7 +110,7 @@ export function SiteHeader({ canViewNotifications }: { canViewNotifications: boo
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-        ) : null}
+        ) : null} */}
 
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold tracking-tight text-foreground">
