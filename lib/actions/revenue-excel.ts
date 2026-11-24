@@ -416,6 +416,7 @@ export async function commitRevenueImport(
 
         const actor = await getUserPermissions();
         const saved = await persistRevenueImport(tx, assessed, {
+          companyId: company.companyId,
           actorIsSystem: Boolean(
             actor?.role?.isSystem && actor.role.status === "ACTIVE",
           ),

@@ -9,6 +9,7 @@ import { requirePermission, type PermissionRule } from "@/lib/rbac";
 import { fingerprint } from "@/lib/notifications/model";
 import { safePublishSystem } from "@/lib/notifications/publish";
 import { getActiveCompanyContext } from "@/lib/company-context";
+import { companyWithSharedDefaults } from "@/lib/company-scope";
 
 const customerReaders: PermissionRule[] = [
   { route: "/admin/revenue", action: "view" },
@@ -75,7 +76,7 @@ export async function getCustomers() {
   if (!company) return [];
 
   return await prisma.customer.findMany({
-    where: { companyId: company.companyId },
+    where: companyWithSharedDefaults(company.companyId),
     orderBy: {
       createdAt: 'desc'
     },

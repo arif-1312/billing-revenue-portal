@@ -86,7 +86,7 @@ async function resolveNamedId(
 export async function persistRevenueImport(
   db: ImportDb,
   assessed: AssessedRevenueImport,
-  options: { actorIsSystem: boolean } = { actorIsSystem: false },
+  options: { actorIsSystem: boolean; companyId: string },
 ) {
   for (const row of assessed.inserts) {
     if (!row.purchaseOrder) continue;
@@ -151,6 +151,7 @@ export async function persistRevenueImport(
 
   const [customers, vendors] = await Promise.all([
     db.customer.findMany({
+      where: { OR: [{ companyId: options.companyId }, { companyId: null }] },
       select: {
         id: true,
         customerCode: true,
@@ -160,6 +161,7 @@ export async function persistRevenueImport(
       },
     }),
     db.vendor.findMany({
+      where: { OR: [{ companyId: options.companyId }, { companyId: null }] },
       select: { id: true, vendorCode: true, companyName: true, firstName: true },
     }),
   ]);
@@ -189,6 +191,7 @@ export async function persistRevenueImport(
     customerCodes.push(code);
     const created = await db.customer.create({
       data: {
+        companyId: options.companyId,
         customerCode: code,
         firstName: canonical,
         companyName: canonical,
@@ -214,6 +217,7 @@ export async function persistRevenueImport(
     vendorCodes.push(code);
     const created = await db.vendor.create({
       data: {
+        companyId: options.companyId,
         vendorCode: code,
         firstName: name,
         companyName: name,
@@ -250,40 +254,52 @@ export async function persistRevenueImport(
   const planIds = await resolveNamedId(
     planNames,
     async () =>
-      (await db.billingPlan.findMany({ select: { id: true, name: true } })).map(
+      (await db.billingPlan.findMany({
+        where: { OR: [{ companyId: options.companyId }, { companyId: null }] },
+        select: { id: true, name: true },
+      })).map(
         (plan) => ({ id: plan.id, name: plan.name }),
       ),
     (name) =>
       db.billingPlan.create({
-        data: { name, totalBillingCycles: planCycleCount(name) },
+        data: { name, totalBillingCycles: planCycleCount(name), companyId: options.companyId },
       }),
   );
   const serviceIds = await resolveNamedId(
     serviceNames,
     async () =>
-      (await db.serviceType.findMany({ select: { id: true, name: true } })).map(
+      (await db.serviceType.findMany({
+        where: { OR: [{ companyId: options.companyId }, { companyId: null }] },
+        select: { id: true, name: true },
+      })).map(
         (service) => ({ id: service.id, name: service.name }),
       ),
-    (name) => db.serviceType.create({ data: { name } }),
+    (name) => db.serviceType.create({ data: { name, companyId: options.companyId } }),
   );
   const durationIds = await resolveNamedId(
     durationNames,
     async () =>
       (
-        await db.contractDuration.findMany({ select: { id: true, name: true } })
+        await db.contractDuration.findMany({
+          where: { OR: [{ companyId: options.companyId }, { companyId: null }] },
+          select: { id: true, name: true },
+        })
       ).map((duration) => ({ id: duration.id, name: duration.name })),
     (name) =>
       db.contractDuration.create({
-        data: { name, totalNumberOfMonths: durationMonths(name) },
+        data: { name, totalNumberOfMonths: durationMonths(name), companyId: options.companyId },
       }),
   );
   const contractIds = await resolveNamedId(
     contractNames,
     async () =>
-      (await db.contractType.findMany({ select: { id: true, name: true } })).map(
+      (await db.contractType.findMany({
+        where: { OR: [{ companyId: options.companyId }, { companyId: null }] },
+        select: { id: true, name: true },
+      })).map(
         (contract) => ({ id: contract.id, name: contract.name }),
       ),
-    (name) => db.contractType.create({ data: { name } }),
+    (name) => db.contractType.create({ data: { name, companyId: options.companyId } }),
   );
 
   const purchaseOrderIds = new Map<string, string>();

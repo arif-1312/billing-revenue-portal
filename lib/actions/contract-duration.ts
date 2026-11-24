@@ -6,6 +6,7 @@ import { contractDurationSchema } from "../validators";
 import { formatError } from "../utils";
 import { requirePermission, type PermissionRule } from "@/lib/rbac";
 import { getActiveCompanyContext } from "@/lib/company-context";
+import { companyWithSharedDefaults } from "@/lib/company-scope";
 
 const revenueReaders: PermissionRule[] = [
   { route: "/admin/revenue", action: "view" },
@@ -35,7 +36,7 @@ export async function getContractDurations() {
   if (!company) return [];
 
   return await prisma.contractDuration.findMany({
-    where: { companyId: company.companyId },
+    where: companyWithSharedDefaults(company.companyId),
     orderBy: {
       createdAt: 'desc'
     },

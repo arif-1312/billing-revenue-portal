@@ -1593,7 +1593,7 @@ async function dashboardPartyScope(query?: Pick<CreditNoteDashboardQuery, "compa
   };
   const customers = await prisma.customer.findMany({
     where: {
-      companyId: activeCompany.companyId,
+      OR: [{ companyId: activeCompany.companyId }, { companyId: null }],
       ...(customerId ? { id: customerId } : {}),
       ...(needsPurchaseOrder ? { purchaseOrders: { some: purchaseOrderWhere } } : {}),
     },
@@ -1631,7 +1631,7 @@ async function dashboardCreditNotes(filters?: BillingStatusFilters) {
   const company = await getActiveCompanyContext();
   if (!company) return [];
   const notes = await prisma.creditNote.findMany({
-    where: { companyId: company.companyId },
+    where: { OR: [{ companyId: company.companyId }, { companyId: null }] },
     select: { customerName: true, date: true, amount: true },
   });
   return customerKeys
@@ -1678,7 +1678,12 @@ export async function getCreditNoteDashboardSummary(
   const windows = [dateWindow(year, filters)];
   if (comparisonFilters) windows.push(dateWindow(comparisonYear, comparisonFilters));
   const notes = (customerKeys && !customerKeys.size) || !activeCompany ? [] : await prisma.creditNote.findMany({
-    where: { companyId: activeCompany.companyId, OR: windows },
+    where: {
+      AND: [
+        { OR: [{ companyId: activeCompany.companyId }, { companyId: null }] },
+        { OR: windows },
+      ],
+    },
     select: { customerName: true, date: true, amount: true },
   });
   const matchingNotes = customerKeys
@@ -1703,7 +1708,7 @@ async function getCreditNoteKpiDetails(
 
   const [notes, orders] = await Promise.all([
     prisma.creditNote.findMany({
-      where: { companyId: activeCompany.companyId },
+      where: { OR: [{ companyId: activeCompany.companyId }, { companyId: null }] },
       select: { id: true, customerName: true, date: true, vchType: true, vchNo: true, amount: true },
     }),
     prisma.purchaseOrder.findMany({

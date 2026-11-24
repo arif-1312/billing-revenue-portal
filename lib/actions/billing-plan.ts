@@ -6,6 +6,7 @@ import { formatError } from "../utils";
 import { z } from "zod";
 import { requirePermission, type PermissionRule } from "@/lib/rbac";
 import { getActiveCompanyContext } from "@/lib/company-context";
+import { companyWithSharedDefaults } from "@/lib/company-scope";
 
 const billingPlanReaders: PermissionRule[] = [
   { route: "/admin/revenue", action: "view" },
@@ -43,7 +44,7 @@ export async function getBillingPlans() {
     if (!company) return [];
 
     const data = await prisma.billingPlan.findMany({
-      where: { companyId: company.companyId },
+      where: companyWithSharedDefaults(company.companyId),
       orderBy: {
         createdAt: "desc",
       },

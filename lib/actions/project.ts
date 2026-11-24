@@ -174,7 +174,7 @@ export async function createProject(data: Project) {
     const project = projectSchema.parse(data);
     if (project.companyId !== company.companyId) return { success: false, message: "Unauthorized company access" };
     const billingPlan = await prisma.billingPlan.findFirst({
-      where: { id: project.billingPlanId, companyId: company.companyId },
+      where: { id: project.billingPlanId, OR: [{ companyId: company.companyId }, { companyId: null }] },
       select: { id: true },
     });
     if (!billingPlan) return { success: false, message: "Billing plan not found for the selected company" };
@@ -257,7 +257,7 @@ export async function updateProject(data: Project, id: string) {
     const project = projectSchema.parse(data);
     if (project.companyId !== company.companyId) return { success: false, message: "Unauthorized company access" };
     const billingPlan = await prisma.billingPlan.findFirst({
-      where: { id: project.billingPlanId, companyId: company.companyId },
+      where: { id: project.billingPlanId, OR: [{ companyId: company.companyId }, { companyId: null }] },
       select: { id: true },
     });
     if (!billingPlan) return { success: false, message: "Billing plan not found for the selected company" };

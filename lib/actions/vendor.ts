@@ -9,6 +9,7 @@ import { formatError } from "../utils";
 import { vendorSchema } from "../validators";
 import { requirePermission, type PermissionRule } from "@/lib/rbac";
 import { getActiveCompanyContext } from "@/lib/company-context";
+import { companyWithSharedDefaults } from "@/lib/company-scope";
 
 const vendorReaders: PermissionRule[] = [
   { route: "/admin/revenue", action: "view" },
@@ -50,7 +51,7 @@ type VendorCountRecord = {
 
 type VendorDelegate = {
   findMany(args: {
-    where: { companyId: string };
+    where: { OR: Array<{ companyId: string | null }> };
     orderBy: { createdAt: "desc" };
   }): Promise<VendorRecord[]>;
   create(args: {
@@ -200,7 +201,7 @@ async function findVendorsWithSql(companyId: string) {
       "createdAt",
       "updatedAt"
     FROM "Vendor"
-    WHERE "companyId" = ${companyId}
+    WHERE "companyId" = ${companyId} OR "companyId" IS NULL
     ORDER BY "createdAt" DESC
   `;
 }
@@ -354,7 +355,7 @@ export async function getVendors() {
 
   if (vendorDelegate) {
     const records = await vendorDelegate.findMany({
-      where: { companyId: company.companyId },
+      where: companyWithSharedDefaults(company.companyId),
       orderBy: {
         createdAt: "desc",
       },

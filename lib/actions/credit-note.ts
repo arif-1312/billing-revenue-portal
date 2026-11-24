@@ -17,6 +17,7 @@ import { requirePermission } from "@/lib/rbac";
 import { formatError } from "@/lib/utils";
 import { creditNoteSchema } from "@/lib/validators";
 import { getActiveCompanyContext } from "@/lib/company-context";
+import { companyWithSharedDefaults } from "@/lib/company-scope";
 
 const ROUTE = "/admin/credit-note";
 const MAX_FILE_BYTES = 1024 * 1024;
@@ -67,7 +68,7 @@ export async function getCreditNotes() {
   if (!company) return [];
 
   const notes = await prisma.creditNote.findMany({
-    where: { companyId: company.companyId },
+    where: companyWithSharedDefaults(company.companyId),
     orderBy: [{ date: "desc" }, { vchNo: "asc" }],
   });
 

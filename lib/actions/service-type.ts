@@ -6,6 +6,7 @@ import { serviceTypeSchema } from "../validators";
 import { formatError } from "../utils";
 import { requirePermission, type PermissionRule } from "@/lib/rbac";
 import { getActiveCompanyContext } from "@/lib/company-context";
+import { companyWithSharedDefaults } from "@/lib/company-scope";
 
 const revenueReaders: PermissionRule[] = [
   { route: "/admin/revenue", action: "view" },
@@ -38,7 +39,7 @@ export async function getServiceTypes() {
   if (!company) return [];
 
   return await prisma.serviceType.findMany({
-    where: { companyId: company.companyId },
+    where: companyWithSharedDefaults(company.companyId),
     orderBy: {
       createdAt: 'desc'
     },

@@ -234,10 +234,10 @@ export async function createPurchaseOrder(data: PurchaseOrder) {
     }
     const customerId = emptyToUndefined(validated.customerId);
     const vendorId = emptyToUndefined(validated.vendorId);
-    if (customerId && !(await prisma.customer.findFirst({ where: { id: customerId, companyId: company.companyId }, select: { id: true } }))) {
+    if (customerId && !(await prisma.customer.findFirst({ where: { id: customerId, OR: [{ companyId: company.companyId }, { companyId: null }] }, select: { id: true } }))) {
       return { success: false, message: "Customer not found for the selected company" };
     }
-    if (vendorId && !(await prisma.vendor.findFirst({ where: { id: vendorId, companyId: company.companyId }, select: { id: true } }))) {
+    if (vendorId && !(await prisma.vendor.findFirst({ where: { id: vendorId, OR: [{ companyId: company.companyId }, { companyId: null }] }, select: { id: true } }))) {
       return { success: false, message: "Vendor not found for the selected company" };
     }
     const referenceError = await validatePOSetupReferences(validated, company.companyId);
@@ -246,7 +246,7 @@ export async function createPurchaseOrder(data: PurchaseOrder) {
     const billingPlan =
       billingPlanId
         ? await prisma.billingPlan.findFirst({
-            where: { id: billingPlanId, companyId: company.companyId },
+            where: { id: billingPlanId, OR: [{ companyId: company.companyId }, { companyId: null }] },
           })
         : null;
 
@@ -528,10 +528,10 @@ export async function updatePurchaseOrder(
     }
     const customerId = emptyToUndefined(validated.customerId);
     const vendorId = emptyToUndefined(validated.vendorId);
-    if (customerId && !(await prisma.customer.findFirst({ where: { id: customerId, companyId: company.companyId }, select: { id: true } }))) {
+    if (customerId && !(await prisma.customer.findFirst({ where: { id: customerId, OR: [{ companyId: company.companyId }, { companyId: null }] }, select: { id: true } }))) {
       return { success: false, message: "Customer not found for the selected company" };
     }
-    if (vendorId && !(await prisma.vendor.findFirst({ where: { id: vendorId, companyId: company.companyId }, select: { id: true } }))) {
+    if (vendorId && !(await prisma.vendor.findFirst({ where: { id: vendorId, OR: [{ companyId: company.companyId }, { companyId: null }] }, select: { id: true } }))) {
       return { success: false, message: "Vendor not found for the selected company" };
     }
     const referenceError = await validatePOSetupReferences(validated, company.companyId);
@@ -620,10 +620,10 @@ async function validatePOSetupReferences(
   companyId: string,
 ) {
   const [serviceType, contractDuration, contractType, billingPlan] = await Promise.all([
-    data.serviceTypeId ? prisma.serviceType.findFirst({ where: { id: data.serviceTypeId, companyId }, select: { id: true } }) : null,
-    data.contractDurationId ? prisma.contractDuration.findFirst({ where: { id: data.contractDurationId, companyId }, select: { id: true } }) : null,
-    data.contractId ? prisma.contractType.findFirst({ where: { id: data.contractId, companyId }, select: { id: true } }) : null,
-    data.billingPlanId ? prisma.billingPlan.findFirst({ where: { id: data.billingPlanId, companyId }, select: { id: true } }) : null,
+    data.serviceTypeId ? prisma.serviceType.findFirst({ where: { id: data.serviceTypeId, OR: [{ companyId }, { companyId: null }] }, select: { id: true } }) : null,
+    data.contractDurationId ? prisma.contractDuration.findFirst({ where: { id: data.contractDurationId, OR: [{ companyId }, { companyId: null }] }, select: { id: true } }) : null,
+    data.contractId ? prisma.contractType.findFirst({ where: { id: data.contractId, OR: [{ companyId }, { companyId: null }] }, select: { id: true } }) : null,
+    data.billingPlanId ? prisma.billingPlan.findFirst({ where: { id: data.billingPlanId, OR: [{ companyId }, { companyId: null }] }, select: { id: true } }) : null,
   ]);
   if (data.serviceTypeId && !serviceType) return "Service type not found for the selected company";
   if (data.contractDurationId && !contractDuration) return "Contract duration not found for the selected company";
